@@ -31,7 +31,7 @@ import {
   ArrowDownRight,
   FileText,
 } from "lucide-react";
-import { loadLedgerState, saveLedgerState } from "./supabaseClient";
+import { loadLedgerState, saveSettings, db } from "./supabaseClient";
 
 // ---------- Design Tokens (CSS Variables for Theming) ----------
 const INK = "var(--ink)";
@@ -670,156 +670,429 @@ function Modal({ title, sub, onClose, children, wide }) {
 }
 
 // ---------- Dashboard Panel ----------
-function KpiCard({ title, value, icon: Icon, accent }) {
+function KpiCard({ title, value, icon: Icon, accent, sub }) {
   return (
     <Card style={{ flex: 1, minWidth: 220, borderTop: `3px solid ${accent}` }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: FONT_BODY,
-            fontSize: 12,
-            color: MUTED,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: MUTED, fontWeight: 600, textTransform: "uppercase" }}>
           {title}
         </span>
-        <span
-          style={{
-            color: accent,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 32,
-            height: 32,
-            borderRadius: 6,
-            background: "var(--nav-hover)",
-          }}
-        >
+        <span style={{ color: accent, display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 6, background: "var(--nav-hover)" }}>
           <Icon size={16} />
         </span>
       </div>
-      <h3
-        style={{ fontFamily: FONT_MONO, fontSize: 24, color: INK, margin: 0 }}
-      >
+      <h3 style={{ fontFamily: FONT_MONO, fontSize: 24, color: INK, margin: 0 }}>
         GHS {fmt(value)}
       </h3>
+      {sub && <p style={{ fontSize: 11, color: MUTED, margin: "4px 0 0 0" }}>{sub}</p>}
     </Card>
   );
 }
 
+function getComplianceNotifications() {
+  const today = new Date();
+  const day = today.getDate();
+  const alerts = [];
+  
+  // SSNIT & PAYE due by 15th
+  if (day >= 10 && day <= 14) {
+    alerts.push({ text: "PAYE & SSNIT due in 1-5 days (15th). Prepare remittances.", color: GOLD });
+  }
+  // VAT due by 30th/31st
+  if (day >= 25 && day <= 29) {
+    alerts.push({ text: "VAT due soon (end of month). Prepare remittance.", color: ALERT });
+  }
+  // Grace period past 15th
+  if (day > 15 && day < 25) {
+    alerts.push({ text: "PAYE & SSNIT were due on the 15th. Verify compliance.", color: ALERT });
+  }
+  
+  return alerts;
+}
+
 function getDashboardMetrics(data) {
   const balanceFor = (code) => {
-    let debit = 0,
-      credit = 0;
-    data.journal.forEach((e) =>
-      e.lines.forEach((l) => {
-        if (l.account === code) {
-          debit += l.debit;
-          credit += l.credit;
-        }
-      })
-    );
-    return debit - credit;
+    let debit = 0, credit = 0;
+    data.journal.forEach(e => e.lines.forEach(l => {
+      if (l.account === code) { debit += l.debit; credit += l.credit; }
+    }));
+    return debit - credit; 
   };
+  
   const cash = balanceFor("1000");
   const ar = balanceFor("1100");
-  const ap = balanceFor("2000");
+  const ap = Math.abs(balanceFor("2000"));
+  
   const pl = computePL(data, null);
   const netIncome = pl.netProfit;
-  return { cash, ar, ap, netIncome };
+  const totalRevenue = pl.totalRevenue;
+  const totalExpenses = pl.totalCostOfSales + pl.totalAdminExpenses;
+  
+  let totalContractValue = 0;
+  let totalEstimatedCost = 0;
+  let totalActualCost = 0;
+  
+  const activeProjects = data.projects.filter(p => p.status === "Active" && p.id !== "GEN");
+  
+  activeProjects.forEach(p => {
+    totalContractValue += parseFloat(p.contractValue) || 0;
+    totalEstimatedCost += parseFloat(p.estimatedCost) || 0;
+  });
+  
+  data.journal.forEach(e => {
+    if (e.project && e.project !== "GEN") {
+      const proj = activeProjects.find(p => p.id === e.project);
+      if (proj) {
+        e.lines.forEach(l => {
+          const acc = data.accounts.find(a => a.code === l.account);
+          if (acc && acc.type === "Expense") totalActualCost += (l.debit - l.credit);
+        });
+      }
+    }
+  });
+  
+  const projectedGrossMargin = totalContractValue - totalEstimatedCost;
+  const projectedMarginPct = totalContractValue > 0 ? (projectedGrossMargin / totalContractValue) * 100 : 0;
+  
+  // Chart Data Prep
+  const cashFlowData = computeCashFlow(data).slice(-6).map(c => ({ date: c.date, value: c.running }));
+  
+  const monthlyData = {};
+  data.journal.forEach(e => {
+    const month = e.period; 
+    if (!month) return;
+    if (!monthlyData[month]) monthlyData[month] = { revenue: 0, expense: 0 };
+    e.lines.forEach(l => {
+      const acc = data.accounts.find(a => a.code === l.account);
+      if (!acc) return;
+      if (acc.type === "Revenue") monthlyData[month].revenue += (l.credit - l.debit);
+      if (acc.type === "Expense") monthlyData[month].expense += (l.debit - l.credit);
+    });
+  });
+  const barChartData = Object.keys(monthlyData).slice(-6).map(m => ({
+    label: m.split('-')[1] + '/' + m.split('-')[0].slice(2), 
+    revenue: monthlyData[m].revenue,
+    expense: monthlyData[m].expense
+  }));
+
+  const donutData = activeProjects.map(p => ({ name: p.name, value: parseFloat(p.contractValue) || 0 })).filter(d => d.value > 0);
+  
+  return { 
+    cash, ar, ap, netIncome, totalRevenue, totalExpenses,
+    totalContractValue, totalEstimatedCost, totalActualCost,
+    projectedGrossMargin, projectedMarginPct,
+    cashFlowData, barChartData, donutData
+  };
+}
+
+// ---------- Custom SVG Charts ----------
+function LineChart({ data }) {
+  if (!data || data.length === 0) {
+    return <p style={{ color: MUTED, fontSize: 13 }}>No cash flow data yet.</p>;
+  }
+
+  const width = 500;
+  const height = 150;
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+
+  const points = data
+    .map((d, i) => {
+      const x = (i / (data.length - 1 || 1)) * width;
+      const y = height - (d.value / maxVal) * (height - 20) - 10;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const areaPoints = `0,${height} ${points} ${width},${height}`;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ width: "100%", height: "100%", minHeight: 150 }}
+    >
+      <polygon fill="var(--green)" points={areaPoints} opacity="0.1" />
+      <polyline
+        fill="none"
+        stroke="var(--green)"
+        strokeWidth="2"
+        points={points}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      {data.map((d, i) => {
+        const x = (i / (data.length - 1 || 1)) * width;
+        const y = height - (d.value / maxVal) * (height - 20) - 10;
+        return <circle key={i} cx={x} cy={y} r="3" fill="var(--green)" />;
+      })}
+    </svg>
+  );
+}
+
+function BarChart({ data }) {
+  if (!data || data.length === 0) {
+    return <p style={{ color: MUTED, fontSize: 13 }}>No revenue/expense data yet.</p>;
+  }
+
+  const width = 500;
+  const height = 150;
+  const maxVal = Math.max(...data.flatMap((d) => [d.revenue, d.expense]), 1);
+  const barWidth = width / data.length / 3;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ width: "100%", height: "100%", minHeight: 150 }}
+    >
+      {data.map((d, i) => {
+        const groupX = (i / data.length) * width + width / data.length / 4;
+        const revHeight = (d.revenue / maxVal) * (height - 20);
+        const expHeight = (d.expense / maxVal) * (height - 20);
+
+        return (
+          <g key={i}>
+            <rect
+              x={groupX}
+              y={height - revHeight - 10}
+              width={barWidth}
+              height={revHeight}
+              fill="var(--green)"
+              opacity="0.8"
+              rx="2"
+            />
+            <rect
+              x={groupX + barWidth + 2}
+              y={height - expHeight - 10}
+              width={barWidth}
+              height={expHeight}
+              fill="var(--alert)"
+              opacity="0.8"
+              rx="2"
+            />
+            <text
+              x={groupX + barWidth}
+              y={height - 2}
+              fill="var(--muted)"
+              fontSize="8"
+              textAnchor="middle"
+            >
+              {d.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function DonutChart({ data }) {
+  if (!data || data.length === 0) {
+    return <p style={{ color: MUTED, fontSize: 13 }}>No active projects.</p>;
+  }
+
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const radius = 60;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const colors = ["var(--green)", "var(--gold)", "var(--alert)", "var(--ink)", "var(--muted)"];
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        flexWrap: "wrap",
+      }}
+    >
+      <svg width="120" height="120" viewBox="0 0 150 150">
+        <circle
+          cx="75"
+          cy="75"
+          r={radius}
+          fill="none"
+          stroke="var(--paper)"
+          strokeWidth="20"
+        />
+        {data.map((d, i) => {
+          const pct = d.value / total;
+          const dash = pct * circumference;
+          const stroke = colors[i % colors.length];
+          const circle = (
+            <circle
+              key={i}
+              cx="75"
+              cy="75"
+              r={radius}
+              fill="none"
+              stroke={stroke}
+              strokeWidth="20"
+              strokeDasharray={`${dash} ${circumference - dash}`}
+              strokeDashoffset={-offset}
+              transform="rotate(-90 75 75)"
+            />
+          );
+          offset += dash;
+          return circle;
+        })}
+        <text
+          x="75"
+          y="80"
+          textAnchor="middle"
+          fill="var(--ink)"
+          fontSize="12"
+          fontWeight="700"
+        >
+          {data.length} Projects
+        </text>
+      </svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {data.map((d, i) => (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              color: MUTED,
+            }}
+          >
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                background: colors[i % colors.length],
+                borderRadius: 2,
+              }}
+            ></span>
+            {d.name}{" "}
+            <span style={{ color: INK, fontWeight: 600 }}>
+              ({((d.value / total) * 100).toFixed(0)}%)
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function DashboardPanel({ data, setTab }) {
   const metrics = useMemo(() => getDashboardMetrics(data), [data]);
+  const stats = useMemo(() => projectStats(data), [data]); 
   const recentEntries = data.journal.slice(0, 5);
+  const alerts = getComplianceNotifications();
+  
+  const today = new Date().toISOString().slice(0, 10);
   const outstandingInvoices = data.invoices
-    .map((inv) => {
+    .map(inv => {
       const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
       const balance = inv.totals.grandTotalGHS - paid;
-      return { ...inv, balance };
+      const isOverdue = balance > 0.01 && inv.dueDate < today;
+      return { ...inv, balance, isOverdue };
     })
-    .filter((inv) => inv.balance > 0.01)
+    .filter(inv => inv.balance > 0.01)
+    .sort((a,b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 5);
+
+  const activeProjects = stats.filter(p => p.status === "Active" && p.id !== "GEN").slice(0, 3);
 
   return (
     <div>
-      <SectionTitle sub="A quick snapshot of your company's financial health.">
+      <SectionTitle sub="A comprehensive snapshot of your firm's financial and operational health.">
         Dashboard
       </SectionTitle>
 
-      <div
-        style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}
-      >
-        <KpiCard
-          title="Cash Balance"
-          value={metrics.cash}
-          icon={Banknote}
-          accent={GREEN}
-        />
-        <KpiCard
-          title="Accts Receivable"
-          value={metrics.ar}
-          icon={ArrowDownRight}
-          accent={GOLD}
-        />
-        <KpiCard
-          title="Accts Payable"
-          value={metrics.ap}
-          icon={ArrowUpRight}
-          accent={ALERT}
-        />
-        <KpiCard
-          title="Net Income"
-          value={metrics.netIncome}
-          icon={TrendingUp}
-          accent={INK}
+      {/* Compliance Notifications */}
+      {alerts.length > 0 && (
+        <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
+          {alerts.map((alert, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: PAPER_RAISED, border: `1px solid ${alert.color}`, borderLeft: `5px solid ${alert.color}`, padding: "12px 16px", borderRadius: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.02)" }}>
+              <AlertTriangle size={16} style={{ color: alert.color }} />
+              <span style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: INK, fontWeight: 500 }}>{alert.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 1. Core Financial KPIs */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <KpiCard title="Cash Balance" value={metrics.cash} icon={Banknote} accent={GREEN} sub={`Net Income: GHS ${fmt(metrics.netIncome)}`} />
+        <KpiCard title="Receivables" value={metrics.ar} icon={ArrowDownRight} accent={GOLD} sub="Owed by clients" />
+        <KpiCard title="Payables" value={metrics.ap} icon={ArrowUpRight} accent={ALERT} sub="Owed to vendors" />
+      </div>
+
+      {/* 2. Operational Drivers (The Real Engine) */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <KpiCard title="Active Contracts" value={metrics.totalContractValue} icon={Briefcase} accent={GREEN} sub={`${activeProjects.length} ongoing projects`} />
+        <KpiCard title="Est. Cost (Portfolio)" value={metrics.totalEstimatedCost} icon={Briefcase} accent={INK} sub="Total budgeted" />
+        <KpiCard title="Actual Cost to Date" value={metrics.totalActualCost} icon={TrendingUp} accent={GOLD} sub={`${metrics.totalEstimatedCost > 0 ? ((metrics.totalActualCost / metrics.totalEstimatedCost) * 100).toFixed(0) : 0}% of budget used`} />
+        <KpiCard 
+          title="Projected Margin" 
+          value={metrics.projectedGrossMargin} 
+          icon={Scale} 
+          accent={metrics.projectedGrossMargin >= 0 ? GREEN : ALERT} 
+          sub={`${metrics.projectedMarginPct.toFixed(1)}% gross margin`} 
         />
       </div>
 
-      <div className="grid-fin">
-        <div>
-          <SectionTitle sub="Latest transactions posted.">
-            Recent Activity
-          </SectionTitle>
+      {/* 3. Charts Row */}
+      <div className="grid-fin" style={{ marginBottom: 24 }}>
+        <Card style={{ flex: "1 1 400px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 16, color: INK, margin: 0 }}>Cash Flow Trend</h3>
+            <span style={{ fontSize: 11, color: MUTED }}>Last 6 Movements</span>
+          </div>
+          <LineChart data={metrics.cashFlowData} />
+        </Card>
+        
+        <Card style={{ flex: "1 1 400px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 16, color: INK, margin: 0 }}>Revenue vs Expenses</h3>
+            <div style={{ display: "flex", gap: 12, fontSize: 11, color: MUTED }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, background: GREEN, borderRadius: 2 }}></span>Rev</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, background: ALERT, borderRadius: 2 }}></span>Exp</span>
+            </div>
+          </div>
+          <BarChart data={metrics.barChartData} />
+        </Card>
+      </div>
+
+      {/* 4. Bottom Grid: Portfolio, Invoices, Projects */}
+      <div className="grid-fin" style={{ marginBottom: 24 }}>
+        <Card style={{ flex: "1 1 300px" }}>
+          <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 16, color: INK, margin: "0 0 16px 0" }}>Contract Value Distribution</h3>
+          <DonutChart data={metrics.donutData} />
+        </Card>
+
+        <div style={{ flex: "1 1 300px" }}>
+          <SectionTitle sub="Sorted by due date.">Outstanding Invoices</SectionTitle>
           <Card>
-            {recentEntries.length === 0 ? (
-              <p style={{ color: MUTED, fontSize: 13.5 }}>
-                No journal entries posted yet.
-              </p>
+            {outstandingInvoices.length === 0 ? (
+              <p style={{ color: MUTED, fontSize: 13.5 }}>No outstanding invoices. All paid up!</p>
             ) : (
               <TableScroll>
-                <table
-                  className="table-card"
-                  style={{ width: "100%", borderCollapse: "collapse" }}
-                >
+                <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      <Th>Date</Th>
-                      <Th>Description</Th>
-                      <Th right>Amount</Th>
+                      <Th>Inv #</Th>
+                      <Th>Client</Th>
+                      <Th right>Balance</Th>
+                      <Th>Status</Th>
                     </tr>
                   </thead>
                   <tbody>
-                    {recentEntries.map((e) => (
-                      <tr
-                        key={e.id}
-                        className="row-hover"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setTab("journal")}
-                      >
-                        <Td label="Date">{e.date}</Td>
-                        <Td label="Description">{e.description || "—"}</Td>
-                        <Td right mono label="Amount">
-                          GHS {fmt(e.lines.reduce((s, l) => s + l.debit, 0))}
+                    {outstandingInvoices.map(inv => (
+                      <tr key={inv.id} className="row-hover" style={{ cursor: "pointer" }} onClick={() => setTab("invoicing")}>
+                        <Td mono label="Inv #">{inv.invoiceNumber}</Td>
+                        <Td label="Client">{inv.billTo}</Td>
+                        <Td right mono bold label="Balance" style={{ color: ALERT }}>GHS {fmt(inv.balance)}</Td>
+                        <Td label="Status">
+                          {inv.isOverdue ? (
+                            <span style={{ color: ALERT, fontWeight: 700, fontSize: 11, background: "var(--alert-bg)", padding: "2px 6px", borderRadius: 4 }}>OVERDUE</span>
+                          ) : (
+                            <span style={{ color: MUTED, fontSize: 11 }}>Due {inv.dueDate}</span>
+                          )}
                         </Td>
                       </tr>
                     ))}
@@ -829,50 +1102,68 @@ function DashboardPanel({ data, setTab }) {
             )}
           </Card>
         </div>
-
-        <div>
-          <SectionTitle sub="Unpaid and partially paid invoices.">
-            Outstanding Invoices
+      </div>
+      
+      {/* 5. Active Projects Health & Recent Activity */}
+      <div className="grid-fin">
+        <div style={{ gridColumn: "1 / -1" }}>
+          <SectionTitle sub="Top active project engagements.">
+            Active Projects Health
           </SectionTitle>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {activeProjects.map(p => {
+              const costPct = p.estimatedCost > 0 ? (p.actualCost / p.estimatedCost) * 100 : 0;
+              const marginPct = p.contractValue > 0 ? (p.wipMargin / p.contractValue) * 100 : 0;
+              return (
+                <Card key={p.id} style={{ flex: "1 1 280px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK }}>{p.name}</div>
+                    <div style={{ fontFamily: FONT_MONO, fontSize: 13, color: p.wipMargin >= 0 ? GREEN : ALERT }}>
+                      Margin: {marginPct.toFixed(0)}%
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>
+                    Contract: GHS {fmt(p.contractValue)} | Est. Cost: GHS {fmt(p.estimatedCost)}
+                  </div>
+                  <div style={{ background: "var(--paper)", borderRadius: 4, height: 8, overflow: "hidden", border: `1px solid ${RULE}` }}>
+                    <div style={{ width: `${Math.min(costPct, 100)}%`, height: "100%", background: costPct > 90 ? ALERT : costPct > 75 ? GOLD : GREEN, transition: "width 0.3s ease" }}></div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginTop: 4 }}>
+                    <span>Cost Incurred: GHS {fmt(p.actualCost)}</span>
+                    <span>{costPct.toFixed(0)}% of Est.</span>
+                  </div>
+                </Card>
+              );
+            })}
+            {activeProjects.length === 0 && (
+              <Card style={{ flex: "1 1 280px" }}>
+                <p style={{ color: MUTED, fontSize: 13.5 }}>No active projects to display.</p>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1", marginTop: 24 }}>
+          <SectionTitle sub="Latest transactions posted.">Recent Activity</SectionTitle>
           <Card>
-            {outstandingInvoices.length === 0 ? (
-              <p style={{ color: MUTED, fontSize: 13.5 }}>
-                No outstanding invoices. All paid up!
-              </p>
+            {recentEntries.length === 0 ? (
+              <p style={{ color: MUTED, fontSize: 13.5 }}>No journal entries posted yet.</p>
             ) : (
               <TableScroll>
-                <table
-                  className="table-card"
-                  style={{ width: "100%", borderCollapse: "collapse" }}
-                >
+                <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      <Th>Inv #</Th>
-                      <Th>Client</Th>
-                      <Th right>Balance</Th>
+                      <Th>Date</Th>
+                      <Th>Description</Th>
+                      <Th right>Amount</Th>
                     </tr>
                   </thead>
                   <tbody>
-                    {outstandingInvoices.map((inv) => (
-                      <tr
-                        key={inv.id}
-                        className="row-hover"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setTab("invoicing")}
-                      >
-                        <Td mono label="Inv #">
-                          {inv.invoiceNumber}
-                        </Td>
-                        <Td label="Client">{inv.billTo}</Td>
-                        <Td
-                          right
-                          mono
-                          bold
-                          label="Balance"
-                          style={{ color: ALERT }}
-                        >
-                          GHS {fmt(inv.balance)}
-                        </Td>
+                    {recentEntries.map(e => (
+                      <tr key={e.id} className="row-hover" style={{ cursor: "pointer" }} onClick={() => setTab("journal")}>
+                        <Td label="Date">{e.date}</Td>
+                        <Td label="Description">{e.description || "—"}</Td>
+                        <Td right mono label="Amount">GHS {fmt(e.lines.reduce((s, l) => s + l.debit, 0))}</Td>
                       </tr>
                     ))}
                   </tbody>
@@ -885,7 +1176,6 @@ function DashboardPanel({ data, setTab }) {
     </div>
   );
 }
-
 // ---------- Panels ----------
 function AccountsPanel({ data, mutate }) {
   const [form, setForm] = useState({
@@ -902,10 +1192,12 @@ function AccountsPanel({ data, mutate }) {
       alert("An account with this code already exists.");
       return;
     }
+    const newAccount = { ...form, code: form.code.trim() };
     mutate((d) => ({
       ...d,
-      accounts: [...d.accounts, { ...form, code: form.code.trim() }],
+      accounts: [...d.accounts, newAccount],
     }));
+    db.saveAccounts([newAccount]);
     setForm({ code: "", name: "", type: "Asset", normal: "Debit" });
   }
 
@@ -921,6 +1213,7 @@ function AccountsPanel({ data, mutate }) {
       ...d,
       accounts: d.accounts.filter((a) => a.code !== code),
     }));
+    db.deleteAccount(code);
   }
 
   return (
@@ -1091,21 +1384,20 @@ function ProjectsPanel({ data, mutate }) {
         .trim()
         .toUpperCase()
         .replace(/[^A-Z0-9]+/g, "-");
+    const newProject = {
+      id,
+      name: form.name.trim(),
+      status: form.status,
+      projectType: form.projectType,
+      recognitionMethod: form.recognitionMethod,
+      contractValue: parseFloat(form.contractValue) || 0,
+      estimatedCost: parseFloat(form.estimatedCost) || 0,
+    };
     mutate((d) => ({
       ...d,
-      projects: [
-        ...d.projects,
-        {
-          id,
-          name: form.name.trim(),
-          status: form.status,
-          projectType: form.projectType,
-          recognitionMethod: form.recognitionMethod,
-          contractValue: parseFloat(form.contractValue) || 0,
-          estimatedCost: parseFloat(form.estimatedCost) || 0,
-        },
-      ],
+      projects: [...d.projects, newProject],
     }));
+    db.saveProjects([newProject]);
     setForm({
       name: "",
       status: "Active",
@@ -1118,14 +1410,16 @@ function ProjectsPanel({ data, mutate }) {
   }
 
   function toggleStatus(id) {
-    mutate((d) => ({
-      ...d,
-      projects: d.projects.map((p) =>
+    mutate((d) => {
+      const updatedProjects = d.projects.map((p) =>
         p.id === id
           ? { ...p, status: p.status === "Active" ? "Complete" : "Active" }
           : p
-      ),
-    }));
+      );
+      const updatedProj = updatedProjects.find((p) => p.id === id);
+      if (updatedProj) db.saveProjects([updatedProj]);
+      return { ...d, projects: updatedProjects };
+    });
   }
 
   return (
@@ -2834,21 +3128,20 @@ function EmployeesPanel({ data, mutate }) {
   function addEmployee() {
     if (!form.name.trim() || !parseFloat(form.baseSalary)) return;
     const id = "EMP-" + Date.now();
+    const newEmp = {
+      id,
+      name: form.name.trim(),
+      baseSalary: parseFloat(form.baseSalary),
+      active: true,
+      ssnitNo: form.ssnitNo.trim(),
+      niaCard: form.niaCard.trim(),
+      designation: form.designation.trim(),
+    };
     mutate((d) => ({
       ...d,
-      employees: [
-        ...d.employees,
-        {
-          id,
-          name: form.name.trim(),
-          baseSalary: parseFloat(form.baseSalary),
-          active: true,
-          ssnitNo: form.ssnitNo.trim(),
-          niaCard: form.niaCard.trim(),
-          designation: form.designation.trim(),
-        },
-      ],
+      employees: [...d.employees, newEmp],
     }));
+    db.saveEmployees([newEmp]);
     setForm({
       name: "",
       baseSalary: "",
@@ -2859,18 +3152,21 @@ function EmployeesPanel({ data, mutate }) {
     setShowModal(false);
   }
   function toggleActive(id) {
-    mutate((d) => ({
-      ...d,
-      employees: d.employees.map((e) =>
+    mutate((d) => {
+      const updatedEmployees = d.employees.map((e) =>
         e.id === id ? { ...e, active: !e.active } : e
-      ),
-    }));
+      );
+      const updatedEmp = updatedEmployees.find((e) => e.id === id);
+      if (updatedEmp) db.saveEmployees([updatedEmp]);
+      return { ...d, employees: updatedEmployees };
+    });
   }
   function removeEmployee(id) {
     mutate((d) => ({
       ...d,
       employees: d.employees.filter((e) => e.id !== id),
     }));
+    db.deleteEmployee(id);
   }
 
   return (
@@ -4856,6 +5152,11 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
         { account: "1100", debit: 0, credit: amt },
       ],
     };
+    const updatedInvoice = {
+      ...inv,
+      payments: [...inv.payments, payment],
+      status: newStatus,
+    };
     const receiptNo = `PYT${String(
       data.invoices.findIndex((i) => i.id === inv.id) * 10 +
         inv.payments.length +
@@ -4864,9 +5165,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
     mutate((d) => ({
       ...d,
       invoices: d.invoices.map((i) =>
-        i.id === inv.id
-          ? { ...i, payments: [...i.payments, payment], status: newStatus }
-          : i
+        i.id === inv.id ? updatedInvoice : i
       ),
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
@@ -5292,19 +5591,17 @@ export default function App() {
       try {
         const remote = await loadLedgerState();
         if (remote) {
-          // --- MERGE MISSING DEFAULT ACCOUNTS ---
           const remoteAccounts = remote.accounts || [];
           const defaultCodes = new Set(DEFAULT_ACCOUNTS.map((a) => a.code));
           const customAccounts = remoteAccounts.filter(
             (a) => !defaultCodes.has(a.code)
           );
           const mergedAccounts = [...DEFAULT_ACCOUNTS, ...customAccounts];
-          // --------------------------------------
 
           setData({
             ...DEFAULT_DATA,
             ...remote,
-            accounts: mergedAccounts, // <-- USE MERGED ACCOUNTS HERE
+            accounts: mergedAccounts,
             company: { ...DEFAULT_COMPANY, ...(remote.company || {}) },
           });
           setCompanyNameDraft(remote.companyName || DEFAULT_DATA.companyName);
@@ -5312,7 +5609,7 @@ export default function App() {
           setCompanyNameDraft(DEFAULT_DATA.companyName);
         }
       } catch (err) {
-        console.error("Failed to load ledger data from Supabase:", err);
+        console.error("Failed to load ledger data:", err);
         setCompanyNameDraft(DEFAULT_DATA.companyName);
       }
       setLoaded(true);
@@ -5320,14 +5617,34 @@ export default function App() {
   }, []);
 
   const mutate = useCallback((fn) => {
-    setData((prev) => {
-      const next = fn(prev);
-      saveLedgerState(next).catch((err) => {
-        console.error("Failed to save ledger data to Supabase:", err);
-      });
-      return next;
-    });
+    setData((prev) => fn(prev));
   }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    saveSettings({
+      companyName: data.companyName,
+      company: data.company,
+      nextEntryNum: data.nextEntryNum,
+      nextInvoiceNum: data.nextInvoiceNum,
+      ssnitEmployeeRate: data.ssnitEmployeeRate,
+      ssnitEmployerRate: data.ssnitEmployerRate,
+      brackets: data.brackets,
+      nhilGetfundRate: data.nhilGetfundRate,
+      vatRate: data.vatRate,
+    });
+  }, [
+    loaded,
+    data.companyName,
+    data.company,
+    data.nextEntryNum,
+    data.nextInvoiceNum,
+    data.ssnitEmployeeRate,
+    data.ssnitEmployerRate,
+    data.brackets,
+    data.nhilGetfundRate,
+    data.vatRate,
+  ]);
 
   function saveCompanyName() {
     mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
