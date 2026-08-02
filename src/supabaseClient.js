@@ -267,6 +267,38 @@ export async function saveSettings(settingsData) {
   }
 }
 
+export async function saveLedgerState(settingsData) {
+  try {
+    const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData || {};
+
+    await saveSettings(rest);
+    await db.saveAccounts(accounts);
+    await db.saveProjects(projects);
+    await db.saveEmployees(employees);
+
+    if (journal && journal.length > 0) {
+      for (const entry of journal) {
+        await db.saveJournalEntry(entry);
+      }
+    }
+
+    if (invoices && invoices.length > 0) {
+      for (const invoice of invoices) {
+        await db.saveInvoice(invoice);
+      }
+    }
+
+    if (payrollRuns && payrollRuns.length > 0) {
+      for (const run of payrollRuns) {
+        await db.savePayrollRun(run);
+      }
+    }
+  } catch (err) {
+    console.error("Error saving ledger state:", err);
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Granular save functions
 // ---------------------------------------------------------------------------
