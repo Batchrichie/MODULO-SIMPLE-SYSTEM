@@ -1366,6 +1366,7 @@ function projectStats(data) {
 
 function ProjectsPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState(null);
   const [form, setForm] = useState({
     name: "",
     status: "Active",
@@ -1376,28 +1377,7 @@ function ProjectsPanel({ data, mutate }) {
   });
   const stats = useMemo(() => projectStats(data), [data]);
 
-  function addProject() {
-    if (!form.name.trim()) return;
-    const id =
-      "PRJ-" +
-      form.name
-        .trim()
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, "-");
-    const newProject = {
-      id,
-      name: form.name.trim(),
-      status: form.status,
-      projectType: form.projectType,
-      recognitionMethod: form.recognitionMethod,
-      contractValue: parseFloat(form.contractValue) || 0,
-      estimatedCost: parseFloat(form.estimatedCost) || 0,
-    };
-    mutate((d) => ({
-      ...d,
-      projects: [...d.projects, newProject],
-    }));
-    db.saveProjects([newProject]);
+  function resetForm() {
     setForm({
       name: "",
       status: "Active",
@@ -1406,7 +1386,75 @@ function ProjectsPanel({ data, mutate }) {
       contractValue: "",
       estimatedCost: "",
     });
+  }
+
+  function openNewProjectModal() {
+    setEditingProjectId(null);
+    resetForm();
+    setShowModal(true);
+  }
+
+  function openEditProjectModal(project) {
+    setEditingProjectId(project.id);
+    setForm({
+      name: project.name,
+      status: project.status,
+      projectType: project.projectType,
+      recognitionMethod: project.recognitionMethod,
+      contractValue: project.contractValue?.toString() || "",
+      estimatedCost: project.estimatedCost?.toString() || "",
+    });
+    setShowModal(true);
+  }
+
+  function closeModal() {
     setShowModal(false);
+    setEditingProjectId(null);
+    resetForm();
+  }
+
+  function saveProject() {
+    if (!form.name.trim()) return;
+    const baseProject = {
+      id: editingProjectId ||
+        "PRJ-" +
+          form.name
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, "-"),
+      name: form.name.trim(),
+      status: form.status,
+      projectType: form.projectType,
+      recognitionMethod: form.recognitionMethod,
+      contractValue: parseFloat(form.contractValue) || 0,
+      estimatedCost: parseFloat(form.estimatedCost) || 0,
+    };
+
+    if (editingProjectId) {
+      mutate((d) => ({
+        ...d,
+        projects: d.projects.map((p) =>
+          p.id === editingProjectId ? baseProject : p
+        ),
+      }));
+      db.saveProjects([baseProject]);
+    } else {
+      mutate((d) => ({
+        ...d,
+        projects: [...d.projects, baseProject],
+      }));
+      db.saveProjects([baseProject]);
+    }
+
+    closeModal();
+  }
+
+  function deleteProject(id) {
+    mutate((d) => ({
+      ...d,
+      projects: d.projects.filter((p) => p.id !== id),
+    }));
+    db.deleteProject(id);
   }
 
   function toggleStatus(id) {
@@ -1427,7 +1475,7 @@ function ProjectsPanel({ data, mutate }) {
       <SectionTitle
         sub="One engagement = One project. Track permits, designs, and construction under one unified register."
         action={
-          <Button onClick={() => setShowModal(true)} icon={Plus}>
+          <Button onClick={openNewProjectModal} icon={Plus}>
             New project
           </Button>
         }
@@ -1473,21 +1521,59 @@ function ProjectsPanel({ data, mutate }) {
                 </div>
               </div>
               {p.id !== "GEN" && (
-                <button
-                  onClick={() => toggleStatus(p.id)}
-                  style={{
-                    ...inputStyle,
-                    width: "auto",
-                    padding: "3px 8px",
-                    cursor: "pointer",
-                    fontSize: 11,
-                    color: p.status === "Active" ? GREEN : MUTED,
-                    border: `1px solid ${p.status === "Active" ? GREEN : RULE}`,
-                    background: "none",
-                  }}
-                >
-                  {p.status}
-                </button>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => openEditProjectModal(p)}
+                    style={{
+                      ...inputStyle,
+                      width: "auto",
+                      padding: "3px 8px",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      color: INK,
+                      border: `1px solid ${RULE}`,
+                      background: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <PenLine size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => deleteProject(p.id)}
+                    style={{
+                      ...inputStyle,
+                      width: "auto",
+                      padding: "3px 8px",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      color: ALERT,
+                      border: `1px solid ${ALERT}`,
+                      background: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <Trash2 size={12} /> Delete
+                  </button>
+                  <button
+                    onClick={() => toggleStatus(p.id)}
+                    style={{
+                      ...inputStyle,
+                      width: "auto",
+                      padding: "3px 8px",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      color: p.status === "Active" ? GREEN : MUTED,
+                      border: `1px solid ${p.status === "Active" ? GREEN : RULE}`,
+                      background: "none",
+                    }}
+                  >
+                    {p.status}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1570,9 +1656,9 @@ function ProjectsPanel({ data, mutate }) {
 
       {showModal && (
         <Modal
-          title="New Project Engagement"
+          title={editingProjectId ? "Edit Project Engagement" : "New Project Engagement"}
           sub="All services (permits, designs, construction) go here."
-          onClose={() => setShowModal(false)}
+          onClose={closeModal}
         >
           <div style={{ display: "grid", gap: 12 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -1643,8 +1729,8 @@ function ProjectsPanel({ data, mutate }) {
               </div>
             </div>
 
-            <Button onClick={addProject} icon={Plus} fullWidth>
-              Add project
+            <Button onClick={saveProject} icon={Plus} fullWidth>
+              {editingProjectId ? "Save project" : "Add project"}
             </Button>
           </div>
         </Modal>
