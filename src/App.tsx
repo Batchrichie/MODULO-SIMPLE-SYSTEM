@@ -1242,6 +1242,7 @@ function DashboardPanel({ data, setTab }) {
     </div>
   );
 }
+
 // ---------- Panels ----------
 function AccountsPanel({ data, mutate }) {
   const [form, setForm] = useState({
@@ -1263,7 +1264,7 @@ function AccountsPanel({ data, mutate }) {
       ...d,
       accounts: [...d.accounts, newAccount],
     }));
-    db.saveAccounts([newAccount]);
+    if (db.saveAccounts) db.saveAccounts([newAccount]);
     setForm({ code: "", name: "", type: "Asset", normal: "Debit" });
   }
 
@@ -1279,7 +1280,7 @@ function AccountsPanel({ data, mutate }) {
       ...d,
       accounts: d.accounts.filter((a) => a.code !== code),
     }));
-    db.deleteAccount(code);
+    if (db.deleteAccount) db.deleteAccount(code);
   }
 
   return (
@@ -1503,13 +1504,13 @@ function ProjectsPanel({ data, mutate }) {
           p.id === editingProjectId ? baseProject : p
         ),
       }));
-      db.saveProjects([baseProject]);
+      if (db.saveProjects) db.saveProjects([baseProject]);
     } else {
       mutate((d) => ({
         ...d,
         projects: [...d.projects, baseProject],
       }));
-      db.saveProjects([baseProject]);
+      if (db.saveProjects) db.saveProjects([baseProject]);
     }
 
     closeModal();
@@ -1520,7 +1521,7 @@ function ProjectsPanel({ data, mutate }) {
       ...d,
       projects: d.projects.filter((p) => p.id !== id),
     }));
-    db.deleteProject(id);
+    if (db.deleteProject) db.deleteProject(id);
   }
 
   function toggleStatus(id) {
@@ -1531,7 +1532,7 @@ function ProjectsPanel({ data, mutate }) {
           : p
       );
       const updatedProj = updatedProjects.find((p) => p.id === id);
-      if (updatedProj) db.saveProjects([updatedProj]);
+      if (updatedProj && db.saveProjects) db.saveProjects([updatedProj]);
       return { ...d, projects: updatedProjects };
     });
   }
@@ -1883,6 +1884,8 @@ function JournalEntryForm({ data, mutate, onDone }) {
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
     }));
+    // PERSIST TO DB
+    if (db.saveJournalEntry) db.saveJournalEntry(entry);
     onDone && onDone();
   }
 
@@ -2531,542 +2534,513 @@ function FinancialsPanel({ data, setPrintContent }) {
   function exportPdf() {
     const projectName =
       projectOptions.find((p) => p.id === view)?.name || "Company";
-    setPrintContent(
-      <div
-        style={{
-          background: "#fff",
-          color: "#000",
-          padding: 32,
-          fontFamily: FONT_BODY,
-          boxSizing: "border-box",
-        }}
+    const safeProjectName = projectName.replace(/\s+/g, "_");
+    const company = data.company || DEFAULT_COMPANY;
+    const genDate = new Date().toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+
+    document.title = `Financials_${safeProjectName}_${new Date()
+      .toISOString()
+      .slice(0, 10)}`;
+
+    const finStyles = {
+      container: {
+        background: "#FFFFFF",
+        color: "#333333",
+        fontFamily:
+          "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontSize: "10pt",
+        lineHeight: 1.5,
+        boxSizing: "border-box",
+      },
+      goldBar: {
+        height: "4px",
+        background:
+          "linear-gradient(90deg, #C9A84C 0%, #D4B86A 50%, #C9A84C 100%)",
+        width: "100%",
+      },
+      header: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "24px 32px",
+        gap: 16,
+      },
+      headerLeft: { display: "flex", alignItems: "center", gap: 16 },
+      logo: { height: 64, width: "auto", objectFit: "contain" },
+      company: {
+        fontSize: "18pt",
+        fontWeight: 800,
+        color: "#1A1A1A",
+        letterSpacing: "-0.5px",
+        lineHeight: 1.2,
+      },
+      tagline: {
+        fontSize: "8.5pt",
+        color: "#6B6B6B",
+        textTransform: "uppercase",
+        letterSpacing: "1.5px",
+        marginTop: 2,
+      },
+      headerRight: { textAlign: "right" },
+      docTitle: {
+        fontSize: "24pt",
+        fontWeight: 800,
+        color: "#C9A84C",
+        letterSpacing: "2px",
+        lineHeight: 1,
+      },
+      docSub: {
+        fontSize: "10pt",
+        color: "#6B6B6B",
+        marginTop: 6,
+        fontFamily: FONT_MONO,
+      },
+      metaGrid: {
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 16,
+        padding: "0 32px 20px",
+      },
+      card: {
+        background: "#FAFAF8",
+        border: "1px solid #E8E4DC",
+        borderRadius: 6,
+        padding: "16px 20px",
+      },
+      cardTitle: {
+        fontSize: "8pt",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "1.2px",
+        color: "#C9A84C",
+        marginBottom: 10,
+      },
+      cardRow: {
+        display: "flex",
+        justifyContent: "space-between",
+        padding: "4px 0",
+        fontSize: "9.5pt",
+      },
+      cardLabel: { color: "#6B6B6B" },
+      cardValue: { fontWeight: 600, color: "#2D2D2D", textAlign: "right" },
+      sectionTitle: {
+        fontSize: "9pt",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "1.5px",
+        color: "#C9A84C",
+        padding: "0 32px",
+        margin: "22px 0 10px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      },
+      sectionLine: { flex: 1, height: 1, background: "#E8E4DC" },
+      table: {
+        width: "calc(100% - 64px)",
+        margin: "0 32px",
+        borderCollapse: "collapse",
+        fontSize: "9.5pt",
+      },
+      th: {
+        textAlign: "left",
+        padding: "8px 12px",
+        fontSize: "8pt",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.8px",
+        color: "#6B6B6B",
+        borderBottom: "2px solid #C9A84C",
+      },
+      thRight: { textAlign: "right" },
+      groupLabel: {
+        fontWeight: 700,
+        color: "#2D2D2D",
+        padding: "12px 12px 4px",
+        fontSize: "8.5pt",
+        textTransform: "uppercase",
+        letterSpacing: "0.8px",
+      },
+      td: {
+        padding: "5px 12px",
+        borderBottom: "1px solid #F0EDE4",
+        verticalAlign: "top",
+      },
+      tdRight: { textAlign: "right", fontFamily: FONT_MONO },
+      subtotalRow: { fontWeight: 700, background: "#FAFAF8" },
+      totalRow: { fontWeight: 800, background: "#F5F0E6", color: "#1A1A1A" },
+      grandRow: {
+        fontWeight: 800,
+        background: "#1A1A1A",
+        color: "#C9A84C",
+        fontSize: "11pt",
+      },
+      footerNote: {
+        padding: "16px 32px 24px",
+        marginTop: 20,
+        borderTop: "1px solid #E8E4DC",
+        textAlign: "center",
+        fontSize: "8.5pt",
+        color: "#6B6B6B",
+        textTransform: "uppercase",
+        letterSpacing: "1px",
+        lineHeight: 1.8,
+      },
+      signatures: {
+        display: "flex",
+        justifyContent: "space-between",
+        padding: "32px",
+        marginTop: 10,
+        gap: 40,
+      },
+      sigBlock: { flex: 1, textAlign: "center" },
+      sigLine: {
+        borderTop: "1.5px solid #1A1A1A",
+        paddingTop: 8,
+        marginTop: 40,
+        fontWeight: 700,
+        fontSize: "10pt",
+        color: "#1A1A1A",
+        textTransform: "uppercase",
+        letterSpacing: "0.5px",
+      },
+      sigRole: {
+        fontSize: "8.5pt",
+        color: "#6B6B6B",
+        marginTop: 2,
+        textTransform: "uppercase",
+        letterSpacing: "0.5px",
+      },
+    };
+
+    const LineRow = ({ code, name, amount, negative }) => (
+      <tr key={code}>
+        <td style={finStyles.td}>{name}</td>
+        <td style={{ ...finStyles.td, ...finStyles.tdRight }}>
+          {negative ? `(${fmt(amount)})` : fmt(amount)}
+        </td>
+      </tr>
+    );
+
+    const GroupLabel = ({ children }) => (
+      <tr>
+        <td colSpan={2} style={finStyles.groupLabel}>
+          {children}
+        </td>
+      </tr>
+    );
+
+    const SubtotalRow = ({ label, amount, negative }) => (
+      <tr style={finStyles.subtotalRow}>
+        <td style={finStyles.td}>{label}</td>
+        <td style={{ ...finStyles.td, ...finStyles.tdRight }}>
+          {negative ? `(${fmt(amount)})` : fmt(amount)}
+        </td>
+      </tr>
+    );
+
+    const TotalRow = ({ label, amount, variant }) => (
+      <tr
+        style={variant === "grand" ? finStyles.grandRow : finStyles.totalRow}
       >
-        <div
+        <td
           style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            marginBottom: 32,
-            borderBottom: "2px solid #000",
-            paddingBottom: 16,
-            gap: 16,
+            padding: variant === "grand" ? "12px 12px" : "8px 12px",
+            fontWeight: 800,
+            fontSize: variant === "grand" ? "11pt" : "9.5pt",
           }}
         >
-          <img
-            src={LOGO_SRC}
-            alt="logo"
-            style={{ height: 60, width: "auto" }}
-          />
-          <div style={{ textAlign: "left" }}>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 24, margin: 0 }}>
-              {data.companyName}
-            </h1>
-            <h2 style={{ fontSize: 18, marginTop: 8 }}>
-              Financial Statements ({projectName})
-            </h2>
-            <p style={{ fontSize: 12, color: "#555" }}>
-              Generated on: {new Date().toLocaleDateString()}
-            </p>
-          </div>
-        </div>
-        <div style={{ marginBottom: 32 }}>
-          <h3
-            style={{
-              fontSize: 16,
-              borderBottom: "1px solid #ccc",
-              paddingBottom: 4,
-              marginBottom: 12,
-            }}
-          >
-            Statement of Profit or Loss
-          </h3>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 12,
-              marginBottom: 16,
-            }}
-          >
-            <tbody>
-              <tr>
-                <td style={{ fontWeight: 700, padding: "4px 0" }}>Revenue</td>
-                <td></td>
-              </tr>
-              {pl.revenue.map((r) => (
-                <tr key={r.code}>
-                  <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                  <td style={{ textAlign: "right", padding: "4px 0" }}>
-                    {fmt(r.amount)}
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <td
-                  style={{
-                    paddingTop: 8,
-                    borderTop: "1px solid #ccc",
-                    fontWeight: 700,
-                  }}
-                >
-                  Total Revenue
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    paddingTop: 8,
-                    borderTop: "1px solid #ccc",
-                    fontWeight: 700,
-                  }}
-                >
-                  {fmt(pl.totalRevenue)}
-                </td>
-              </tr>
-              <tr>
-                <td
-                  style={{ fontWeight: 700, padding: "4px 0", paddingTop: 16 }}
-                >
-                  Cost of Sales
-                </td>
-                <td></td>
-              </tr>
-              {pl.costOfSales.map((r) => (
-                <tr key={r.code}>
-                  <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                  <td style={{ textAlign: "right", padding: "4px 0" }}>
-                    ({fmt(r.amount)})
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <td
-                  style={{
-                    paddingTop: 8,
-                    borderTop: "1px solid #ccc",
-                    fontWeight: 700,
-                  }}
-                >
-                  Total Cost of Sales
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    paddingTop: 8,
-                    borderTop: "1px solid #ccc",
-                    fontWeight: 700,
-                  }}
-                >
-                  ({fmt(pl.totalCostOfSales)})
-                </td>
-              </tr>
-              <tr style={{ background: "#f0f0f0" }}>
-                <td style={{ padding: "8px 0", fontWeight: 700 }}>
-                  Gross Profit
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: "8px 0",
-                    fontWeight: 700,
-                  }}
-                >
-                  {fmt(pl.grossProfit)}
-                </td>
-              </tr>
-              <tr>
-                <td
-                  style={{ fontWeight: 700, padding: "4px 0", paddingTop: 16 }}
-                >
-                  Other Income
-                </td>
-                <td></td>
-              </tr>
-              {pl.otherIncome.map((r) => (
-                <tr key={r.code}>
-                  <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                  <td style={{ textAlign: "right", padding: "4px 0" }}>
-                    {fmt(r.amount)}
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <td
-                  style={{ fontWeight: 700, padding: "4px 0", paddingTop: 16 }}
-                >
-                  Administrative Expenses
-                </td>
-                <td></td>
-              </tr>
-              {pl.adminExpenses.map((r) => (
-                <tr key={r.code}>
-                  <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                  <td style={{ textAlign: "right", padding: "4px 0" }}>
-                    ({fmt(r.amount)})
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <td
-                  style={{
-                    paddingTop: 8,
-                    borderTop: "1px solid #ccc",
-                    fontWeight: 700,
-                  }}
-                >
-                  Total Admin Expenses
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    paddingTop: 8,
-                    borderTop: "1px solid #ccc",
-                    fontWeight: 700,
-                  }}
-                >
-                  ({fmt(pl.totalAdminExpenses)})
-                </td>
-              </tr>
-              <tr style={{ background: "#f0f0f0" }}>
-                <td style={{ padding: "8px 0", fontWeight: 700 }}>
-                  Operating Profit
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: "8px 0",
-                    fontWeight: 700,
-                  }}
-                >
-                  {fmt(pl.operatingProfit)}
-                </td>
-              </tr>
-              <tr style={{ background: "#1F3864", color: "#fff" }}>
-                <td
-                  style={{ padding: "12px 0", fontWeight: 700, fontSize: 14 }}
-                >
-                  Net Profit for the Period
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: "12px 0",
-                    fontWeight: 700,
-                    fontSize: 14,
-                  }}
-                >
-                  {fmt(pl.netProfit)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        {view === "company" && (
-          <>
-            <div style={{ marginBottom: 32, pageBreakBefore: "always" }}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  borderBottom: "1px solid #ccc",
-                  paddingBottom: 4,
-                  marginBottom: 12,
-                }}
-              >
-                Statement of Financial Position
-              </h3>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 12,
-                  marginBottom: 16,
-                }}
-              >
-                <tbody>
-                  <tr>
-                    <td style={{ fontWeight: 700, padding: "4px 0" }}>
-                      Non-Current Assets
-                    </td>
-                    <td></td>
-                  </tr>
-                  {bs.nonCurrentAssets.map((r) => (
-                    <tr key={r.code}>
-                      <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                      <td style={{ textAlign: "right", padding: "4px 0" }}>
-                        {fmt(r.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td
-                      style={{
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Total Non-Current Assets
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(bs.totalNonCurrentAssets)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td
-                      style={{
-                        fontWeight: 700,
-                        padding: "4px 0",
-                        paddingTop: 16,
-                      }}
-                    >
-                      Current Assets
-                    </td>
-                    <td></td>
-                  </tr>
-                  {bs.currentAssets.map((r) => (
-                    <tr key={r.code}>
-                      <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                      <td style={{ textAlign: "right", padding: "4px 0" }}>
-                        {fmt(r.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td
-                      style={{
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Total Current Assets
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(bs.totalCurrentAssets)}
-                    </td>
-                  </tr>
-                  <tr style={{ background: "#f0f0f0" }}>
-                    <td style={{ padding: "8px 0", fontWeight: 700 }}>
-                      Total Assets
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        padding: "8px 0",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(bs.totalAssets)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td
-                      style={{
-                        fontWeight: 700,
-                        padding: "4px 0",
-                        paddingTop: 16,
-                      }}
-                    >
-                      Current Liabilities
-                    </td>
-                    <td></td>
-                  </tr>
-                  {bs.currentLiabilities.map((r) => (
-                    <tr key={r.code}>
-                      <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                      <td style={{ textAlign: "right", padding: "4px 0" }}>
-                        {fmt(r.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td
-                      style={{
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Total Current Liabilities
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(bs.totalCurrentLiabilities)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td
-                      style={{
-                        fontWeight: 700,
-                        padding: "4px 0",
-                        paddingTop: 16,
-                      }}
-                    >
-                      Equity
-                    </td>
-                    <td></td>
-                  </tr>
-                  {bs.equity.map((r) => (
-                    <tr key={r.code}>
-                      <td style={{ padding: "4px 16px" }}>{r.name}</td>
-                      <td style={{ textAlign: "right", padding: "4px 0" }}>
-                        {fmt(r.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td style={{ padding: "4px 16px" }}>
-                      Current Year Earnings
-                    </td>
-                    <td style={{ textAlign: "right", padding: "4px 0" }}>
-                      {fmt(bs.netProfit)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td
-                      style={{
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Total Equity
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        paddingTop: 8,
-                        borderTop: "1px solid #ccc",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(bs.totalEquity)}
-                    </td>
-                  </tr>
-                  <tr style={{ background: "#1F3864", color: "#fff" }}>
-                    <td
-                      style={{
-                        padding: "12px 0",
-                        fontWeight: 700,
-                        fontSize: 14,
-                      }}
-                    >
-                      Total Liabilities & Equity
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        padding: "12px 0",
-                        fontWeight: 700,
-                        fontSize: 14,
-                      }}
-                    >
-                      {fmt(bs.totalLiabilitiesAndEquity)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div style={{ pageBreakBefore: "always" }}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  borderBottom: "1px solid #ccc",
-                  paddingBottom: 4,
-                  marginBottom: 12,
-                }}
-              >
-                Statement of Cash Flows
-              </h3>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 12,
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #ccc",
-                        padding: "4px 0",
-                      }}
-                    >
-                      Date
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #ccc",
-                        padding: "4px 0",
-                      }}
-                    >
-                      Description
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        borderBottom: "1px solid #ccc",
-                        padding: "4px 0",
-                      }}
-                    >
-                      Net Movement
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        borderBottom: "1px solid #ccc",
-                        padding: "4px 0",
-                      }}
-                    >
-                      Running Balance
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cf.map((r, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: "4px 8px 4px 0" }}>{r.date}</td>
-                      <td style={{ padding: "4px 8px 4px 0" }}>
-                        {r.description}
-                      </td>
-                      <td style={{ textAlign: "right", padding: "4px 0" }}>
-                        {fmt(r.net)}
-                      </td>
-                      <td style={{ textAlign: "right", padding: "4px 0" }}>
-                        {fmt(r.running)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+          {label}
+        </td>
+        <td
+          style={{
+            padding: variant === "grand" ? "12px 12px" : "8px 12px",
+            fontWeight: 800,
+            fontSize: variant === "grand" ? "11pt" : "9.5pt",
+            textAlign: "right",
+            fontFamily: FONT_MONO,
+          }}
+        >
+          {fmt(amount)}
+        </td>
+      </tr>
+    );
+
+    const SectionTitle = ({ children, pageBreak }) => (
+      <div
+        style={{
+          ...finStyles.sectionTitle,
+          ...(pageBreak ? { pageBreakBefore: "always", paddingTop: 24 } : {}),
+        }}
+      >
+        <span>{children}</span>
+        <span style={finStyles.sectionLine} />
       </div>
     );
-    setTimeout(() => window.print(), 100);
+
+    setPrintContent(
+      <div style={finStyles.container}>
+        <div style={finStyles.goldBar} />
+
+        <div style={finStyles.header}>
+          <div style={finStyles.headerLeft}>
+            <img src={LOGO_SRC} alt="logo" style={finStyles.logo} />
+            <div>
+              <div style={finStyles.company}>{company.name}</div>
+              <div style={finStyles.tagline}>Design · Build · Deliver</div>
+            </div>
+          </div>
+          <div style={finStyles.headerRight}>
+            <div style={finStyles.docTitle}>FINANCIALS</div>
+            <div style={finStyles.docSub}>{projectName.toUpperCase()}</div>
+          </div>
+        </div>
+
+        <div style={finStyles.metaGrid}>
+          <div style={finStyles.card}>
+            <div style={finStyles.cardTitle}>Statement Details</div>
+            <div style={finStyles.cardRow}>
+              <span style={finStyles.cardLabel}>Scope</span>
+              <span style={finStyles.cardValue}>{projectName}</span>
+            </div>
+            <div style={finStyles.cardRow}>
+              <span style={finStyles.cardLabel}>Reporting Currency</span>
+              <span style={finStyles.cardValue}>GHS</span>
+            </div>
+            <div style={finStyles.cardRow}>
+              <span style={finStyles.cardLabel}>Generated</span>
+              <span style={finStyles.cardValue}>{genDate}</span>
+            </div>
+          </div>
+          <div style={finStyles.card}>
+            <div style={finStyles.cardTitle}>Basis of Preparation</div>
+            <div style={finStyles.cardRow}>
+              <span style={finStyles.cardLabel}>Framework</span>
+              <span style={finStyles.cardValue}>IFRS-aligned</span>
+            </div>
+            <div style={finStyles.cardRow}>
+              <span style={finStyles.cardLabel}>Prepared By</span>
+              <span style={finStyles.cardValue}>{company.preparedByName}</span>
+            </div>
+            <div style={finStyles.cardRow}>
+              <span style={finStyles.cardLabel}>Authorised By</span>
+              <span style={finStyles.cardValue}>{company.authorisedByName}</span>
+            </div>
+          </div>
+        </div>
+
+        <SectionTitle>Statement of Profit or Loss</SectionTitle>
+        <table style={finStyles.table}>
+          <thead>
+            <tr>
+              <th style={finStyles.th}>Description</th>
+              <th style={{ ...finStyles.th, ...finStyles.thRight }}>
+                Amount (GHS)
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <GroupLabel>Revenue</GroupLabel>
+            {pl.revenue.map((r) => (
+              <LineRow key={r.code} code={r.code} name={r.name} amount={r.amount} />
+            ))}
+            <SubtotalRow label="Total Revenue" amount={pl.totalRevenue} />
+
+            <GroupLabel>Cost of Sales</GroupLabel>
+            {pl.costOfSales.map((r) => (
+              <LineRow
+                key={r.code}
+                code={r.code}
+                name={r.name}
+                amount={r.amount}
+                negative
+              />
+            ))}
+            <SubtotalRow
+              label="Total Cost of Sales"
+              amount={pl.totalCostOfSales}
+              negative
+            />
+
+            <TotalRow label="Gross Profit" amount={pl.grossProfit} />
+
+            <GroupLabel>Other Income</GroupLabel>
+            {pl.otherIncome.map((r) => (
+              <LineRow key={r.code} code={r.code} name={r.name} amount={r.amount} />
+            ))}
+
+            <GroupLabel>Administrative Expenses</GroupLabel>
+            {pl.adminExpenses.map((r) => (
+              <LineRow
+                key={r.code}
+                code={r.code}
+                name={r.name}
+                amount={r.amount}
+                negative
+              />
+            ))}
+            <SubtotalRow
+              label="Total Admin Expenses"
+              amount={pl.totalAdminExpenses}
+              negative
+            />
+
+            <TotalRow label="Operating Profit" amount={pl.operatingProfit} />
+            <TotalRow
+              label="Net Profit For The Period"
+              amount={pl.netProfit}
+              variant="grand"
+            />
+          </tbody>
+        </table>
+
+        {view === "company" && (
+          <>
+            <SectionTitle pageBreak>
+              Statement of Financial Position
+            </SectionTitle>
+            <table style={finStyles.table}>
+              <thead>
+                <tr>
+                  <th style={finStyles.th}>Description</th>
+                  <th style={{ ...finStyles.th, ...finStyles.thRight }}>
+                    Amount (GHS)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <GroupLabel>Non-Current Assets</GroupLabel>
+                {bs.nonCurrentAssets.map((r) => (
+                  <LineRow key={r.code} code={r.code} name={r.name} amount={r.amount} />
+                ))}
+                <SubtotalRow
+                  label="Total Non-Current Assets"
+                  amount={bs.totalNonCurrentAssets}
+                />
+
+                <GroupLabel>Current Assets</GroupLabel>
+                {bs.currentAssets.map((r) => (
+                  <LineRow key={r.code} code={r.code} name={r.name} amount={r.amount} />
+                ))}
+                <SubtotalRow
+                  label="Total Current Assets"
+                  amount={bs.totalCurrentAssets}
+                />
+
+                <TotalRow label="Total Assets" amount={bs.totalAssets} />
+
+                <GroupLabel>Current Liabilities</GroupLabel>
+                {bs.currentLiabilities.map((r) => (
+                  <LineRow key={r.code} code={r.code} name={r.name} amount={r.amount} />
+                ))}
+                <SubtotalRow
+                  label="Total Current Liabilities"
+                  amount={bs.totalCurrentLiabilities}
+                />
+
+                <GroupLabel>Equity</GroupLabel>
+                {bs.equity.map((r) => (
+                  <LineRow key={r.code} code={r.code} name={r.name} amount={r.amount} />
+                ))}
+                <LineRow
+                  code="NI"
+                  name="Current Year Earnings"
+                  amount={bs.netProfit}
+                />
+                <SubtotalRow label="Total Equity" amount={bs.totalEquity} />
+
+                <TotalRow
+                  label="Total Liabilities & Equity"
+                  amount={bs.totalLiabilitiesAndEquity}
+                  variant="grand"
+                />
+              </tbody>
+            </table>
+
+            <SectionTitle pageBreak>Statement of Cash Flows</SectionTitle>
+            <table style={finStyles.table}>
+              <thead>
+                <tr>
+                  <th style={finStyles.th}>Date</th>
+                  <th style={finStyles.th}>Description</th>
+                  <th style={{ ...finStyles.th, ...finStyles.thRight }}>
+                    Net Movement
+                  </th>
+                  <th style={{ ...finStyles.th, ...finStyles.thRight }}>
+                    Running Balance
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {cf.map((r, i) => (
+                  <tr key={i}>
+                    <td style={finStyles.td}>{r.date}</td>
+                    <td style={finStyles.td}>{r.description || "—"}</td>
+                    <td
+                      style={{
+                        ...finStyles.td,
+                        ...finStyles.tdRight,
+                        color: r.net >= 0 ? "#2D5A3D" : "#A63D40",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {r.net >= 0 ? "+" : ""}
+                      {fmt(r.net)}
+                    </td>
+                    <td style={{ ...finStyles.td, ...finStyles.tdRight, fontWeight: 700 }}>
+                      {fmt(r.running)}
+                    </td>
+                  </tr>
+                ))}
+                {cf.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      style={{ ...finStyles.td, color: "#6B6B6B", textAlign: "center" }}
+                    >
+                      No cash movements recorded yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        <div style={finStyles.signatures}>
+          <div style={finStyles.sigBlock}>
+            <div style={finStyles.sigLine}>
+              {company.preparedByName.toUpperCase()}
+            </div>
+            <div style={finStyles.sigRole}>{company.preparedByTitle}</div>
+          </div>
+          <div style={finStyles.sigBlock}>
+            <div style={finStyles.sigLine}>
+              {company.authorisedByName.toUpperCase()}
+            </div>
+            <div style={finStyles.sigRole}>{company.authorisedByTitle}</div>
+          </div>
+        </div>
+
+        <div style={finStyles.footerNote}>
+          Prepared from the general ledger for internal management review.
+          <br />
+          {company.name} · {company.addressLine} · {company.cityLine} ·{" "}
+          {company.poBox}
+          <br />
+          Phone: {company.phone} · Telephone: {company.telephone} ·{" "}
+          {company.email}
+        </div>
+      </div>
+    );
+    setTimeout(() => {
+      window.print();
+      document.title = "Modulo Ledger";
+    }, 100);
   }
 
   return (
@@ -3343,13 +3317,13 @@ function EmployeesPanel({ data, mutate }) {
           e.id === editingEmployeeId ? employeePayload : e
         ),
       }));
-      db.saveEmployees([employeePayload]);
+      if (db.saveEmployees) db.saveEmployees([employeePayload]);
     } else {
       mutate((d) => ({
         ...d,
         employees: [...d.employees, employeePayload],
       }));
-      db.saveEmployees([employeePayload]);
+      if (db.saveEmployees) db.saveEmployees([employeePayload]);
     }
 
     resetForm();
@@ -3363,7 +3337,7 @@ function EmployeesPanel({ data, mutate }) {
         e.id === id ? { ...e, active: !e.active } : e
       );
       const updatedEmp = updatedEmployees.find((e) => e.id === id);
-      if (updatedEmp) db.saveEmployees([updatedEmp]);
+      if (updatedEmp && db.saveEmployees) db.saveEmployees([updatedEmp]);
       return { ...d, employees: updatedEmployees };
     });
   }
@@ -3373,7 +3347,7 @@ function EmployeesPanel({ data, mutate }) {
       ...d,
       employees: d.employees.filter((e) => e.id !== id),
     }));
-    db.deleteEmployee(id);
+    if (db.deleteEmployee) db.deleteEmployee(id);
   }
 
   return (
@@ -3763,205 +3737,284 @@ function InvoiceDocument({ data, inv }) {
   const t = inv.totals;
   const cur = inv.currency;
   const sym = cur === "USD" ? "$" : "GHS";
+  const company = data.company || DEFAULT_COMPANY;
+
+  const formatDate = (value) => {
+    if (!value) return "—";
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const cardStyle = {
+    background: "#FAFAF8",
+    border: "1px solid #E8E4DC",
+    borderRadius: 6,
+    padding: "16px 20px",
+  };
+
+  const cardTitleStyle = {
+    fontSize: "8pt",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "1.2px",
+    color: "#C9A84C",
+    marginBottom: 10,
+  };
+
+  const cardRowStyle = {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "4px 0",
+    fontSize: "9.5pt",
+  };
+
   return (
     <div
       style={{
         background: "#fff",
-        color: "#000",
-        fontFamily: "'Times New Roman', serif",
-        padding: 24,
-        fontSize: 13,
+        color: "#333",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontSize: "10pt",
+        lineHeight: 1.5,
+        padding: 32,
         boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          display: "flex",
-          alignItems: "stretch",
-          gap: 0,
-          marginBottom: 20,
+          height: 4,
+          background:
+            "linear-gradient(90deg, #C9A84C 0%, #D4B86A 50%, #C9A84C 100%)",
+          width: "100%",
         }}
-      >
-        <div
-          style={{ flex: "0 0 80px", display: "flex", alignItems: "center" }}
-        >
-          <img
-            src={LOGO_SRC}
-            alt="logo"
-            style={{ height: 60, width: "auto" }}
-          />
-        </div>
-        <div
-          style={{
-            flex: 1,
-            background: NAVY,
-            color: INVOICE_GOLD,
-            textAlign: "center",
-            padding: "10px 0",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-          }}
-        >
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>
-            {data.company.name}
-          </div>
-          <div style={{ fontSize: 16, letterSpacing: 3 }}>INVOICE</div>
-        </div>
-      </div>
+      />
+
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          flexWrap: "wrap",
-          marginBottom: 20,
+          alignItems: "center",
+          padding: "24px 0 20px",
+          borderBottom: "1px solid #E8E4DC",
           gap: 16,
         }}
       >
-        <div style={{ lineHeight: 1.6, fontSize: 12, flex: "1 1 200px" }}>
-          <div>{data.company.poBox}</div>
-          <div>{data.company.addressLine}</div>
-          <div>{data.company.cityLine}</div>
-          <div>Phone: {data.company.phone}</div>
-          <div>Telephone: {data.company.telephone}</div>
-          <div>Email: {data.company.email}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <img
+            src={LOGO_SRC}
+            alt="logo"
+            style={{ height: 64, width: "auto", objectFit: "contain" }}
+          />
+          <div>
+            <div
+              style={{
+                fontSize: "18pt",
+                fontWeight: 800,
+                color: "#1A1A1A",
+                letterSpacing: "-0.5px",
+                lineHeight: 1.2,
+              }}
+            >
+              {company.name}
+            </div>
+            <div
+              style={{
+                fontSize: "8.5pt",
+                color: "#6B6B6B",
+                textTransform: "uppercase",
+                letterSpacing: "1.5px",
+                marginTop: 2,
+              }}
+            >
+              Design · Build · Deliver
+            </div>
+          </div>
         </div>
-        <table
-          style={{
-            borderCollapse: "collapse",
-            fontSize: 12,
-            height: "fit-content",
-          }}
-        >
-          <tbody>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Date
-              </td>
-              <td style={{ textAlign: "left" }}>: {inv.date}</td>
-            </tr>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Due Date
-              </td>
-              <td style={{ textAlign: "left" }}>: {inv.dueDate}</td>
-            </tr>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Invoice #
-              </td>
-              <td style={{ textAlign: "left" }}>: {inv.invoiceNumber}</td>
-            </tr>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Location
-              </td>
-              <td style={{ textAlign: "left" }}>: {inv.location || "—"}</td>
-            </tr>
-          </tbody>
-        </table>
+
+        <div style={{ textAlign: "right" }}>
+          <div
+            style={{
+              fontSize: "28pt",
+              fontWeight: 800,
+              color: "#C9A84C",
+              letterSpacing: "2px",
+              lineHeight: 1,
+            }}
+          >
+            INVOICE
+          </div>
+          <div
+            style={{
+              fontSize: "10pt",
+              color: "#6B6B6B",
+              marginTop: 6,
+              fontFamily: FONT_MONO,
+            }}
+          >
+            {inv.invoiceNumber}
+          </div>
+        </div>
       </div>
+
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          borderTop: "2px solid #1F3864",
-          borderBottom: "1px solid #ccc",
-          padding: "8px 0",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 10,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+          padding: "20px 0",
         }}
       >
-        <div>
-          <b>BILL TO:</b>
-          <br />
-          <b>{inv.billTo}</b>
+        <div style={cardStyle}>
+          <div style={cardTitleStyle}>Bill To</div>
+          <div
+            style={{
+              fontSize: "12pt",
+              fontWeight: 700,
+              color: "#1A1A1A",
+              marginBottom: 4,
+            }}
+          >
+            {inv.billTo}
+          </div>
+          <div style={{ fontSize: "9pt", color: "#6B6B6B", lineHeight: 1.6 }}>
+            {inv.forText ? <div>{inv.forText}</div> : null}
+            {inv.location ? <div>{inv.location}</div> : null}
+            {inv.projectLabel ? <div>{inv.projectLabel}</div> : null}
+          </div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <b>PROJECT</b>
-          <br />
-          {inv.projectLabel}
+
+        <div style={cardStyle}>
+          <div style={cardTitleStyle}>Invoice Details</div>
+          <div style={cardRowStyle}>
+            <span style={{ color: "#6B6B6B" }}>Date</span>
+            <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
+              {formatDate(inv.date)}
+            </span>
+          </div>
+          <div style={cardRowStyle}>
+            <span style={{ color: "#6B6B6B" }}>Due Date</span>
+            <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
+              {formatDate(inv.dueDate)}
+            </span>
+          </div>
+          <div style={cardRowStyle}>
+            <span style={{ color: "#6B6B6B" }}>Location</span>
+            <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
+              {inv.location || "—"}
+            </span>
+          </div>
+          <div style={cardRowStyle}>
+            <span style={{ color: "#6B6B6B" }}>For</span>
+            <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
+              {inv.forText || "—"}
+            </span>
+          </div>
+          <div style={cardRowStyle}>
+            <span style={{ color: "#6B6B6B" }}>Currency</span>
+            <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
+              {cur}
+            </span>
+          </div>
         </div>
+      </div>
+
+      <div
+        style={{
+          fontSize: "9pt",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "1.5px",
+          color: "#C9A84C",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          margin: "8px 0 10px",
+        }}
+      >
+        Line Items
+        <span style={{ flex: 1, height: 1, background: "#E8E4DC" }} />
       </div>
 
       <table
         style={{
           width: "100%",
           borderCollapse: "collapse",
-          marginBottom: 20,
-          tableLayout: "fixed",
+          fontSize: "9.5pt",
         }}
       >
         <thead>
-          <tr style={{ background: NAVY, color: "#fff" }}>
+          <tr>
             <th
               style={{
-                border: "1px solid #1F3864",
-                padding: "8px",
                 textAlign: "left",
+                padding: "10px 12px",
+                fontSize: "8pt",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+                color: "#6B6B6B",
+                borderBottom: "2px solid #C9A84C",
               }}
             >
               Description
             </th>
             <th
               style={{
-                border: "1px solid #1F3864",
-                padding: "8px",
-                width: "60px",
+                textAlign: "center",
+                padding: "10px 12px",
+                fontSize: "8pt",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+                color: "#6B6B6B",
+                borderBottom: "2px solid #C9A84C",
               }}
             >
               Unit
             </th>
             <th
               style={{
-                border: "1px solid #1F3864",
-                padding: "8px",
-                width: "80px",
+                textAlign: "center",
+                padding: "10px 12px",
+                fontSize: "8pt",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+                color: "#6B6B6B",
+                borderBottom: "2px solid #C9A84C",
               }}
             >
-              Qty/Days
+              Qty
             </th>
             <th
               style={{
-                border: "1px solid #1F3864",
-                padding: "8px",
-                width: "100px",
                 textAlign: "right",
+                padding: "10px 12px",
+                fontSize: "8pt",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+                color: "#6B6B6B",
+                borderBottom: "2px solid #C9A84C",
               }}
             >
               Rate
             </th>
             <th
               style={{
-                border: "1px solid #1F3864",
-                padding: "8px",
-                width: "120px",
                 textAlign: "right",
+                padding: "10px 12px",
+                fontSize: "8pt",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+                color: "#6B6B6B",
+                borderBottom: "2px solid #C9A84C",
               }}
             >
               Amount
@@ -3972,14 +4025,14 @@ function InvoiceDocument({ data, inv }) {
           {inv.items.map((it) => {
             if (it.lineType === "header") {
               return (
-                <tr key={it.id} style={{ background: "#f2f2f2" }}>
+                <tr key={it.id}>
                   <td
                     colSpan={5}
                     style={{
-                      border: "1px solid #ccc",
-                      padding: "8px",
                       fontWeight: 700,
-                      fontSize: 13,
+                      color: "#2D2D2D",
+                      padding: "14px 12px 8px",
+                      borderBottom: "1px solid #E8E4DC",
                     }}
                   >
                     {it.description}
@@ -3993,10 +4046,10 @@ function InvoiceDocument({ data, inv }) {
                   <td
                     colSpan={5}
                     style={{
-                      border: "1px solid #ccc",
-                      padding: "8px 8px 8px 32px",
+                      padding: "6px 12px 6px 24px",
+                      color: "#6B6B6B",
                       fontStyle: "italic",
-                      color: "#444",
+                      borderBottom: "1px solid #E8E4DC",
                     }}
                   >
                     {it.description}
@@ -4008,8 +4061,8 @@ function InvoiceDocument({ data, inv }) {
               <tr key={it.id}>
                 <td
                   style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
+                    padding: "8px 12px",
+                    borderBottom: "1px solid #E8E4DC",
                     verticalAlign: "top",
                     wordBreak: "break-word",
                   }}
@@ -4018,18 +4071,18 @@ function InvoiceDocument({ data, inv }) {
                 </td>
                 <td
                   style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
+                    padding: "8px 12px",
+                    borderBottom: "1px solid #E8E4DC",
                     textAlign: "center",
                     verticalAlign: "top",
                   }}
                 >
-                  {it.unit}
+                  {it.unit || "—"}
                 </td>
                 <td
                   style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
+                    padding: "8px 12px",
+                    borderBottom: "1px solid #E8E4DC",
                     textAlign: "center",
                     verticalAlign: "top",
                   }}
@@ -4038,23 +4091,25 @@ function InvoiceDocument({ data, inv }) {
                 </td>
                 <td
                   style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
+                    padding: "8px 12px",
+                    borderBottom: "1px solid #E8E4DC",
                     textAlign: "right",
                     verticalAlign: "top",
+                    fontFamily: FONT_MONO,
                   }}
                 >
-                  {it.rate ? sym + " " + fmt(it.rate) : ""}
+                  {it.rate ? `${sym} ${fmt(it.rate)}` : ""}
                 </td>
                 <td
                   style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
+                    padding: "8px 12px",
+                    borderBottom: "1px solid #E8E4DC",
                     textAlign: "right",
                     verticalAlign: "top",
+                    fontFamily: FONT_MONO,
                   }}
                 >
-                  {sym} {fmt(it.qty * it.rate)}
+                  {sym} {fmt((parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0))}
                 </td>
               </tr>
             );
@@ -4062,114 +4117,157 @@ function InvoiceDocument({ data, inv }) {
         </tbody>
       </table>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 20,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ flex: "1 1 250px", fontSize: 12.5 }}>
-          <b>Amount in words:</b>
-          <br />
-          <i>{amountInWords(t.grandTotal, cur)}</i>
-          {cur === "USD" && (
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+        <div
+          style={{
+            width: 320,
+            background: "#FAFAF8",
+            border: "1px solid #E8E4DC",
+            borderRadius: 6,
+            padding: "16px 20px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "5px 0",
+              fontSize: "9.5pt",
+              color: "#6B6B6B",
+            }}
+          >
+            <span>Subtotal</span>
+            <span>{sym} {fmt(t.subtotal)}</span>
+          </div>
+          {parseFloat(t.discount) > 0 && (
             <div
               style={{
-                marginTop: 14,
-                color: "#8a1c1c",
-                fontSize: 11,
-                border: "1px solid #8a1c1c",
-                padding: 8,
-                borderRadius: 4,
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "9.5pt",
+                color: "#6B6B6B",
               }}
             >
-              <b>Exchange Rate Info:</b> Payments are preferably made in USD. If
-              settled in Ghana Cedis (GHS), the reference exchange rate is USD 1
-              = GHC {inv.exchangeRate}.
+              <span>Discount ({inv.discountPct || 0}%)</span>
+              <span style={{ color: "#A63D40" }}>-{sym} {fmt(t.discount)}</span>
             </div>
           )}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "5px 0",
+              fontSize: "9.5pt",
+              color: "#2D2D2D",
+              fontWeight: 700,
+              background: "#F5F0E6",
+              margin: "0 -20px",
+              paddingLeft: 20,
+              paddingRight: 20,
+            }}
+          >
+            <span>New Subtotal</span>
+            <span>{sym} {fmt(t.newSubtotal)}</span>
+          </div>
+          {t.chargeNhil && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "9.5pt",
+                color: "#6B6B6B",
+              }}
+            >
+              <span>NHIL & GETFund</span>
+              <span>{sym} {fmt(t.nhilGetfund)}</span>
+            </div>
+          )}
+          {t.chargeVat && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "9.5pt",
+                color: "#6B6B6B",
+              }}
+            >
+              <span>VAT 15%</span>
+              <span>{sym} {fmt(t.vat)}</span>
+            </div>
+          )}
+          <div
+            style={{
+              background: "#1A1A1A",
+              color: "#C9A84C",
+              fontWeight: 800,
+              fontSize: "11pt",
+              margin: "8px -20px -16px",
+              padding: "12px 20px",
+              borderRadius: "0 0 6px 6px",
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>GRAND TOTAL</span>
+            <span>{sym} {fmt(t.grandTotal)}</span>
+          </div>
         </div>
-        <table
-          style={{ borderCollapse: "collapse", fontSize: 12.5, width: "300px" }}
-        >
-          <tbody>
-            <tr>
-              <td style={invTdLabel}>SUB-TOTAL</td>
-              <td style={invTdVal}>
-                {sym} {fmt(t.subtotal)}
-              </td>
-            </tr>
-            {parseFloat(t.discount) > 0 && (
-              <tr>
-                <td style={invTdLabel}>Discount ({inv.discountPct}%)</td>
-                <td style={invTdVal}>
-                  {sym} {fmt(t.discount)}
-                </td>
-              </tr>
-            )}
-            <tr style={{ background: "#F2E9C8" }}>
-              <td style={invTdLabel}>NEW SUB-TOTAL</td>
-              <td style={invTdVal}>
-                {sym} {fmt(t.newSubtotal)}
-              </td>
-            </tr>
-            {t.chargeNhil && (
-              <tr>
-                <td style={invTdLabel}>NHIL & GETFUND</td>
-                <td style={invTdVal}>
-                  {sym} {fmt(t.nhilGetfund)}
-                </td>
-              </tr>
-            )}
-            {t.chargeVat && (
-              <tr>
-                <td style={invTdLabel}>VAT 15%</td>
-                <td style={invTdVal}>
-                  {sym} {fmt(t.vat)}
-                </td>
-              </tr>
-            )}
-            <tr style={{ background: NAVY }}>
-              <td
-                style={{
-                  ...invTdLabel,
-                  color: "#fff",
-                  border: "1px solid #1F3864",
-                }}
-              >
-                GRAND TOTAL
-              </td>
-              <td
-                style={{
-                  ...invTdVal,
-                  color: "#fff",
-                  border: "1px solid #1F3864",
-                }}
-              >
-                {sym} {fmt(t.grandTotal)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
+
       <div
         style={{
-          textAlign: "center",
-          marginTop: 40,
-          fontSize: 11,
-          borderTop: "1px solid #ccc",
-          paddingTop: 10,
+          paddingTop: 16,
+          marginTop: 16,
+          fontStyle: "italic",
+          color: "#6B6B6B",
+          fontSize: "9.5pt",
+          maxWidth: "55%",
         }}
       >
-        <i>
-          WE EXECUTE THE BEST DESIGNS WITH UTMOST EMPATHY AND PROFESSIONALISM
-          <br />
-          THANK YOU FOR ENTRUSTING TO US YOUR DREAMS
-          <br />
-          WE WILL HELP MAKE IT A REALITY
-        </i>
+        <b>Amount in words:</b>
+        <br />
+        {amountInWords(t.grandTotal, cur)}
+      </div>
+
+      {cur === "USD" && (
+        <div
+          style={{
+            margin: "8px 0 16px",
+            fontSize: "8.5pt",
+            color: "#A63D40",
+            fontStyle: "italic",
+          }}
+        >
+          Exchange Rate: Payments preferably in USD. If settled in GHS, reference rate is USD 1 = GHC {inv.exchangeRate}.
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: "16px 0 0",
+          marginTop: 20,
+          borderTop: "1px solid #E8E4DC",
+          textAlign: "center",
+          fontSize: "8.5pt",
+          color: "#6B6B6B",
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          lineHeight: 1.8,
+        }}
+      >
+        We execute the best designs with utmost empathy and professionalism.
+        <br />
+        Thank you for entrusting to us your dreams — we will help make it a reality.
+        <br />
+        <br />
+        <span style={{ color: "#E8E4DC" }}>—</span>
+        <br />
+        {company.addressLine} · {company.cityLine} · {company.poBox}
+        <br />
+        Phone: {company.phone} · Telephone: {company.telephone} · {company.email}
       </div>
     </div>
   );
@@ -4181,269 +4279,338 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
     .slice(0, idx + 1)
     .reduce((s, p) => s + p.amountGHS, 0);
   const outstanding = inv.totals.grandTotalGHS - paidThrough;
+
+  const receiptStyles = {
+    container: {
+      background: "#FFFFFF",
+      color: "#333333",
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontSize: "10pt",
+      lineHeight: 1.5,
+      boxSizing: "border-box",
+      padding: 0,
+    },
+    goldBar: {
+      height: "4px",
+      background: "linear-gradient(90deg, #C9A84C 0%, #D4B86A 50%, #C9A84C 100%)",
+      width: "100%",
+    },
+    header: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "24px 32px",
+      background: "#FFFFFF",
+      gap: 16,
+    },
+    headerLeft: { display: "flex", alignItems: "center", gap: "16px" },
+    logo: { height: "64px", width: "auto", objectFit: "contain" },
+    company: {
+      fontSize: "18pt",
+      fontWeight: 800,
+      color: "#1A1A1A",
+      letterSpacing: "-0.5px",
+      lineHeight: 1.2,
+    },
+    tagline: {
+      fontSize: "8.5pt",
+      color: "#6B6B6B",
+      textTransform: "uppercase",
+      letterSpacing: "1.5px",
+      marginTop: "2px",
+    },
+    headerRight: { textAlign: "right" },
+    docTitle: {
+      fontSize: "28pt",
+      fontWeight: 800,
+      color: "#C9A84C",
+      letterSpacing: "2px",
+      lineHeight: 1,
+    },
+    docSub: {
+      fontSize: "10pt",
+      color: "#6B6B6B",
+      marginTop: "4px",
+      fontFamily: FONT_MONO,
+    },
+    metaRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 20,
+      padding: "0 32px 20px",
+      flexWrap: "wrap",
+    },
+    contactCard: {
+      flex: 1,
+      minWidth: 220,
+      background: "#FAFAF8",
+      border: "1px solid #E8E4DC",
+      borderRadius: "6px",
+      padding: "16px 20px",
+      fontSize: "9.5pt",
+      color: "#6B6B6B",
+      lineHeight: 1.6,
+    },
+    infoCard: {
+      width: "300px",
+      background: "#FAFAF8",
+      border: "1px solid #E8E4DC",
+      borderRadius: "6px",
+      padding: "16px 20px",
+    },
+    infoRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "4px 0",
+      fontSize: "9.5pt",
+      gap: 12,
+    },
+    infoLabel: { color: "#6B6B6B", fontWeight: 600 },
+    infoValue: { color: "#2D2D2D", fontWeight: 600, textAlign: "right" },
+    sectionTitle: {
+      fontSize: "9pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "1.5px",
+      color: "#C9A84C",
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "0 32px",
+      margin: "20px 0 10px",
+    },
+    sectionLine: { flex: 1, height: "1px", background: "#E8E4DC" },
+    amountBox: {
+      margin: "8px 32px 16px",
+      padding: "18px 20px",
+      background: "linear-gradient(135deg, #F5F0E6 0%, #FFF8E7 100%)",
+      border: "1px solid #E8D9A8",
+      borderRadius: "6px",
+    },
+    amountLabel: {
+      fontSize: "8pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "1.5px",
+      color: "#C9A84C",
+      marginBottom: "6px",
+    },
+    amountText: {
+      fontSize: "14pt",
+      fontWeight: 800,
+      color: "#1A1A1A",
+      lineHeight: 1.3,
+      fontStyle: "italic",
+    },
+    amountFigure: {
+      fontFamily: FONT_MONO,
+      fontSize: "11pt",
+      color: "#6B6B6B",
+      marginTop: "6px",
+    },
+    table: {
+      width: "calc(100% - 64px)",
+      margin: "0 32px",
+      borderCollapse: "collapse",
+      fontSize: "9.5pt",
+    },
+    th: {
+      textAlign: "left",
+      padding: "10px 12px",
+      fontSize: "8pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "0.8px",
+      color: "#6B6B6B",
+      borderBottom: "2px solid #C9A84C",
+      background: "transparent",
+    },
+    thRight: { textAlign: "right" },
+    td: { padding: "8px 12px", borderBottom: "1px solid #E8E4DC", verticalAlign: "top" },
+    tdRight: { textAlign: "right", fontFamily: FONT_MONO },
+    summaryBox: {
+      margin: "16px 32px 0",
+      background: "#FAFAF8",
+      border: "1px solid #E8E4DC",
+      borderRadius: "6px",
+      overflow: "hidden",
+    },
+    summaryRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "8px 16px",
+      fontSize: "9.5pt",
+      borderBottom: "1px solid #E8E4DC",
+      color: "#333333",
+    },
+    summaryHighlight: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "12px 16px",
+      fontSize: "10pt",
+      background: "#1A1A1A",
+      color: "#C9A84C",
+      fontWeight: 800,
+    },
+    signatures: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "32px",
+      marginTop: "20px",
+      gap: "40px",
+    },
+    sigBlock: { flex: 1, textAlign: "center" },
+    sigLine: {
+      borderTop: "1.5px solid #1A1A1A",
+      paddingTop: "8px",
+      marginTop: "40px",
+      fontWeight: 700,
+      fontSize: "10pt",
+      color: "#1A1A1A",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+    },
+    sigRole: {
+      fontSize: "8.5pt",
+      color: "#6B6B6B",
+      marginTop: "2px",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+    },
+    footerNote: {
+      padding: "16px 32px 24px",
+      borderTop: "1px solid #E8E4DC",
+      textAlign: "center",
+      fontSize: "8.5pt",
+      color: "#6B6B6B",
+      textTransform: "uppercase",
+      letterSpacing: "1px",
+      lineHeight: 1.8,
+    },
+  };
+
   return (
-    <div
-      style={{
-        background: "#fff",
-        color: "#000",
-        fontFamily: "'Times New Roman', serif",
-        padding: 24,
-        fontSize: 13,
-        boxSizing: "border-box",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "stretch",
-          gap: 0,
-          marginBottom: 20,
-        }}
-      >
-        <div
-          style={{ flex: "0 0 80px", display: "flex", alignItems: "center" }}
-        >
-          <img
-            src={LOGO_SRC}
-            alt="logo"
-            style={{ height: 56, width: "auto" }}
-          />
-        </div>
-        <div
-          style={{
-            flex: 1,
-            background: "#D4AF37",
-            color: NAVY,
-            textAlign: "center",
-            padding: "10px 0",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-          }}
-        >
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>
-            {data.company.name}
+    <div style={receiptStyles.container}>
+      <div style={receiptStyles.goldBar} />
+      <div style={receiptStyles.header}>
+        <div style={receiptStyles.headerLeft}>
+          <img src={LOGO_SRC} alt="Modulo Development Logo" style={receiptStyles.logo} />
+          <div>
+            <div style={receiptStyles.company}>{data.company.name}</div>
+            <div style={receiptStyles.tagline}>Design · Build · Deliver</div>
           </div>
-          <div style={{ fontSize: 16, letterSpacing: 3 }}>OFFICIAL RECEIPT</div>
+        </div>
+        <div style={receiptStyles.headerRight}>
+          <div style={receiptStyles.docTitle}>OFFICIAL RECEIPT</div>
+          <div style={receiptStyles.docSub}>{receiptNo}</div>
         </div>
       </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 20,
-          fontSize: 12,
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
-        <div style={{ lineHeight: 1.6, flex: "1 1 200px" }}>
-          <div>{data.company.poBox}</div>
+
+      <div style={receiptStyles.metaRow}>
+        <div style={receiptStyles.contactCard}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: "4px" }}>Company Details</div>
           <div>{data.company.addressLine}</div>
           <div>{data.company.cityLine}</div>
-          <div>
-            Phone: {data.company.phone} | Tel: {data.company.telephone}
-          </div>
+          <div>{data.company.poBox}</div>
+          <div>Phone: {data.company.phone}</div>
+          <div>Telephone: {data.company.telephone}</div>
           <div>Email: {data.company.email}</div>
         </div>
-        <table
-          style={{
-            borderCollapse: "collapse",
-            fontSize: 12,
-            height: "fit-content",
-          }}
-        >
-          <tbody>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Receipt No
-              </td>
-              <td style={{ textAlign: "left" }}>: {receiptNo}</td>
-            </tr>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Date
-              </td>
-              <td style={{ textAlign: "left" }}>: {payment.date}</td>
-            </tr>
-            <tr>
-              <td
-                style={{
-                  fontWeight: 700,
-                  padding: "2px 8px 2px 0",
-                  textAlign: "left",
-                }}
-              >
-                Invoice #
-              </td>
-              <td style={{ textAlign: "left" }}>: {inv.invoiceNumber}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div style={receiptStyles.infoCard}>
+          <div style={receiptStyles.infoRow}>
+            <span style={receiptStyles.infoLabel}>Receipt No.</span>
+            <span style={receiptStyles.infoValue}>{receiptNo}</span>
+          </div>
+          <div style={receiptStyles.infoRow}>
+            <span style={receiptStyles.infoLabel}>Date</span>
+            <span style={receiptStyles.infoValue}>{payment.date}</span>
+          </div>
+          <div style={receiptStyles.infoRow}>
+            <span style={receiptStyles.infoLabel}>Invoice No.</span>
+            <span style={receiptStyles.infoValue}>{inv.invoiceNumber}</span>
+          </div>
+        </div>
       </div>
-      <div
-        style={{
-          borderTop: "2px solid #1F3864",
-          borderBottom: "1px solid #ccc",
-          padding: "10px 0",
-          marginBottom: 20,
-        }}
-      >
-        <div style={{ fontSize: 12.5, marginBottom: 4 }}>RECEIVED FROM:</div>
-        <b style={{ fontSize: 14 }}>{inv.billTo}</b>
+
+      <div style={receiptStyles.sectionTitle}>
+        <span>Received From</span>
+        <span style={receiptStyles.sectionLine} />
       </div>
-      <div
-        style={{
-          marginBottom: 20,
-          padding: "10px",
-          background: "#F2E9C8",
-          border: "1px solid #D4AF37",
-          borderRadius: 4,
-        }}
-      >
-        <div style={{ fontSize: 12.5, marginBottom: 4 }}>THE SUM OF (GHS):</div>
-        <b style={{ fontSize: 14, fontStyle: "italic" }}>
-          {amountInWords(payment.amountGHS, "GHS").toUpperCase()}
-        </b>
+      <div style={{ padding: "0 32px 4px", fontSize: "12pt", fontWeight: 700, color: "#1A1A1A" }}>
+        {inv.billTo}
       </div>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          marginBottom: 20,
-          fontSize: 12.5,
-        }}
-      >
+
+      <div style={receiptStyles.amountBox}>
+        <div style={receiptStyles.amountLabel}>Received the sum of</div>
+        <div style={receiptStyles.amountText}>{amountInWords(payment.amountGHS, "GHS").toUpperCase()}</div>
+        <div style={receiptStyles.amountFigure}>GHS {fmt(payment.amountGHS)}</div>
+      </div>
+
+      <div style={receiptStyles.sectionTitle}>
+        <span>Payment Details</span>
+        <span style={receiptStyles.sectionLine} />
+      </div>
+      <table style={receiptStyles.table}>
         <thead>
-          <tr style={{ background: NAVY, color: "#fff" }}>
-            <th
-              style={{
-                ...invTdLabel,
-                color: "#fff",
-                border: "1px solid #1F3864",
-                textAlign: "left",
-              }}
-            >
-              Payment By
-            </th>
-            <th
-              style={{
-                ...invTdLabel,
-                color: "#fff",
-                border: "1px solid #1F3864",
-                textAlign: "left",
-              }}
-            >
-              Reference No.
-            </th>
-            <th
-              style={{
-                ...invTdLabel,
-                color: "#fff",
-                border: "1px solid #1F3864",
-                textAlign: "right",
-              }}
-            >
-              Amount
-            </th>
+          <tr>
+            <th style={receiptStyles.th}>Payment By</th>
+            <th style={receiptStyles.th}>Reference No.</th>
+            <th style={{ ...receiptStyles.th, ...receiptStyles.thRight }}>Amount</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style={invTdVal}>{payment.method}</td>
-            <td style={invTdVal}>{payment.reference || "—"}</td>
-            <td style={{ ...invTdVal, textAlign: "right" }}>
-              GHS {fmt(payment.amountGHS)}
-            </td>
+            <td style={receiptStyles.td}>{payment.method}</td>
+            <td style={receiptStyles.td}>{payment.reference || "—"}</td>
+            <td style={{ ...receiptStyles.td, ...receiptStyles.tdRight, fontWeight: 700 }}>GHS {fmt(payment.amountGHS)}</td>
           </tr>
         </tbody>
       </table>
-      <div style={{ marginBottom: 40, fontSize: 12.5 }}>
-        <b>Paid For:</b> {inv.forText || inv.projectLabel}
-        <br />
-        <br />
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <tbody>
-            <tr>
-              <td style={invTdLabel}>Invoice Total</td>
-              <td style={invTdVal}>GHS {fmt(inv.totals.grandTotalGHS)}</td>
-            </tr>
-            <tr>
-              <td style={invTdLabel}>Amount Received</td>
-              <td style={invTdVal}>GHS {fmt(paidThrough)}</td>
-            </tr>
-            <tr style={{ background: "#F2E9C8" }}>
-              <td style={invTdLabel}>Outstanding Balance</td>
-              <td style={invTdVal}>GHS {fmt(Math.max(outstanding, 0))}</td>
-            </tr>
-          </tbody>
-        </table>
+
+      <div style={receiptStyles.sectionTitle}>
+        <span>Invoice Reference</span>
+        <span style={receiptStyles.sectionLine} />
       </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 12,
-          marginTop: 40,
-          flexWrap: "wrap",
-          gap: 20,
-        }}
-      >
-        <div style={{ textAlign: "center", width: "40%", minWidth: 150 }}>
-          <div style={{ marginBottom: 30 }}>Received By</div>
-          <div
-            style={{
-              borderTop: "1px solid #000",
-              paddingTop: 4,
-              fontWeight: 700,
-            }}
-          >
-            {data.company.preparedByName.toUpperCase()}
-          </div>
-          <div>({data.company.preparedByTitle})</div>
+      <div style={receiptStyles.summaryBox}>
+        <div style={receiptStyles.summaryRow}>
+          <span>Invoice Total</span>
+          <span>GHS {fmt(inv.totals.grandTotalGHS)}</span>
         </div>
-        <div style={{ textAlign: "center", width: "40%", minWidth: 150 }}>
-          <div style={{ marginBottom: 30 }}>Authorised By</div>
-          <div
-            style={{
-              borderTop: "1px solid #000",
-              paddingTop: 4,
-              fontWeight: 700,
-            }}
-          >
-            {data.company.authorisedByName.toUpperCase()}
-          </div>
-          <div>({data.company.authorisedByTitle})</div>
+        <div style={receiptStyles.summaryRow}>
+          <span>Amount Received</span>
+          <span>GHS {fmt(paidThrough)}</span>
         </div>
+        <div style={receiptStyles.summaryRow}>
+          <span>Paid For</span>
+          <span>{inv.forText || inv.projectLabel || "—"}</span>
+        </div>
+        <div style={receiptStyles.summaryHighlight}>
+          <span>Outstanding Balance</span>
+          <span>GHS {fmt(Math.max(outstanding, 0))}</span>
+        </div>
+      </div>
+
+      <div style={receiptStyles.signatures}>
+        <div style={receiptStyles.sigBlock}>
+          <div style={receiptStyles.sigLine}>{data.company.preparedByName.toUpperCase()}</div>
+          <div style={receiptStyles.sigRole}>{data.company.preparedByTitle}</div>
+        </div>
+        <div style={receiptStyles.sigBlock}>
+          <div style={receiptStyles.sigLine}>{data.company.authorisedByName.toUpperCase()}</div>
+          <div style={receiptStyles.sigRole}>{data.company.authorisedByTitle}</div>
+        </div>
+      </div>
+
+      <div style={receiptStyles.footerNote}>
+        Thank you for your business.<br />
+        {data.company.name} · {data.company.addressLine} · {data.company.cityLine}
+        <br />
+        Phone: {data.company.phone} · Telephone: {data.company.telephone} · Mail: {data.company.email}
       </div>
     </div>
   );
 }
-
-const payslipTdLabel = {
-  border: "1px solid #ccc",
-  padding: "5px 8px",
-  fontWeight: 700,
-  verticalAlign: "top",
-  fontSize: 12.5,
-};
-const payslipTdVal = {
-  border: "1px solid #ccc",
-  padding: "5px 8px",
-  fontSize: 12.5,
-};
 
 function Payslip({ data, run, r }) {
   const emp = data.employees.find((e) => e.id === r.employeeId) || {};
@@ -4451,223 +4618,286 @@ function Payslip({ data, run, r }) {
   const monthName = new Date(Number(year), Number(month) - 1, 1)
     .toLocaleString("en-US", { month: "long" })
     .toUpperCase();
+
+  const payslipStyles = {
+    container: {
+      background: "#FFFFFF",
+      color: "#333333",
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontSize: "10pt",
+      lineHeight: 1.5,
+      boxSizing: "border-box",
+      border: "1px solid #E8E4DC",
+      marginBottom: "24px",
+      overflow: "hidden",
+    },
+    darkHeader: {
+      background: "#1A1A1A",
+      padding: "24px 32px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    darkHeaderLeft: { display: "flex", alignItems: "center", gap: "16px" },
+    darkLogo: { height: "56px", width: "auto", filter: "brightness(1.1)" },
+    darkCompany: {
+      fontSize: "16pt",
+      fontWeight: 800,
+      color: "#FFFFFF",
+      letterSpacing: "-0.5px",
+      lineHeight: 1.2,
+    },
+    darkTagline: {
+      fontSize: "8.5pt",
+      color: "#E8D9A8",
+      textTransform: "uppercase",
+      letterSpacing: "1.5px",
+      marginTop: "2px",
+    },
+    headerRight: { textAlign: "right" },
+    docTitle: {
+      fontSize: "22pt",
+      fontWeight: 800,
+      color: "#C9A84C",
+      letterSpacing: "3px",
+      lineHeight: 1,
+    },
+    docSub: {
+      fontSize: "9pt",
+      color: "#8A8A8A",
+      marginTop: "4px",
+      fontFamily: FONT_MONO,
+      textAlign: "right",
+    },
+    employeeCard: {
+      display: "grid",
+      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      gap: "12px",
+      padding: "20px 32px",
+      background: "#FAFAF8",
+      borderBottom: "1px solid #E8E4DC",
+    },
+    field: { display: "flex", flexDirection: "column", gap: "2px" },
+    fieldLabel: {
+      fontSize: "7.5pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "1px",
+      color: "#C9A84C",
+    },
+    fieldValue: { fontSize: "10.5pt", fontWeight: 600, color: "#2D2D2D" },
+    twoCol: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "16px",
+      padding: "0 32px",
+      marginTop: "16px",
+    },
+    colCard: {
+      background: "#FFFFFF",
+      border: "1px solid #E8E4DC",
+      borderRadius: "6px",
+      overflow: "hidden",
+    },
+    colHeader: {
+      background: "#FAFAF8",
+      padding: "10px 16px",
+      fontSize: "8pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "1.2px",
+      color: "#C9A84C",
+      borderBottom: "1px solid #E8E4DC",
+    },
+    colRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "8px 16px",
+      fontSize: "9.5pt",
+      borderBottom: "1px solid #E8E4DC",
+    },
+    colLabel: { color: "#333333" },
+    colValue: { fontWeight: 600, fontFamily: FONT_MONO },
+    colTotal: { background: "#FAFAF8", fontWeight: 700 },
+    netHighlight: {
+      margin: "20px 32px",
+      background: "linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%)",
+      borderRadius: "6px",
+      padding: "24px 32px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    netLabel: {
+      color: "#E8D9A8",
+      fontSize: "9pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "2px",
+    },
+    netAmount: {
+      color: "#C9A84C",
+      fontSize: "24pt",
+      fontWeight: 800,
+      fontFamily: FONT_MONO,
+    },
+    employerSection: {
+      margin: "16px 32px",
+      padding: "16px 20px",
+      background: "#FAFAF8",
+      border: "1px solid #E8E4DC",
+      borderRadius: "6px",
+    },
+    empTitle: {
+      fontSize: "8pt",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "1.2px",
+      color: "#C9A84C",
+      marginBottom: "10px",
+    },
+    empRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "5px 0",
+      fontSize: "9.5pt",
+    },
+    signatures: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "32px",
+      marginTop: "10px",
+      gap: "40px",
+    },
+    sigBlock: { flex: 1, textAlign: "center" },
+    sigLine: {
+      borderTop: "1.5px solid #1A1A1A",
+      paddingTop: "8px",
+      marginTop: "40px",
+      fontWeight: 700,
+      fontSize: "10pt",
+      color: "#1A1A1A",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+    },
+    sigRole: {
+      fontSize: "8.5pt",
+      color: "#6B6B6B",
+      marginTop: "2px",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+    },
+    footerNote: {
+      padding: "16px 32px 24px",
+      borderTop: "1px solid #E8E4DC",
+      textAlign: "center",
+      fontSize: "8.5pt",
+      color: "#6B6B6B",
+      textTransform: "uppercase",
+      letterSpacing: "1px",
+      lineHeight: 1.8,
+    },
+  };
+
   return (
-    <div
-      style={{
-        background: "#fff",
-        color: "#000",
-        fontFamily: "'Times New Roman', serif",
-        padding: 20,
-        fontSize: 13,
-        boxSizing: "border-box",
-        border: "1px solid #ccc",
-        marginBottom: 24,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          borderBottom: "2px solid #1F3864",
-          paddingBottom: 16,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <img src={LOGO_SRC} alt="logo" style={{ height: 50, width: "auto" }} />
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>
-            {data.company.name}
+    <div style={payslipStyles.container}>
+      <div style={payslipStyles.darkHeader}>
+        <div style={payslipStyles.darkHeaderLeft}>
+          <img src={LOGO_SRC} alt="Modulo Development Logo" style={payslipStyles.darkLogo} />
+          <div>
+            <div style={payslipStyles.darkCompany}>{data.company.name}</div>
+            <div style={payslipStyles.darkTagline}>Design · Build · Deliver</div>
           </div>
-          <div style={{ fontSize: 12, lineHeight: 1.4 }}>
-            {data.company.addressLine} | {data.company.cityLine}
-            <br />
-            {data.company.poBox}
-            <br />
-            Mail: {data.company.email} | Tel: {data.company.phone}
+        </div>
+        <div style={payslipStyles.headerRight}>
+          <div style={payslipStyles.docTitle}>PAYSLIP</div>
+          <div style={payslipStyles.docSub}>{monthName} {year}</div>
+        </div>
+      </div>
+
+      <div style={payslipStyles.employeeCard}>
+        <div style={payslipStyles.field}>
+          <div style={payslipStyles.fieldLabel}>Employee Name</div>
+          <div style={payslipStyles.fieldValue}>{(emp.name || "").toUpperCase()}</div>
+        </div>
+        <div style={payslipStyles.field}>
+          <div style={payslipStyles.fieldLabel}>SSNIT Number</div>
+          <div style={payslipStyles.fieldValue}>{emp.ssnitNo || "—"}</div>
+        </div>
+        <div style={payslipStyles.field}>
+          <div style={payslipStyles.fieldLabel}>Designation</div>
+          <div style={payslipStyles.fieldValue}>{(emp.designation || "—").toUpperCase()}</div>
+        </div>
+        <div style={payslipStyles.field}>
+          <div style={payslipStyles.fieldLabel}>Month / Year</div>
+          <div style={payslipStyles.fieldValue}>{monthName}, {year}</div>
+        </div>
+        <div style={payslipStyles.field}>
+          <div style={payslipStyles.fieldLabel}>NIA Card</div>
+          <div style={payslipStyles.fieldValue}>{emp.niaCard || "—"}</div>
+        </div>
+        <div style={payslipStyles.field}>
+          <div style={payslipStyles.fieldLabel}>Department</div>
+          <div style={payslipStyles.fieldValue}>PROJECTS</div>
+        </div>
+      </div>
+
+      <div style={payslipStyles.twoCol}>
+        <div style={payslipStyles.colCard}>
+          <div style={payslipStyles.colHeader}>Earnings</div>
+          <div style={payslipStyles.colRow}>
+            <span style={payslipStyles.colLabel}>Basic Salary</span>
+            <span style={payslipStyles.colValue}>GH₵ {fmt(r.gross)}</span>
+          </div>
+          <div style={{ ...payslipStyles.colRow, ...payslipStyles.colTotal }}>
+            <span style={{ ...payslipStyles.colLabel, color: "#2D2D2D" }}>Total Earnings</span>
+            <span style={{ ...payslipStyles.colValue, color: "#2D2D2D" }}>GH₵ {fmt(r.gross)}</span>
+          </div>
+        </div>
+        <div style={payslipStyles.colCard}>
+          <div style={payslipStyles.colHeader}>Deductions</div>
+          <div style={payslipStyles.colRow}>
+            <span style={payslipStyles.colLabel}>P.A.Y.E</span>
+            <span style={payslipStyles.colValue}>GH₵ {fmt(r.paye)}</span>
+          </div>
+          <div style={payslipStyles.colRow}>
+            <span style={payslipStyles.colLabel}>Tier 1 + 2 (QFTL) 5.5%</span>
+            <span style={payslipStyles.colValue}>GH₵ {fmt(r.ssnitEmployee)}</span>
+          </div>
+          <div style={{ ...payslipStyles.colRow, ...payslipStyles.colTotal }}>
+            <span style={{ ...payslipStyles.colLabel, color: "#2D2D2D" }}>Total Deductions</span>
+            <span style={{ ...payslipStyles.colValue, color: "#A63D40" }}>GH₵ {fmt(r.paye + r.ssnitEmployee)}</span>
           </div>
         </div>
       </div>
-      <div
-        style={{
-          textAlign: "center",
-          fontWeight: 700,
-          fontSize: 16,
-          marginBottom: 20,
-          letterSpacing: 1,
-        }}
-      >
-        PAYSLIP FOR {monthName} {year}
+
+      <div style={payslipStyles.netHighlight}>
+        <div style={payslipStyles.netLabel}>Net Pay</div>
+        <div style={payslipStyles.netAmount}>GH₵ {fmt(r.net)}</div>
       </div>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          marginBottom: 16,
-          fontSize: 12.5,
-        }}
-      >
-        <tbody>
-          <tr>
-            <td style={payslipTdLabel}>NAME</td>
-            <td style={payslipTdVal}>{(emp.name || "").toUpperCase()}</td>
-            <td style={payslipTdLabel}>SSNIT NO</td>
-            <td style={payslipTdVal}>{emp.ssnitNo || "—"}</td>
-          </tr>
-          <tr>
-            <td style={payslipTdLabel}>DESIGNATION</td>
-            <td style={payslipTdVal}>
-              {(emp.designation || "—").toUpperCase()}
-            </td>
-            <td style={payslipTdLabel}>NIA CARD</td>
-            <td style={payslipTdVal}>{emp.niaCard || "—"}</td>
-          </tr>
-        </tbody>
-      </table>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          marginBottom: 16,
-          fontSize: 12.5,
-        }}
-      >
-        <thead>
-          <tr style={{ background: "#f0f0f0" }}>
-            <th style={{ ...payslipTdLabel, textAlign: "left" }}>EARNINGS</th>
-            <th style={{ ...payslipTdVal, textAlign: "right" }}>
-              AMOUNT (GHS)
-            </th>
-            <th style={{ ...payslipTdLabel, textAlign: "left" }}>DEDUCTIONS</th>
-            <th style={{ ...payslipTdVal, textAlign: "right" }}>
-              AMOUNT (GHS)
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={payslipTdLabel}>Basic Gross Salary</td>
-            <td style={payslipTdVal}>{fmt(r.gross)}</td>
-            <td style={payslipTdLabel}>P.A.Y.E</td>
-            <td style={payslipTdVal}>{fmt(r.paye)}</td>
-          </tr>
-          <tr>
-            <td style={payslipTdLabel}></td>
-            <td style={payslipTdVal}></td>
-            <td style={payslipTdLabel}>Tier 1 + 2 (SSNIT)</td>
-            <td style={payslipTdVal}>{fmt(r.ssnitEmployee)}</td>
-          </tr>
-          <tr style={{ fontWeight: 700, background: "#F2E9C8" }}>
-            <td style={payslipTdLabel}>GROSS EARNINGS</td>
-            <td style={payslipTdVal}>{fmt(r.gross)}</td>
-            <td style={payslipTdLabel}>TOTAL DEDUCTIONS</td>
-            <td style={payslipTdVal}>{fmt(r.paye + r.ssnitEmployee)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginBottom: 20,
-        }}
-      >
-        <table
-          style={{
-            borderCollapse: "collapse",
-            fontSize: 14,
-            width: "50%",
-            minWidth: 250,
-          }}
-        >
-          <tbody>
-            <tr style={{ background: "#1F3864", color: "#fff" }}>
-              <td
-                style={{
-                  padding: "8px 10px",
-                  fontWeight: 700,
-                  border: "1px solid #1F3864",
-                }}
-              >
-                NET SALARY
-              </td>
-              <td
-                style={{
-                  padding: "8px 10px",
-                  fontWeight: 700,
-                  border: "1px solid #1F3864",
-                  textAlign: "right",
-                }}
-              >
-                GHS {fmt(r.net)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+
+      <div style={payslipStyles.employerSection}>
+        <div style={payslipStyles.empTitle}>Employer Contributions</div>
+        <div style={payslipStyles.empRow}>
+          <span style={payslipStyles.colLabel}>Tier 1 (SSNIT) — {(data.ssnitEmployerRate * 100).toFixed(0)}%</span>
+          <span style={payslipStyles.colValue}>GH₵ {fmt(r.ssnitEmployer)}</span>
+        </div>
       </div>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          marginBottom: 40,
-          fontSize: 12.5,
-        }}
-      >
-        <thead>
-          <tr style={{ background: "#f0f0f0" }}>
-            <th style={{ ...payslipTdLabel, textAlign: "left" }}>
-              EMPLOYER CONTRIBUTIONS
-            </th>
-            <th style={{ ...payslipTdVal, textAlign: "right" }}>
-              AMOUNT (GHS)
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={payslipTdLabel}>
-              Tier 1 (SSNIT) {(data.ssnitEmployerRate * 100).toFixed(0)}%
-            </td>
-            <td style={payslipTdVal}>{fmt(r.ssnitEmployer)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 12,
-          flexWrap: "wrap",
-          gap: 20,
-        }}
-      >
-        <div style={{ textAlign: "center", width: "40%", minWidth: 150 }}>
-          <div style={{ marginBottom: 30 }}>Prepared By</div>
-          <div
-            style={{
-              borderTop: "1px solid #000",
-              paddingTop: 4,
-              fontWeight: 700,
-            }}
-          >
-            {data.company.preparedByName.toUpperCase()}
-          </div>
-          <div>({data.company.preparedByTitle})</div>
+
+      <div style={payslipStyles.signatures}>
+        <div style={payslipStyles.sigBlock}>
+          <div style={payslipStyles.sigLine}>{data.company.preparedByName.toUpperCase()}</div>
+          <div style={payslipStyles.sigRole}>{data.company.preparedByTitle}</div>
         </div>
-        <div style={{ textAlign: "center", width: "40%", minWidth: 150 }}>
-          <div style={{ marginBottom: 30 }}>Authorised By</div>
-          <div
-            style={{
-              borderTop: "1px solid #000",
-              paddingTop: 4,
-              fontWeight: 700,
-            }}
-          >
-            {data.company.authorisedByName.toUpperCase()}
-          </div>
-          <div>({data.company.authorisedByTitle})</div>
+        <div style={payslipStyles.sigBlock}>
+          <div style={payslipStyles.sigLine}>{data.company.authorisedByName.toUpperCase()}</div>
+          <div style={payslipStyles.sigRole}>{data.company.authorisedByTitle}</div>
         </div>
+      </div>
+
+      <div style={payslipStyles.footerNote}>
+        This is a computer-generated payslip and does not require a physical signature.<br />
+        {data.company.name} · {data.company.addressLine}, {data.company.cityLine} · {data.company.poBox}
       </div>
     </div>
   );
@@ -4680,6 +4910,7 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
   );
   const [draft, setDraft] = useState(null);
   const [showBrackets, setShowBrackets] = useState(false);
+  const [expandedRun, setExpandedRun] = useState(null);
 
   function buildDraft() {
     const rows = data.employees
@@ -4751,10 +4982,31 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
       payrollRuns: [run, ...d.payrollRuns],
       nextEntryNum: d.nextEntryNum + 1,
     }));
+
+    // PERSIST TO DB
+    if (db.saveJournalEntry) db.saveJournalEntry(entry);
+    if (db.savePayrollRun) db.savePayrollRun(run);
+
     setDraft(null);
+    setExpandedRun(run.id); // Expand the newly posted run
   }
 
-  function printPayslips(run) {
+  function printSinglePayslip(run, row) {
+    const empName = row.name.replace(/\s+/g, "_");
+    document.title = `Payslip_${empName}_${run.period}`;
+    setPrintContent(
+      <div>
+        <Payslip key={row.employeeId} data={data} run={run} r={row} />
+      </div>
+    );
+    setTimeout(() => {
+      window.print();
+      document.title = "Modulo Ledger";
+    }, 100);
+  }
+
+  function printAllPayslips(run) {
+    document.title = `Payslips_${run.period}`;
     setPrintContent(
       <div>
         {run.rows.map((r) => (
@@ -4762,7 +5014,10 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
         ))}
       </div>
     );
-    setTimeout(() => window.print(), 100);
+    setTimeout(() => {
+      window.print();
+      document.title = "Modulo Ledger";
+    }, 100);
   }
 
   const alreadyPosted = data.payrollRuns.some((r) => r.period === period);
@@ -4924,51 +5179,85 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
         </Card>
       )}
       <SectionTitle>Past payroll runs</SectionTitle>
-      <Card>
-        {data.payrollRuns.length === 0 && (
-          <p style={{ fontFamily: FONT_BODY, color: MUTED, fontSize: 13.5 }}>
-            No payroll posted yet.
-          </p>
-        )}
-        {data.payrollRuns.map((run) => (
+      {data.payrollRuns.length === 0 && (
+        <Card><p style={{ fontFamily: FONT_BODY, color: MUTED, fontSize: 13.5 }}>No payroll posted yet.</p></Card>
+      )}
+      {data.payrollRuns.map((run) => (
+        <Card key={run.id} style={{ marginBottom: 16 }}>
           <div
-            key={run.id}
             style={{
-              marginBottom: 18,
-              paddingBottom: 18,
-              borderBottom: `1px solid ${RULE}`,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              cursor: "pointer",
             }}
+            onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 8,
-                flexWrap: "wrap",
-                gap: 8,
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: FONT_DISPLAY,
-                  fontWeight: 700,
-                  color: INK,
-                }}
-              >
+            <div>
+              <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, color: INK }}>
                 {run.period}
               </span>
+              <span style={{ marginLeft: 12, fontSize: 12, color: MUTED }}>
+                {run.rows.length} employees • Total Net: GHS {fmt(run.rows.reduce((s, r) => s + r.net, 0))}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Button
                 variant="ghost"
                 icon={Printer}
-                onClick={() => printPayslips(run)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  printAllPayslips(run);
+                }}
               >
-                Print payslips
+                Print All
               </Button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedRun(expandedRun === run.id ? null : run.id);
+                }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: MUTED }}
+              >
+                {expandedRun === run.id ? <X size={18} /> : <Plus size={18} />}
+              </button>
             </div>
           </div>
-        ))}
-      </Card>
+
+          {expandedRun === run.id && (
+            <div style={{ marginTop: 16, borderTop: `1px solid ${RULE}`, paddingTop: 16 }}>
+              <TableScroll>
+                <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <Th>Employee</Th>
+                      <Th right>Net Pay</Th>
+                      <Th right>&nbsp;</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {run.rows.map((r) => (
+                      <tr key={r.employeeId} className="row-hover">
+                        <Td label="Employee">{r.name}</Td>
+                        <Td right mono label="Net Pay">GHS {fmt(r.net)}</Td>
+                        <Td right>
+                          <Button
+                            variant="ghost"
+                            icon={Printer}
+                            onClick={() => printSinglePayslip(run, r)}
+                          >
+                            Print
+                          </Button>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            </div>
+          )}
+        </Card>
+      ))}
     </div>
   );
 }
@@ -5110,6 +5399,11 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       nextEntryNum: d.nextEntryNum + 1,
       nextInvoiceNum: d.nextInvoiceNum + 1,
     }));
+    
+    // PERSIST TO DB
+    if (db.saveInvoice) db.saveInvoice(inv);
+    if (db.saveJournalEntry) db.saveJournalEntry(entry);
+
     onDone && onDone();
   }
 
@@ -5493,6 +5787,12 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
     }));
+
+    // PERSIST TO DB
+    if (db.saveInvoice) db.saveInvoice(updatedInvoice);
+    if (db.saveJournalEntry) db.saveJournalEntry(entry);
+
+    document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
     setPrintContent(
       <ReceiptDocument
         data={data}
@@ -5501,7 +5801,10 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
         receiptNo={receiptNo}
       />
     );
-    setTimeout(() => window.print(), 100);
+    setTimeout(() => {
+      window.print();
+      document.title = "Modulo Ledger";
+    }, 100);
     onDone && onDone();
   }
 
@@ -5569,8 +5872,12 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
   function doPrint(target) {
     const inv = data.invoices.find((i) => i.id === target.invId);
     if (!inv) return;
+    let title = "Document";
+    let content = null;
+
     if (target.type === "invoice") {
-      setPrintContent(<InvoiceDocument data={data} inv={inv} />);
+      title = `Invoice_${inv.invoiceNumber}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
+      content = <InvoiceDocument data={data} inv={inv} />;
     } else {
       const payment = inv.payments.find((p) => p.id === target.paymentId);
       if (!payment) return;
@@ -5579,7 +5886,8 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
           inv.payments.findIndex((p) => p.id === payment.id) +
           1
       ).padStart(3, "0")}`;
-      setPrintContent(
+      title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
+      content = (
         <ReceiptDocument
           data={data}
           inv={inv}
@@ -5588,7 +5896,13 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
         />
       );
     }
-    setTimeout(() => window.print(), 100);
+
+    document.title = title;
+    setPrintContent(content);
+    setTimeout(() => {
+      window.print();
+      document.title = "Modulo Ledger";
+    }, 100);
   }
 
   return (
@@ -5898,16 +6212,56 @@ export default function App() {
   const isMobile = useIsMobile();
   const [data, setData] = useState(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "dashboard";
+    const validTabs = [
+      "dashboard",
+      "accounts",
+      "journal",
+      "ledger",
+      "financials",
+      "projects",
+      "invoicing",
+      "employees",
+      "payroll",
+      "export",
+    ];
+    try {
+      const saved = window.localStorage.getItem("modulo_tab");
+      return validTabs.includes(saved) ? saved : "dashboard";
+    } catch {
+      return "dashboard";
+    }
+  });
   const [companyNameDraft, setCompanyNameDraft] = useState("");
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined") return "light";
+    try {
+      return window.localStorage.getItem("modulo_theme") || "light";
+    } catch {
+      return "light";
+    }
+  });
   const [printContent, setPrintContent] = useState(null);
 
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") root.classList.add("dark");
     else root.classList.remove("dark");
+    try {
+      window.localStorage.setItem("modulo_theme", theme);
+    } catch {
+      // localStorage unavailable — theme just won't persist
+    }
   }, [theme]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("modulo_tab", tab);
+    } catch {
+      // localStorage unavailable — last tab just won't persist
+    }
+  }, [tab]);
 
   useEffect(() => {
     (async () => {
@@ -6070,6 +6424,7 @@ export default function App() {
         <button
           onClick={() => setTheme(theme === "light" ? "dark" : "light")}
           title="Toggle Theme"
+          aria-label="Toggle dark mode"
           style={{
             display: "flex",
             alignItems: "center",
@@ -6078,14 +6433,18 @@ export default function App() {
             height: 36,
             borderRadius: 8,
             border: `1px solid ${RULE}`,
-            background: PAPER,
+            background: PAPER_RAISED,
             color: INK,
             cursor: "pointer",
             flexShrink: 0,
             transition: "all 0.2s ease",
           }}
         >
-          {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+          {theme === "light" ? (
+            <Moon size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
+          ) : (
+            <Sun size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
+          )}
         </button>
       </div>
       {navGroups.map((group) => (
@@ -6221,6 +6580,7 @@ export default function App() {
             <button
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
               title="Toggle Theme"
+              aria-label="Toggle dark mode"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -6229,13 +6589,17 @@ export default function App() {
                 height: 36,
                 borderRadius: 8,
                 border: `1px solid ${RULE}`,
-                background: PAPER,
+                background: PAPER_RAISED,
                 color: INK,
                 cursor: "pointer",
                 flexShrink: 0,
               }}
             >
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+              {theme === "light" ? (
+                <Moon size={18} color={INK} strokeWidth={2} style={{ display: "block" }} />
+              ) : (
+                <Sun size={18} color={INK} strokeWidth={2} style={{ display: "block" }} />
+              )}
             </button>
           </div>
         ) : (
