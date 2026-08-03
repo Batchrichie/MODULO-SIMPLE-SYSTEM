@@ -199,6 +199,80 @@ export async function getSession() {
   return data.session;
 }
 
+// ---------------------------------------------------------------------------
+// New: Fetch pre-calculated financial views / RPC (Stage 1 frontend handoff)
+// ---------------------------------------------------------------------------
+export async function getTrialBalance() {
+  const { data, error } = await supabase.from("vw_trial_balance").select("*");
+  if (error) {
+    console.error("Error fetching Trial Balance:", error);
+    return [];
+  }
+  return data;
+}
+
+export async function getBalanceSheet() {
+  const { data, error } = await supabase.from("vw_balance_sheet").select("*");
+  if (error) {
+    console.error("Error fetching Balance Sheet:", error);
+    return [];
+  }
+  return data;
+}
+
+export async function getProfitAndLoss(startDate, endDate) {
+  const { data, error } = await supabase.rpc("get_profit_and_loss", {
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+  if (error) {
+    console.error("Error fetching P&L:", error);
+    return [];
+  }
+  return data;
+}
+
+async function loadAppSettings() {
+  const { data, error } = await supabase.from("app_settings").select("data").eq("id", 1).maybeSingle();
+  if (error) {
+    console.error("Error loading app settings:", error);
+    return {};
+  }
+  return data?.data || {};
+}
+
+async function mergeAppSettings(updates) {
+  const existing = await loadAppSettings();
+  const merged = { ...existing, ...updates };
+  const { error } = await supabase.from("app_settings").upsert({ id: 1, data: merged });
+  if (error) {
+    console.error("Error saving tax settings:", error);
+    throw error;
+  }
+  return merged;
+}
+
+export async function loadTaxConfig() {
+  const settings = await loadAppSettings();
+  return {
+    rates: {
+      ssnitEmployeeRate: settings.ssnitEmployeeRate ?? 0,
+      ssnitEmployerRate: settings.ssnitEmployerRate ?? 0,
+      nhilGetfundRate: settings.nhilGetfundRate ?? 0,
+      vatRate: settings.vatRate ?? 0,
+    },
+    brackets: Array.isArray(settings.brackets) ? settings.brackets : [],
+  };
+}
+
+export async function saveTaxRates(rates) {
+  return mergeAppSettings(rates);
+}
+
+export async function savePayeBrackets(brackets) {
+  return mergeAppSettings({ brackets });
+}
+
 // Call once (e.g. in App.jsx) to react to login/logout events.
 // Returns an unsubscribe function - call it on unmount.
 export function onAuthStateChange(callback) {
@@ -290,13 +364,13 @@ export async function loadLedgerState() {
 // ---------------------------------------------------------------------------
 
 export async function saveSettings(settingsData) {
-  try {
-    const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData || {};
-    const { error } = await supabase.from("app_settings").upsert({ id: 1, data: rest });
-    if (error) throw error;
-  } catch (err) {
-    console.error("Error saving settings:", err);
+  const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData || {};
+  const { data, error } = await supabase.from("app_settings").upsert({ id: 1, data: rest });
+  if (error) {
+    console.error("Error saving settings:", error);
+    throw error;
   }
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,13 +379,21 @@ export async function saveSettings(settingsData) {
 
 async function upsertTable(tableName, rows) {
   if (!rows || rows.length === 0) return;
-  const { error } = await supabase.from(tableName).upsert(rows);
-  if (error) console.error(`Error upserting ${tableName}:`, error);
+  const { data, error } = await supabase.from(tableName).upsert(rows);
+  if (error) {
+    console.error(`Error upserting ${tableName}:`, error);
+    throw error;
+  }
+  return data;
 }
 
 async function deleteFromTable(tableName, column, value) {
-  const { error } = await supabase.from(tableName).delete().eq(column, value);
-  if (error) console.error(`Error deleting from ${tableName}:`, error);
+  const { data, error } = await supabase.from(tableName).delete().eq(column, value);
+  if (error) {
+    console.error(`Error deleting from ${tableName}:`, error);
+    throw error;
+  }
+  return data;
 }
 
 export const db = {

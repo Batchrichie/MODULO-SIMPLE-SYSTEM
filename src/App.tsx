@@ -29,12 +29,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
-  LogOut, // <-- ADD THIS IMPORT
 } from "lucide-react";
-
-// Import auth functions and Login component
-import { loadLedgerState, saveSettings, db, getSession, onAuthStateChange, signOut } from "./supabaseClient";
-import Login from "./Login";
+import Login from "./Login.jsx";
+import { loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates, savePayeBrackets, db, getTrialBalance, getBalanceSheet, getProfitAndLoss, getSession, onAuthStateChange, signOut } from "./supabaseClient";
 
 // ---------- Design Tokens (CSS Variables for Theming) ----------
 const INK = "var(--ink)";
@@ -229,16 +226,6 @@ const DEFAULT_ACCOUNTS = [
   },
 ];
 
-const DEFAULT_BRACKETS = [
-  { upto: 490, rate: 0 },
-  { upto: 600, rate: 0.05 },
-  { upto: 730, rate: 0.1 },
-  { upto: 3896.67, rate: 0.175 },
-  { upto: 19896.67, rate: 0.25 },
-  { upto: 50416.67, rate: 0.3 },
-  { upto: Infinity, rate: 0.35 },
-];
-
 const DEFAULT_PROJECTS = [
   {
     id: "PRJ-MANET",
@@ -282,11 +269,11 @@ const DEFAULT_DATA = {
   invoices: [],
   nextEntryNum: 1,
   nextInvoiceNum: 7,
-  ssnitEmployeeRate: 0.055,
-  ssnitEmployerRate: 0.13,
-  brackets: DEFAULT_BRACKETS,
-  nhilGetfundRate: 0.05,
-  vatRate: 0.15,
+  ssnitEmployeeRate: 0,
+  ssnitEmployerRate: 0,
+  brackets: [],
+  nhilGetfundRate: 0,
+  vatRate: 0,
 };
 
 function fmt(n: number | string | null | undefined) {
@@ -793,10 +780,25 @@ function getDashboardMetrics(data) {
   const ar = balanceFor("1100");
   const ap = Math.abs(balanceFor("2000"));
   
-  const pl = computePL(data, null);
-  const netIncome = pl.netProfit;
-  const totalRevenue = pl.totalRevenue;
-  const totalExpenses = pl.totalCostOfSales + pl.totalAdminExpenses;
+  // Derive P&L totals directly from journal entries (server-backed views are used in FinancialsPanel)
+  let totalRevenue = 0;
+  let totalCostOfSales = 0;
+  let totalAdminExpenses = 0;
+  data.journal.forEach(e => e.lines.forEach(l => {
+    const acc = data.accounts.find(a => a.code === l.account);
+    if (!acc) return;
+    if (acc.type === "Revenue" || acc.type === "Income") {
+      totalRevenue += (l.credit - l.debit);
+    }
+    if (acc.type === "Expense") {
+      const codeNum = parseInt(l.account, 10) || 0;
+      const amt = l.debit - l.credit;
+      if (codeNum >= 5000 && codeNum < 6000) totalCostOfSales += amt;
+      else totalAdminExpenses += amt;
+    }
+  }));
+  const totalExpenses = totalCostOfSales + totalAdminExpenses;
+  const netIncome = totalRevenue - totalExpenses;
   
   let totalContractValue = 0;
   let totalEstimatedCost = 0;
@@ -1232,7 +1234,7 @@ function DashboardPanel({ data, setTab }) {
                     {recentEntries.map(e => (
                       <tr key={e.id} className="row-hover" style={{ cursor: "pointer" }} onClick={() => setTab("journal")}>
                         <Td label="Date">{e.date}</Td>
-                        <Td label="Description">{e.description || "?"}</Td>
+                        <Td label="Description">{e.description || "—"}</Td>
                         <Td right mono label="Amount">GHS {fmt(e.lines.reduce((s, l) => s + l.debit, 0))}</Td>
                       </tr>
                     ))}
@@ -1246,7 +1248,6 @@ function DashboardPanel({ data, setTab }) {
     </div>
   );
 }
-
 // ---------- Panels ----------
 function AccountsPanel({ data, mutate }) {
   const [form, setForm] = useState({
@@ -1268,7 +1269,10 @@ function AccountsPanel({ data, mutate }) {
       ...d,
       accounts: [...d.accounts, newAccount],
     }));
-    if (db.saveAccounts) db.saveAccounts([newAccount]);
+    db.saveAccounts([newAccount]).catch((err) => {
+      console.error("Failed to save account:", err);
+      alert("Failed to persist account to server. Check console for details.");
+    });
     setForm({ code: "", name: "", type: "Asset", normal: "Debit" });
   }
 
@@ -1284,7 +1288,10 @@ function AccountsPanel({ data, mutate }) {
       ...d,
       accounts: d.accounts.filter((a) => a.code !== code),
     }));
-    if (db.deleteAccount) db.deleteAccount(code);
+    db.deleteAccount(code).catch((err) => {
+      console.error("Failed to delete account:", err);
+      alert("Failed to delete account on server. Check console for details.");
+    });
   }
 
   return (
@@ -1508,13 +1515,19 @@ function ProjectsPanel({ data, mutate }) {
           p.id === editingProjectId ? baseProject : p
         ),
       }));
-      if (db.saveProjects) db.saveProjects([baseProject]);
+      db.saveProjects([baseProject]).catch((err) => {
+        console.error("Failed to save project:", err);
+        alert("Failed to persist project to server. Check console for details.");
+      });
     } else {
       mutate((d) => ({
         ...d,
         projects: [...d.projects, baseProject],
       }));
-      if (db.saveProjects) db.saveProjects([baseProject]);
+      db.saveProjects([baseProject]).catch((err) => {
+        console.error("Failed to save project:", err);
+        alert("Failed to persist project to server. Check console for details.");
+      });
     }
 
     closeModal();
@@ -1525,7 +1538,10 @@ function ProjectsPanel({ data, mutate }) {
       ...d,
       projects: d.projects.filter((p) => p.id !== id),
     }));
-    if (db.deleteProject) db.deleteProject(id);
+    db.deleteProject(id).catch((err) => {
+      console.error("Failed to delete project:", err);
+      alert("Failed to delete project on server. Check console for details.");
+    });
   }
 
   function toggleStatus(id) {
@@ -1536,7 +1552,10 @@ function ProjectsPanel({ data, mutate }) {
           : p
       );
       const updatedProj = updatedProjects.find((p) => p.id === id);
-      if (updatedProj && db.saveProjects) db.saveProjects([updatedProj]);
+      if (updatedProj) db.saveProjects([updatedProj]).catch((err) => {
+        console.error("Failed to save project:", err);
+        alert("Failed to persist project to server. Check console for details.");
+      });
       return { ...d, projects: updatedProjects };
     });
   }
@@ -1585,7 +1604,7 @@ function ProjectsPanel({ data, mutate }) {
                     letterSpacing: 0.5,
                   }}
                 >
-                  {p.projectType} ?{" "}
+                  {p.projectType} •{" "}
                   {p.recognitionMethod === "POC"
                     ? "Percentage of Completion"
                     : "Point-in-Time"}
@@ -1863,7 +1882,7 @@ function JournalEntryForm({ data, mutate, onDone }) {
     setLines((ls) => ls.filter((_, idx) => idx !== i));
   }
 
-  function post() {
+  async function post() {
     const validLines = lines.filter(
       (l) => l.account && (parseFloat(l.debit) > 0 || parseFloat(l.credit) > 0)
     );
@@ -1888,8 +1907,12 @@ function JournalEntryForm({ data, mutate, onDone }) {
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
     }));
-    // PERSIST TO DB
-    if (db.saveJournalEntry) db.saveJournalEntry(entry);
+    try {
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to save journal entry:", err);
+      alert("Failed to save journal entry to server. Check console for details.");
+    }
     onDone && onDone();
   }
 
@@ -1951,10 +1974,10 @@ function JournalEntryForm({ data, mutate, onDone }) {
                     value={l.account}
                     onChange={(e) => updateLine(i, "account", e.target.value)}
                   >
-                    <option value="">Select account?</option>
+                    <option value="">Select account…</option>
                     {data.accounts.map((a) => (
                       <option key={a.code} value={a.code}>
-                        {a.code} ? {a.name}
+                        {a.code} — {a.name}
                       </option>
                     ))}
                   </select>
@@ -2068,7 +2091,7 @@ function JournalEntryForm({ data, mutate, onDone }) {
           }}
         >
           {balanced ? <Check size={16} /> : <AlertTriangle size={16} />}
-          {balanced ? "Balanced ? ready to post" : "Not balanced yet"}
+          {balanced ? "Balanced — ready to post" : "Not balanced yet"}
         </div>
       </div>
 
@@ -2127,7 +2150,7 @@ function JournalPanel({ data, mutate }) {
                   </Td>
                   <Td label="Date">{e.date}</Td>
                   <Td label="Description">
-                    {e.description || <span style={{ color: MUTED }}>?</span>}
+                    {e.description || <span style={{ color: MUTED }}>—</span>}
                   </Td>
                   <Td label="Project">
                     {projectName(data.projects, e.project)}
@@ -2167,7 +2190,7 @@ function JournalPanel({ data, mutate }) {
       {viewingEntry && (
         <Modal
           title={`Entry Details: ${viewingEntry.entryNumber}`}
-          sub={`${viewingEntry.date} ? ${
+          sub={`${viewingEntry.date} — ${
             viewingEntry.description || "No description"
           }`}
           onClose={() => setViewingEntry(null)}
@@ -2191,7 +2214,7 @@ function JournalPanel({ data, mutate }) {
                   const acc = data.accounts.find((a) => a.code === l.account);
                   return (
                     <tr key={i} className="row-hover">
-                      <Td>{acc ? `${acc.code} ? ${acc.name}` : l.account}</Td>
+                      <Td>{acc ? `${acc.code} — ${acc.name}` : l.account}</Td>
                       <Td right mono>
                         {l.debit > 0 ? fmt(l.debit) : ""}
                       </Td>
@@ -2299,7 +2322,7 @@ function LedgerPanel({ data }) {
                   label="Balance"
                   style={{ color: isBalanced ? GREEN : ALERT }}
                 >
-                  {isBalanced ? "Balanced ?" : "Out of balance"}
+                  {isBalanced ? "Balanced ✓" : "Out of balance"}
                 </Td>
               </tr>
             </tfoot>
@@ -2310,149 +2333,9 @@ function LedgerPanel({ data }) {
   );
 }
 
-// ---------- IFRS Compliant Financial Logic ----------
-function computePL(data, projectId) {
-  const filterEntries = projectId
-    ? data.journal.filter((e) => (e.project || "GEN") === projectId)
-    : data.journal;
-  const getAmountsForCodes = (codes) => {
-    return codes
-      .map((code) => {
-        const acc = data.accounts.find((a) => a.code === code);
-        if (!acc) return null;
-        let debit = 0,
-          credit = 0;
-        filterEntries.forEach((e) =>
-          e.lines.forEach((l) => {
-            if (l.account === code) {
-              debit += l.debit;
-              credit += l.credit;
-            }
-          })
-        );
-        return {
-          ...acc,
-          amount: acc.normal === "Debit" ? debit - credit : credit - debit,
-        };
-      })
-      .filter((r) => r && r.amount !== 0);
-  };
-
-  const revenue = getAmountsForCodes(["4000", "4050", "4100", "4150", "4200"]);
-  const costOfSales = getAmountsForCodes([
-    "5000",
-    "5100",
-    "5200",
-    "5300",
-    "5400",
-    "5500",
-    "5600",
-  ]);
-  const otherIncome = getAmountsForCodes(["4200"]);
-  const adminExpenses = getAmountsForCodes([
-    "6000",
-    "6100",
-    "6200",
-    "6300",
-    "6400",
-    "6500",
-  ]);
-
-  const totalRevenue = revenue.reduce((s, r) => s + r.amount, 0);
-  const totalCostOfSales = costOfSales.reduce((s, r) => s + r.amount, 0);
-  const grossProfit = totalRevenue - totalCostOfSales;
-  const totalOtherIncome = otherIncome.reduce((s, r) => s + r.amount, 0);
-  const totalAdminExpenses = adminExpenses.reduce((s, r) => s + r.amount, 0);
-  const operatingProfit = grossProfit + totalOtherIncome - totalAdminExpenses;
-  const netProfit = operatingProfit;
-
-  return {
-    revenue,
-    costOfSales,
-    otherIncome,
-    adminExpenses,
-    totalRevenue,
-    totalCostOfSales,
-    grossProfit,
-    totalOtherIncome,
-    totalAdminExpenses,
-    operatingProfit,
-    netProfit,
-  };
-}
-
-function computeBalanceSheet(data) {
-  const balanceFor = (a) => {
-    let debit = 0,
-      credit = 0;
-    data.journal.forEach((e) =>
-      e.lines.forEach((l) => {
-        if (l.account === a.code) {
-          debit += l.debit;
-          credit += l.credit;
-        }
-      })
-    );
-    return a.normal === "Debit" ? debit - credit : credit - debit;
-  };
-
-  const nonCurrentAssets = data.accounts
-    .filter(
-      (a) =>
-        a.type === "Asset" &&
-        a.code !== "1000" &&
-        a.code !== "1100" &&
-        a.code !== "1200" &&
-        a.code !== "1300" &&
-        a.code !== "1400"
-    )
-    .map((a) => ({ ...a, amount: balanceFor(a) }))
-    .filter((r) => r.amount !== 0);
-  const currentAssets = data.accounts
-    .filter(
-      (a) =>
-        a.type === "Asset" &&
-        ["1000", "1100", "1200", "1300", "1400"].includes(a.code)
-    )
-    .map((a) => ({ ...a, amount: balanceFor(a) }))
-    .filter((r) => r.amount !== 0);
-  const currentLiabilities = data.accounts
-    .filter((a) => a.type === "Liability")
-    .map((a) => ({ ...a, amount: balanceFor(a) }))
-    .filter((r) => r.amount !== 0);
-  const equity = data.accounts
-    .filter((a) => a.type === "Equity")
-    .map((a) => ({ ...a, amount: balanceFor(a) }))
-    .filter((r) => r.amount !== 0);
-
-  const { netProfit } = computePL(data, null);
-  const totalNonCurrentAssets = nonCurrentAssets.reduce(
-    (s, r) => s + r.amount,
-    0
-  );
-  const totalCurrentAssets = currentAssets.reduce((s, r) => s + r.amount, 0);
-  const totalAssets = totalNonCurrentAssets + totalCurrentAssets;
-  const totalCurrentLiabilities = currentLiabilities.reduce(
-    (s, r) => s + r.amount,
-    0
-  );
-  const totalEquity = equity.reduce((s, r) => s + r.amount, 0) + netProfit;
-  const totalLiabilitiesAndEquity = totalCurrentLiabilities + totalEquity;
-
-  return {
-    nonCurrentAssets,
-    currentAssets,
-    currentLiabilities,
-    equity,
-    totalNonCurrentAssets,
-    totalCurrentAssets,
-    totalAssets,
-    totalCurrentLiabilities,
-    totalEquity,
-    totalLiabilitiesAndEquity,
-    netProfit,
-  };
-}
+// NOTE: Financial calculations are now provided by database views/RPC.
+// Local computePL and computeBalanceSheet were removed in Stage 1 and
+// FinancialsPanel is wired to fetch the pre-calculated results.
 
 function computeCashFlow(data) {
   const rows = [];
@@ -2524,12 +2407,99 @@ function MiniTable({ rows, label }) {
 
 function FinancialsPanel({ data, setPrintContent }) {
   const [view, setView] = useState("company");
-  const pl = useMemo(
-    () => computePL(data, view === "company" ? null : view),
-    [data, view]
-  );
-  const bs = useMemo(() => computeBalanceSheet(data), [data]);
+
+  // State for database-fetched financials
+  const [tbData, setTbData] = useState([]);
+  const [bsData, setBsData] = useState([]);
+  const [plData, setPlData] = useState([]);
+  const [loadingFin, setLoadingFin] = useState(true);
+
   const cf = useMemo(() => computeCashFlow(data), [data]);
+
+  useEffect(() => {
+    async function fetchFinancials() {
+      setLoadingFin(true);
+      try {
+        const startDate = "2026-01-01";
+        const endDate = "2026-12-31";
+
+        const [tb, bs, pl] = await Promise.all([
+          getTrialBalance(),
+          getBalanceSheet(),
+          getProfitAndLoss(startDate, endDate),
+        ]);
+
+        setTbData(tb || []);
+        setBsData(bs || []);
+        setPlData(pl || []);
+      } catch (err) {
+        console.error("Error loading financials:", err);
+      } finally {
+        setLoadingFin(false);
+      }
+    }
+    fetchFinancials();
+  }, [view]);
+
+  if (loadingFin) {
+    return <Card><p>Loading financial data...</p></Card>;
+  }
+
+  // Map plData to the `pl` shape used by the UI
+  const revenue = (plData || []).filter(r => r.type === 'Income').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
+  const expensesAll = (plData || []).filter(r => r.type === 'Expense').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
+  const costOfSales = expensesAll.filter(e => { const c = parseInt(e.code,10); return c >= 5000 && c < 6000; });
+  const adminExpenses = expensesAll.filter(e => { const c = parseInt(e.code,10); return c >= 6000 || c < 5000; });
+  const totalRevenue = revenue.reduce((s,r) => s + r.amount, 0);
+  const totalCostOfSales = costOfSales.reduce((s,r) => s + r.amount, 0);
+  const totalAdminExpenses = adminExpenses.reduce((s,r) => s + r.amount, 0);
+  const grossProfit = totalRevenue - totalCostOfSales;
+  const totalOtherIncome = 0;
+  const operatingProfit = grossProfit + totalOtherIncome - totalAdminExpenses;
+  const netProfit = operatingProfit;
+
+  const pl = {
+    revenue,
+    costOfSales,
+    otherIncome: [],
+    adminExpenses,
+    totalRevenue,
+    totalCostOfSales,
+    grossProfit,
+    totalOtherIncome,
+    totalAdminExpenses,
+    operatingProfit,
+    netProfit,
+  };
+
+  // Map bsData to the `bs` shape used by the UI
+  const assets = (bsData || []).filter(r => r.type === 'Asset' || r.type === 'Contra-Asset').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
+  const currentAssets = assets.filter(a => ['1000','1100','1200','1300','1400'].includes(a.code));
+  const nonCurrentAssets = assets.filter(a => !['1000','1100','1200','1300','1400'].includes(a.code));
+  const liabilities = (bsData || []).filter(r => r.type === 'Liability').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
+  const equity = (bsData || []).filter(r => r.type === 'Equity').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
+
+  const totalNonCurrentAssets = nonCurrentAssets.reduce((s,r)=>s+r.amount,0);
+  const totalCurrentAssets = currentAssets.reduce((s,r)=>s+r.amount,0);
+  const totalAssets = totalNonCurrentAssets + totalCurrentAssets;
+  const totalCurrentLiabilities = liabilities.reduce((s,r)=>s+r.amount,0);
+  const totalEquity = equity.reduce((s,r)=>s+r.amount,0) + netProfit;
+  const totalLiabilitiesAndEquity = totalCurrentLiabilities + totalEquity;
+
+  const bs = {
+    nonCurrentAssets,
+    currentAssets,
+    currentLiabilities: liabilities,
+    equity,
+    totalNonCurrentAssets,
+    totalCurrentAssets,
+    totalAssets,
+    totalCurrentLiabilities,
+    totalEquity,
+    totalLiabilitiesAndEquity,
+    netProfit,
+  };
+
   const projectOptions = [
     { id: "company", name: "Company-wide" },
     ...data.projects,
@@ -2795,7 +2765,7 @@ function FinancialsPanel({ data, setPrintContent }) {
             <img src={LOGO_SRC} alt="logo" style={finStyles.logo} />
             <div>
               <div style={finStyles.company}>{company.name}</div>
-              <div style={finStyles.tagline}>Design ? Build ? Deliver</div>
+              <div style={finStyles.tagline}>Design · Build · Deliver</div>
             </div>
           </div>
           <div style={finStyles.headerRight}>
@@ -2983,7 +2953,7 @@ function FinancialsPanel({ data, setPrintContent }) {
                 {cf.map((r, i) => (
                   <tr key={i}>
                     <td style={finStyles.td}>{r.date}</td>
-                    <td style={finStyles.td}>{r.description || "?"}</td>
+                    <td style={finStyles.td}>{r.description || "—"}</td>
                     <td
                       style={{
                         ...finStyles.td,
@@ -3015,28 +2985,15 @@ function FinancialsPanel({ data, setPrintContent }) {
           </>
         )}
 
-        <div style={finStyles.signatures}>
-          <div style={finStyles.sigBlock}>
-            <div style={finStyles.sigLine}>
-              {company.preparedByName.toUpperCase()}
-            </div>
-            <div style={finStyles.sigRole}>{company.preparedByTitle}</div>
-          </div>
-          <div style={finStyles.sigBlock}>
-            <div style={finStyles.sigLine}>
-              {company.authorisedByName.toUpperCase()}
-            </div>
-            <div style={finStyles.sigRole}>{company.authorisedByTitle}</div>
-          </div>
-        </div>
+        {/* Signatures removed from financial printout per request */}
 
         <div style={finStyles.footerNote}>
           Prepared from the general ledger for internal management review.
           <br />
-          {company.name} ? {company.addressLine} ? {company.cityLine} ?{" "}
+          {company.name} · {company.addressLine} · {company.cityLine} ·{" "}
           {company.poBox}
           <br />
-          Phone: {company.phone} ? Telephone: {company.telephone} ?{" "}
+          Phone: {company.phone} · Telephone: {company.telephone} ·{" "}
           {company.email}
         </div>
       </div>
@@ -3046,6 +3003,7 @@ function FinancialsPanel({ data, setPrintContent }) {
       document.title = "Modulo Ledger";
     }, 100);
   }
+
 
   return (
     <div>
@@ -3140,7 +3098,7 @@ function FinancialsPanel({ data, setPrintContent }) {
 
       {view === "company" && (
         <>
-          <SectionTitle sub="Assets, liabilities, and equity ? company-wide (projects share one balance sheet, they aren't separate legal entities).">
+          <SectionTitle sub="Assets, liabilities, and equity — company-wide (projects share one balance sheet, they aren't separate legal entities).">
             Statement of Financial Position
           </SectionTitle>
           <Card style={{ marginBottom: 16 }}>
@@ -3227,7 +3185,7 @@ function FinancialsPanel({ data, setPrintContent }) {
                       <Td mono label="Entry">
                         {r.entryNumber}
                       </Td>
-                      <Td label="Description">{r.description || "?"}</Td>
+                      <Td label="Description">{r.description || "—"}</Td>
                       <Td
                         right
                         mono
@@ -3314,6 +3272,7 @@ function EmployeesPanel({ data, mutate }) {
       exemptSsnit: form.exemptSsnit,
     };
 
+    const prevEmployees = data.employees;
     if (editingEmployeeId) {
       mutate((d) => ({
         ...d,
@@ -3321,13 +3280,29 @@ function EmployeesPanel({ data, mutate }) {
           e.id === editingEmployeeId ? employeePayload : e
         ),
       }));
-      if (db.saveEmployees) db.saveEmployees([employeePayload]);
+      (async () => {
+        try {
+          await db.saveEmployees([employeePayload]);
+        } catch (err) {
+          console.error("Failed to save employee:", err);
+          alert("Failed to persist employee to server. Changes reverted.");
+          mutate((d) => ({ ...d, employees: prevEmployees }));
+        }
+      })();
     } else {
       mutate((d) => ({
         ...d,
         employees: [...d.employees, employeePayload],
       }));
-      if (db.saveEmployees) db.saveEmployees([employeePayload]);
+      (async () => {
+        try {
+          await db.saveEmployees([employeePayload]);
+        } catch (err) {
+          console.error("Failed to save employee:", err);
+          alert("Failed to persist employee to server. Changes reverted.");
+          mutate((d) => ({ ...d, employees: prevEmployees }));
+        }
+      })();
     }
 
     resetForm();
@@ -3336,22 +3311,37 @@ function EmployeesPanel({ data, mutate }) {
   }
 
   function toggleActive(id) {
-    mutate((d) => {
-      const updatedEmployees = d.employees.map((e) =>
-        e.id === id ? { ...e, active: !e.active } : e
-      );
-      const updatedEmp = updatedEmployees.find((e) => e.id === id);
-      if (updatedEmp && db.saveEmployees) db.saveEmployees([updatedEmp]);
-      return { ...d, employees: updatedEmployees };
-    });
+    const prevEmployees = data.employees;
+    const updatedEmployees = data.employees.map((e) =>
+      e.id === id ? { ...e, active: !e.active } : e
+    );
+    const updatedEmp = updatedEmployees.find((e) => e.id === id);
+    mutate((d) => ({ ...d, employees: updatedEmployees }));
+    if (updatedEmp) {
+      (async () => {
+        try {
+          await db.saveEmployees([updatedEmp]);
+        } catch (err) {
+          console.error("Failed to toggle employee active:", err);
+          alert("Failed to update employee on server. Reverting.");
+          mutate((d) => ({ ...d, employees: prevEmployees }));
+        }
+      })();
+    }
   }
 
   function removeEmployee(id) {
-    mutate((d) => ({
-      ...d,
-      employees: d.employees.filter((e) => e.id !== id),
-    }));
-    if (db.deleteEmployee) db.deleteEmployee(id);
+    const prevEmployees = data.employees;
+    mutate((d) => ({ ...d, employees: d.employees.filter((e) => e.id !== id) }));
+    (async () => {
+      try {
+        await db.deleteEmployee(id);
+      } catch (err) {
+        console.error("Failed to delete employee:", err);
+        alert("Failed to delete employee on server. Reverting.");
+        mutate((d) => ({ ...d, employees: prevEmployees }));
+      }
+    })();
   }
 
   return (
@@ -3388,10 +3378,10 @@ function EmployeesPanel({ data, mutate }) {
                 <tr key={e.id} className="row-hover">
                   <Td label="Name">{e.name}</Td>
                   <Td label="Designation">
-                    {e.designation || <span style={{ color: MUTED }}>?</span>}
+                    {e.designation || <span style={{ color: MUTED }}>—</span>}
                   </Td>
                   <Td mono label="SSNIT No.">
-                    {e.ssnitNo || <span style={{ color: MUTED }}>?</span>}
+                    {e.ssnitNo || <span style={{ color: MUTED }}>—</span>}
                   </Td>
                   <Td right mono label="Base Salary">
                     GHS {fmt(e.baseSalary)}
@@ -3744,7 +3734,7 @@ function InvoiceDocument({ data, inv }) {
   const company = data.company || DEFAULT_COMPANY;
 
   const formatDate = (value) => {
-    if (!value) return "?";
+    if (!value) return "—";
     const [year, month, day] = value.split("-").map(Number);
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString("en-GB", {
@@ -3835,7 +3825,7 @@ function InvoiceDocument({ data, inv }) {
                 marginTop: 2,
               }}
             >
-              Design ? Build ? Deliver
+              Design · Build · Deliver
             </div>
           </div>
         </div>
@@ -3909,13 +3899,13 @@ function InvoiceDocument({ data, inv }) {
           <div style={cardRowStyle}>
             <span style={{ color: "#6B6B6B" }}>Location</span>
             <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
-              {inv.location || "?"}
+              {inv.location || "—"}
             </span>
           </div>
           <div style={cardRowStyle}>
             <span style={{ color: "#6B6B6B" }}>For</span>
             <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
-              {inv.forText || "?"}
+              {inv.forText || "—"}
             </span>
           </div>
           <div style={cardRowStyle}>
@@ -4081,7 +4071,7 @@ function InvoiceDocument({ data, inv }) {
                     verticalAlign: "top",
                   }}
                 >
-                  {it.unit || "?"}
+                  {it.unit || "—"}
                 </td>
                 <td
                   style={{
@@ -4198,7 +4188,7 @@ function InvoiceDocument({ data, inv }) {
                 color: "#6B6B6B",
               }}
             >
-              <span>VAT 15%</span>
+              <span>VAT ({(data.vatRate * 100).toFixed(1)}%)</span>
               <span>{sym} {fmt(t.vat)}</span>
             </div>
           )}
@@ -4264,14 +4254,14 @@ function InvoiceDocument({ data, inv }) {
       >
         We execute the best designs with utmost empathy and professionalism.
         <br />
-        Thank you for entrusting to us your dreams ? we will help make it a reality.
+        Thank you for entrusting to us your dreams — we will help make it a reality.
         <br />
         <br />
-        <span style={{ color: "#E8E4DC" }}>?</span>
+        <span style={{ color: "#E8E4DC" }}>—</span>
         <br />
-        {company.addressLine} ? {company.cityLine} ? {company.poBox}
+        {company.addressLine} · {company.cityLine} · {company.poBox}
         <br />
-        Phone: {company.phone} ? Telephone: {company.telephone} ? {company.email}
+        Phone: {company.phone} · Telephone: {company.telephone} · {company.email}
       </div>
     </div>
   );
@@ -4502,7 +4492,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
           <img src={LOGO_SRC} alt="Modulo Development Logo" style={receiptStyles.logo} />
           <div>
             <div style={receiptStyles.company}>{data.company.name}</div>
-            <div style={receiptStyles.tagline}>Design ? Build ? Deliver</div>
+            <div style={receiptStyles.tagline}>Design · Build · Deliver</div>
           </div>
         </div>
         <div style={receiptStyles.headerRight}>
@@ -4566,7 +4556,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
         <tbody>
           <tr>
             <td style={receiptStyles.td}>{payment.method}</td>
-            <td style={receiptStyles.td}>{payment.reference || "?"}</td>
+            <td style={receiptStyles.td}>{payment.reference || "—"}</td>
             <td style={{ ...receiptStyles.td, ...receiptStyles.tdRight, fontWeight: 700 }}>GHS {fmt(payment.amountGHS)}</td>
           </tr>
         </tbody>
@@ -4587,7 +4577,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
         </div>
         <div style={receiptStyles.summaryRow}>
           <span>Paid For</span>
-          <span>{inv.forText || inv.projectLabel || "?"}</span>
+          <span>{inv.forText || inv.projectLabel || "—"}</span>
         </div>
         <div style={receiptStyles.summaryHighlight}>
           <span>Outstanding Balance</span>
@@ -4595,22 +4585,13 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
         </div>
       </div>
 
-      <div style={receiptStyles.signatures}>
-        <div style={receiptStyles.sigBlock}>
-          <div style={receiptStyles.sigLine}>{data.company.preparedByName.toUpperCase()}</div>
-          <div style={receiptStyles.sigRole}>{data.company.preparedByTitle}</div>
-        </div>
-        <div style={receiptStyles.sigBlock}>
-          <div style={receiptStyles.sigLine}>{data.company.authorisedByName.toUpperCase()}</div>
-          <div style={receiptStyles.sigRole}>{data.company.authorisedByTitle}</div>
-        </div>
-      </div>
+      {/* Signatures removed from printable receipt per request */}
 
       <div style={receiptStyles.footerNote}>
         Thank you for your business.<br />
-        {data.company.name} ? {data.company.addressLine} ? {data.company.cityLine}
+        {data.company.name} · {data.company.addressLine} · {data.company.cityLine}
         <br />
-        Phone: {data.company.phone} ? Telephone: {data.company.telephone} ? Mail: {data.company.email}
+        Phone: {data.company.phone} · Telephone: {data.company.telephone} · Mail: {data.company.email}
       </div>
     </div>
   );
@@ -4810,7 +4791,7 @@ function Payslip({ data, run, r }) {
           <img src={LOGO_SRC} alt="Modulo Development Logo" style={payslipStyles.darkLogo} />
           <div>
             <div style={payslipStyles.darkCompany}>{data.company.name}</div>
-            <div style={payslipStyles.darkTagline}>Design ? Build ? Deliver</div>
+            <div style={payslipStyles.darkTagline}>Design · Build · Deliver</div>
           </div>
         </div>
         <div style={payslipStyles.headerRight}>
@@ -4826,11 +4807,11 @@ function Payslip({ data, run, r }) {
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>SSNIT Number</div>
-          <div style={payslipStyles.fieldValue}>{emp.ssnitNo || "?"}</div>
+          <div style={payslipStyles.fieldValue}>{emp.ssnitNo || "—"}</div>
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>Designation</div>
-          <div style={payslipStyles.fieldValue}>{(emp.designation || "?").toUpperCase()}</div>
+          <div style={payslipStyles.fieldValue}>{(emp.designation || "—").toUpperCase()}</div>
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>Month / Year</div>
@@ -4838,7 +4819,7 @@ function Payslip({ data, run, r }) {
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>NIA Card</div>
-          <div style={payslipStyles.fieldValue}>{emp.niaCard || "?"}</div>
+          <div style={payslipStyles.fieldValue}>{emp.niaCard || "—"}</div>
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>Department</div>
@@ -4851,57 +4832,50 @@ function Payslip({ data, run, r }) {
           <div style={payslipStyles.colHeader}>Earnings</div>
           <div style={payslipStyles.colRow}>
             <span style={payslipStyles.colLabel}>Basic Salary</span>
-            <span style={payslipStyles.colValue}>GH? {fmt(r.gross)}</span>
+            <span style={payslipStyles.colValue}>GH₵ {fmt(r.gross)}</span>
           </div>
           <div style={{ ...payslipStyles.colRow, ...payslipStyles.colTotal }}>
             <span style={{ ...payslipStyles.colLabel, color: "#2D2D2D" }}>Total Earnings</span>
-            <span style={{ ...payslipStyles.colValue, color: "#2D2D2D" }}>GH? {fmt(r.gross)}</span>
+            <span style={{ ...payslipStyles.colValue, color: "#2D2D2D" }}>GH₵ {fmt(r.gross)}</span>
           </div>
         </div>
         <div style={payslipStyles.colCard}>
           <div style={payslipStyles.colHeader}>Deductions</div>
           <div style={payslipStyles.colRow}>
             <span style={payslipStyles.colLabel}>P.A.Y.E</span>
-            <span style={payslipStyles.colValue}>GH? {fmt(r.paye)}</span>
+            <span style={payslipStyles.colValue}>GH₵ {fmt(r.paye)}</span>
           </div>
           <div style={payslipStyles.colRow}>
-            <span style={payslipStyles.colLabel}>Tier 1 + 2 (QFTL) 5.5%</span>
-            <span style={payslipStyles.colValue}>GH? {fmt(r.ssnitEmployee)}</span>
+            <span style={payslipStyles.colLabel}>
+              Tier 1 + 2 (QFTL) {(data.ssnitEmployeeRate * 100).toFixed(1)}%
+            </span>
+            <span style={payslipStyles.colValue}>GH₵ {fmt(r.ssnitEmployee)}</span>
           </div>
           <div style={{ ...payslipStyles.colRow, ...payslipStyles.colTotal }}>
             <span style={{ ...payslipStyles.colLabel, color: "#2D2D2D" }}>Total Deductions</span>
-            <span style={{ ...payslipStyles.colValue, color: "#A63D40" }}>GH? {fmt(r.paye + r.ssnitEmployee)}</span>
+            <span style={{ ...payslipStyles.colValue, color: "#A63D40" }}>GH₵ {fmt(r.paye + r.ssnitEmployee)}</span>
           </div>
         </div>
       </div>
 
       <div style={payslipStyles.netHighlight}>
         <div style={payslipStyles.netLabel}>Net Pay</div>
-        <div style={payslipStyles.netAmount}>GH? {fmt(r.net)}</div>
+        <div style={payslipStyles.netAmount}>GH₵ {fmt(r.net)}</div>
       </div>
 
       <div style={payslipStyles.employerSection}>
         <div style={payslipStyles.empTitle}>Employer Contributions</div>
         <div style={payslipStyles.empRow}>
-          <span style={payslipStyles.colLabel}>Tier 1 (SSNIT) ? {(data.ssnitEmployerRate * 100).toFixed(0)}%</span>
-          <span style={payslipStyles.colValue}>GH? {fmt(r.ssnitEmployer)}</span>
+          <span style={payslipStyles.colLabel}>Tier 1 (SSNIT) — {(data.ssnitEmployerRate * 100).toFixed(0)}%</span>
+          <span style={payslipStyles.colValue}>GH₵ {fmt(r.ssnitEmployer)}</span>
         </div>
       </div>
 
-      <div style={payslipStyles.signatures}>
-        <div style={payslipStyles.sigBlock}>
-          <div style={payslipStyles.sigLine}>{data.company.preparedByName.toUpperCase()}</div>
-          <div style={payslipStyles.sigRole}>{data.company.preparedByTitle}</div>
-        </div>
-        <div style={payslipStyles.sigBlock}>
-          <div style={payslipStyles.sigLine}>{data.company.authorisedByName.toUpperCase()}</div>
-          <div style={payslipStyles.sigRole}>{data.company.authorisedByTitle}</div>
-        </div>
-      </div>
+      {/* Signatures removed from payslip per request */}
 
       <div style={payslipStyles.footerNote}>
         This is a computer-generated payslip and does not require a physical signature.<br />
-        {data.company.name} ? {data.company.addressLine}, {data.company.cityLine} ? {data.company.poBox}
+        {data.company.name} · {data.company.addressLine}, {data.company.cityLine} · {data.company.poBox}
       </div>
     </div>
   );
@@ -4914,7 +4888,84 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
   );
   const [draft, setDraft] = useState(null);
   const [showBrackets, setShowBrackets] = useState(false);
-  const [expandedRun, setExpandedRun] = useState(null);
+  const [savingTaxSettings, setSavingTaxSettings] = useState(false);
+  const [taxSaveMessage, setTaxSaveMessage] = useState("");
+  const [taxSaveError, setTaxSaveError] = useState("");
+
+  function updateTaxRate(field, value) {
+    const percent = Number(value);
+    mutate((prev) => ({
+      ...prev,
+      [field]: isNaN(percent) ? 0 : percent / 100,
+    }));
+  }
+
+  function updateBracket(index, field, value) {
+    mutate((prev) => {
+      const brackets = [...(prev.brackets || [])];
+      const current = brackets[index] || { upto: 0, rate: 0 };
+      const next = { ...current };
+
+      if (field === "rate") {
+        const parsed = Number(value);
+        next.rate = isNaN(parsed) ? 0 : parsed / 100;
+      } else {
+        const raw = String(value).trim();
+        next.upto = raw.toLowerCase() === "infinity" ? Infinity : Number(raw);
+        if (isNaN(next.upto)) next.upto = current.upto;
+      }
+
+      brackets[index] = next;
+      return { ...prev, brackets };
+    });
+  }
+
+  function addBracket() {
+    mutate((prev) => {
+      const brackets = [...(prev.brackets || [])];
+      const existingUptos = brackets
+        .filter((b) => b.upto !== Infinity)
+        .map((b) => Number(b.upto) || 0);
+      const highestUpto = existingUptos.length > 0 ? Math.max(...existingUptos) : 0;
+      const nextUpto = Math.max(1000, highestUpto + 1);
+      const infinityIndex = brackets.findIndex((b) => b.upto === Infinity);
+      const newBracket = { upto: nextUpto, rate: 0.1 };
+      if (infinityIndex === -1) {
+        brackets.push(newBracket);
+      } else {
+        brackets.splice(infinityIndex, 0, newBracket);
+      }
+      return { ...prev, brackets };
+    });
+  }
+
+  function removeBracket(index) {
+    mutate((prev) => ({
+      ...prev,
+      brackets: (prev.brackets || []).filter((_, i) => i !== index),
+    }));
+  }
+
+  async function saveTaxSettings() {
+    setSavingTaxSettings(true);
+    setTaxSaveMessage("");
+    setTaxSaveError("");
+    try {
+      await saveTaxRates({
+        ssnitEmployeeRate: data.ssnitEmployeeRate,
+        ssnitEmployerRate: data.ssnitEmployerRate,
+        nhilGetfundRate: data.nhilGetfundRate,
+        vatRate: data.vatRate,
+      });
+      await savePayeBrackets(data.brackets);
+      setTaxSaveMessage("Tax settings saved to the database.");
+    } catch (err) {
+      console.error("Failed to save tax settings:", err);
+      setTaxSaveError("Unable to persist tax settings. Try again.");
+    } finally {
+      setSavingTaxSettings(false);
+    }
+  }
 
   function buildDraft() {
     const rows = data.employees
@@ -4946,7 +4997,7 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
     setDraft(rows);
   }
 
-  function postPayroll() {
+  async function postPayroll() {
     if (!draft || draft.length === 0) return;
     const totalGross = draft.reduce((s, r) => s + r.gross, 0);
     const totalSsnitEmployer = draft.reduce((s, r) => s + r.ssnitEmployer, 0);
@@ -4986,38 +5037,26 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
       payrollRuns: [run, ...d.payrollRuns],
       nextEntryNum: d.nextEntryNum + 1,
     }));
-
-    // PERSIST TO DB
-    if (db.saveJournalEntry) db.saveJournalEntry(entry);
-    if (db.savePayrollRun) db.savePayrollRun(run);
-
+    try {
+      await db.savePayrollRun(run);
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to persist payroll run or journal entry:", err);
+      alert("Failed to post payroll to server. Check console for details.");
+    }
     setDraft(null);
-    setExpandedRun(run.id); // Expand the newly posted run
   }
 
-  function printSinglePayslip(run, row) {
+  function printPayslip(run, row) {
     const empName = row.name.replace(/\s+/g, "_");
     document.title = `Payslip_${empName}_${run.period}`;
+
     setPrintContent(
       <div>
         <Payslip key={row.employeeId} data={data} run={run} r={row} />
       </div>
     );
-    setTimeout(() => {
-      window.print();
-      document.title = "Modulo Ledger";
-    }, 100);
-  }
 
-  function printAllPayslips(run) {
-    document.title = `Payslips_${run.period}`;
-    setPrintContent(
-      <div>
-        {run.rows.map((r) => (
-          <Payslip key={r.employeeId} data={data} run={run} r={r} />
-        ))}
-      </div>
-    );
     setTimeout(() => {
       window.print();
       document.title = "Modulo Ledger";
@@ -5084,8 +5123,62 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
                 marginBottom: 10,
               }}
             >
-              Monthly PAYE bands (GHS) ? estimated from 2026 GRA annual bands.
+              Monthly PAYE bands (GHS) — estimated from 2026 GRA annual bands.
             </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <label style={labelStyle}>SSNIT employee rate</label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={(data.ssnitEmployeeRate * 100).toFixed(2)}
+                  onChange={(e) => updateTaxRate("ssnitEmployeeRate", e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>SSNIT employer rate</label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={(data.ssnitEmployerRate * 100).toFixed(2)}
+                  onChange={(e) => updateTaxRate("ssnitEmployerRate", e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>NHIL / GETFund rate</label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={(data.nhilGetfundRate * 100).toFixed(2)}
+                  onChange={(e) => updateTaxRate("nhilGetfundRate", e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>VAT rate</label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={(data.vatRate * 100).toFixed(2)}
+                  onChange={(e) => updateTaxRate("vatRate", e.target.value)}
+                />
+              </div>
+            </div>
+
             <TableScroll>
               <table
                 className="table-card"
@@ -5099,22 +5192,73 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
                   <tr>
                     <Th>Up to (GHS)</Th>
                     <Th right>Rate</Th>
+                    <Th right>Actions</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.brackets.map((b, i) => (
                     <tr key={i} className="row-hover">
                       <Td mono label="Up to (GHS)">
-                        {b.upto === Infinity ? "and above" : fmt(b.upto)}
+                        <input
+                          style={{ ...inputStyle, width: "100%" }}
+                          type="text"
+                          value={b.upto === Infinity ? "Infinity" : b.upto}
+                          onChange={(e) => updateBracket(i, "upto", e.target.value)}
+                        />
                       </Td>
                       <Td right mono label="Rate">
-                        {(b.rate * 100).toFixed(1)}%
+                        <input
+                          style={{ ...inputStyle, width: "100%" }}
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={(b.rate * 100).toFixed(2)}
+                          onChange={(e) => updateBracket(i, "rate", e.target.value)}
+                        />
+                      </Td>
+                      <Td right mono>
+                        <Button
+                          variant="ghost"
+                          onClick={() => removeBracket(i)}
+                          icon={Trash2}
+                          disabled={b.upto === Infinity}
+                        >
+                          Remove
+                        </Button>
                       </Td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </TableScroll>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <Button onClick={addBracket} icon={Plus} variant="ghost">
+                Add bracket
+              </Button>
+              <Button onClick={saveTaxSettings} icon={Check} disabled={savingTaxSettings}>
+                {savingTaxSettings ? "Saving…" : "Save tax settings"}
+              </Button>
+              {taxSaveMessage && (
+                <span style={{ color: GREEN, fontFamily: FONT_BODY, fontSize: 13 }}>
+                  {taxSaveMessage}
+                </span>
+              )}
+              {taxSaveError && (
+                <span style={{ color: ALERT, fontFamily: FONT_BODY, fontSize: 13 }}>
+                  {taxSaveError}
+                </span>
+              )}
+            </div>
+
             <div
               style={{
                 display: "flex",
@@ -5125,12 +5269,10 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
               }}
             >
               <span>
-                SSNIT employee (Tier 1+2):{" "}
-                <b>{(data.ssnitEmployeeRate * 100).toFixed(1)}%</b>
+                SSNIT employee (Tier 1+2): <b>{(data.ssnitEmployeeRate * 100).toFixed(1)}%</b>
               </span>
               <span>
-                SSNIT employer (Tier 1):{" "}
-                <b>{(data.ssnitEmployerRate * 100).toFixed(1)}%</b>
+                SSNIT employer (Tier 1): <b>{(data.ssnitEmployerRate * 100).toFixed(1)}%</b>
               </span>
             </div>
           </div>
@@ -5183,85 +5325,74 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
         </Card>
       )}
       <SectionTitle>Past payroll runs</SectionTitle>
-      {data.payrollRuns.length === 0 && (
-        <Card><p style={{ fontFamily: FONT_BODY, color: MUTED, fontSize: 13.5 }}>No payroll posted yet.</p></Card>
-      )}
-      {data.payrollRuns.map((run) => (
-        <Card key={run.id} style={{ marginBottom: 16 }}>
+      <Card>
+        {data.payrollRuns.length === 0 && (
+          <p style={{ fontFamily: FONT_BODY, color: MUTED, fontSize: 13.5 }}>
+            No payroll posted yet.
+          </p>
+        )}
+        {data.payrollRuns.map((run) => (
           <div
+            key={run.id}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              cursor: "pointer",
+              marginBottom: 24,
+              paddingBottom: 24,
+              borderBottom: `1px solid ${RULE}`,
             }}
-            onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
           >
-            <div>
-              <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, color: INK }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontWeight: 700,
+                  color: INK,
+                  fontSize: 16,
+                }}
+              >
                 {run.period}
               </span>
-              <span style={{ marginLeft: 12, fontSize: 12, color: MUTED }}>
-                {run.rows.length} employees ? Total Net: GHS {fmt(run.rows.reduce((s, r) => s + r.net, 0))}
-              </span>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Button
-                variant="ghost"
-                icon={Printer}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  printAllPayslips(run);
-                }}
-              >
-                Print All
-              </Button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setExpandedRun(expandedRun === run.id ? null : run.id);
-                }}
-                style={{ background: "none", border: "none", cursor: "pointer", color: MUTED }}
-              >
-                {expandedRun === run.id ? <X size={18} /> : <Plus size={18} />}
-              </button>
-            </div>
-          </div>
 
-          {expandedRun === run.id && (
-            <div style={{ marginTop: 16, borderTop: `1px solid ${RULE}`, paddingTop: 16 }}>
-              <TableScroll>
-                <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <Th>Employee</Th>
-                      <Th right>Net Pay</Th>
-                      <Th right>&nbsp;</Th>
+            <TableScroll>
+              <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <Th>Employee</Th>
+                    <Th right>Net Pay</Th>
+                    <Th right>&nbsp;</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {run.rows.map((r) => (
+                    <tr key={r.employeeId} className="row-hover">
+                      <Td label="Employee">{r.name}</Td>
+                      <Td right mono label="Net Pay">GHS {fmt(r.net)}</Td>
+                      <Td right>
+                        <Button
+                          variant="ghost"
+                          icon={Printer}
+                          onClick={() => printPayslip(run, r)}
+                        >
+                          Print
+                        </Button>
+                      </Td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {run.rows.map((r) => (
-                      <tr key={r.employeeId} className="row-hover">
-                        <Td label="Employee">{r.name}</Td>
-                        <Td right mono label="Net Pay">GHS {fmt(r.net)}</Td>
-                        <Td right>
-                          <Button
-                            variant="ghost"
-                            icon={Printer}
-                            onClick={() => printSinglePayslip(run, r)}
-                          >
-                            Print
-                          </Button>
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
-            </div>
-          )}
-        </Card>
-      ))}
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
+          </div>
+        ))}
+      </Card>
     </div>
   );
 }
@@ -5326,7 +5457,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
     setItems((its) => its.filter((_, idx) => idx !== i));
   }
 
-  function create() {
+  async function create() {
     if (!billTo.trim() || items.every((it) => !it.description.trim())) return;
     const year = date.slice(0, 4);
     const invoiceNumber = `SP/${year}/${String(data.nextInvoiceNum).padStart(
@@ -5382,7 +5513,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       id: entryNumber,
       entryNumber,
       date,
-      description: `Invoice ${invoiceNumber} ? ${billTo.trim()}`,
+      description: `Invoice ${invoiceNumber} — ${billTo.trim()}`,
       period: date.slice(0, 7),
       project,
       lines: [
@@ -5403,11 +5534,13 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       nextEntryNum: d.nextEntryNum + 1,
       nextInvoiceNum: d.nextInvoiceNum + 1,
     }));
-    
-    // PERSIST TO DB
-    if (db.saveInvoice) db.saveInvoice(inv);
-    if (db.saveJournalEntry) db.saveJournalEntry(entry);
-
+    try {
+      await db.saveInvoice(inv);
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to persist invoice or journal entry:", err);
+      alert("Failed to save invoice to server. Check console for details.");
+    }
     onDone && onDone();
   }
 
@@ -5502,7 +5635,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
           >
             {revenueOptions.map((a) => (
               <option key={a.code} value={a.code}>
-                {a.code} ? {a.name}
+                {a.code} — {a.name}
               </option>
             ))}
           </select>
@@ -5604,7 +5737,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
                     ? fmt(
                         (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0)
                       )
-                    : "?"}
+                    : "—"}
                 </Td>
                 <Td right>
                   <button
@@ -5752,7 +5885,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
   const [method, setMethod] = useState("Bank");
   const [reference, setReference] = useState("");
 
-  function record() {
+  async function record() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return;
     const paymentId = "PYT-" + Date.now();
@@ -5765,7 +5898,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       id: entryNumber,
       entryNumber,
       date,
-      description: `Payment received ? ${inv.invoiceNumber} (${inv.billTo})`,
+      description: `Payment received — ${inv.invoiceNumber} (${inv.billTo})`,
       period: date.slice(0, 7),
       project: inv.project,
       lines: [
@@ -5791,11 +5924,13 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
     }));
-
-    // PERSIST TO DB
-    if (db.saveInvoice) db.saveInvoice(updatedInvoice);
-    if (db.saveJournalEntry) db.saveJournalEntry(entry);
-
+    try {
+      await db.saveInvoice(updatedInvoice);
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to persist payment or journal entry:", err);
+      alert("Failed to record payment to server. Check console for details.");
+    }
     document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
     setPrintContent(
       <ReceiptDocument
@@ -6011,10 +6146,10 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
                                 });
                             }}
                           >
-                            <option value="">Reprint Receipt?</option>
+                            <option value="">Reprint Receipt…</option>
                             {inv.payments.map((p, i) => (
                               <option key={p.id} value={p.id}>
-                                Receipt {i + 1} ? GHS {fmt(p.amountGHS)}
+                                Receipt {i + 1} — GHS {fmt(p.amountGHS)}
                               </option>
                             ))}
                           </select>
@@ -6052,7 +6187,7 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
       )}
       {payingInv && (
         <Modal
-          title={`Record payment ? ${payingInv.invoiceNumber}`}
+          title={`Record payment — ${payingInv.invoiceNumber}`}
           onClose={() => setPayingInv(null)}
         >
           <RecordPaymentForm
@@ -6090,7 +6225,7 @@ function ExportPanel({ data, isMobile }) {
           Date: e.date,
           Description: e.description,
           Project: projectName(data.projects, e.project),
-          Account: `${l.account} ? ${acc ? acc.name : ""}`,
+          Account: `${l.account} — ${acc ? acc.name : ""}`,
           Debit: l.debit || "",
           Credit: l.credit || "",
         });
@@ -6211,11 +6346,15 @@ function ExportPanel({ data, isMobile }) {
 }
 
 // ---------- App ----------
-function LedgerApp() {
+export default function App() {
   useGoogleFonts();
   const isMobile = useIsMobile();
   const [data, setData] = useState(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
+  const [authSession, setAuthSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
     const validTabs = [
@@ -6229,6 +6368,7 @@ function LedgerApp() {
       "employees",
       "payroll",
       "export",
+      "logout",
     ];
     try {
       const saved = window.localStorage.getItem("modulo_tab");
@@ -6255,7 +6395,7 @@ function LedgerApp() {
     try {
       window.localStorage.setItem("modulo_theme", theme);
     } catch {
-      // localStorage unavailable G?? theme just won't persist
+      // localStorage unavailable — theme just won't persist
     }
   }, [theme]);
 
@@ -6263,14 +6403,33 @@ function LedgerApp() {
     try {
       window.localStorage.setItem("modulo_tab", tab);
     } catch {
-      // localStorage unavailable G?? last tab just won't persist
+      // localStorage unavailable — last tab just won't persist
     }
   }, [tab]);
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChange((session) => {
+      setAuthSession(session);
+    });
+
+    getSession()
+      .then((session) => setAuthSession(session))
+      .catch((err) => {
+        console.error("Failed to confirm auth session:", err);
+      })
+      .finally(() => setAuthChecked(true));
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!authSession) return;
+
     (async () => {
       try {
-        const remote = await loadLedgerState();
+        const [remote, tax] = await Promise.all([loadLedgerState(), loadTaxConfig()]);
+
         if (remote) {
           const remoteAccounts = remote.accounts || [];
           const defaultCodes = new Set(DEFAULT_ACCOUNTS.map((a) => a.code));
@@ -6284,10 +6443,23 @@ function LedgerApp() {
             ...remote,
             accounts: mergedAccounts,
             company: { ...DEFAULT_COMPANY, ...(remote.company || {}) },
+            ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
+            ssnitEmployerRate: tax.rates.ssnitEmployerRate,
+            nhilGetfundRate: tax.rates.nhilGetfundRate,
+            vatRate: tax.rates.vatRate,
+            brackets: tax.brackets,
           });
           setCompanyNameDraft(remote.companyName || DEFAULT_DATA.companyName);
         } else {
           setCompanyNameDraft(DEFAULT_DATA.companyName);
+          setData((prev) => ({
+            ...prev,
+            ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
+            ssnitEmployerRate: tax.rates.ssnitEmployerRate,
+            nhilGetfundRate: tax.rates.nhilGetfundRate,
+            vatRate: tax.rates.vatRate,
+            brackets: tax.brackets,
+          }));
         }
       } catch (err) {
         console.error("Failed to load ledger data:", err);
@@ -6295,7 +6467,7 @@ function LedgerApp() {
       }
       setLoaded(true);
     })();
-  }, []);
+  }, [authChecked, authSession]);
 
   const mutate = useCallback((fn) => {
     setData((prev) => fn(prev));
@@ -6303,17 +6475,23 @@ function LedgerApp() {
 
   useEffect(() => {
     if (!loaded) return;
-    saveSettings({
-      companyName: data.companyName,
-      company: data.company,
-      nextEntryNum: data.nextEntryNum,
-      nextInvoiceNum: data.nextInvoiceNum,
-      ssnitEmployeeRate: data.ssnitEmployeeRate,
-      ssnitEmployerRate: data.ssnitEmployerRate,
-      brackets: data.brackets,
-      nhilGetfundRate: data.nhilGetfundRate,
-      vatRate: data.vatRate,
-    });
+    (async () => {
+      try {
+        await saveSettings({
+          companyName: data.companyName,
+          company: data.company,
+          nextEntryNum: data.nextEntryNum,
+          nextInvoiceNum: data.nextInvoiceNum,
+          ssnitEmployeeRate: data.ssnitEmployeeRate,
+          ssnitEmployerRate: data.ssnitEmployerRate,
+          brackets: data.brackets,
+          nhilGetfundRate: data.nhilGetfundRate,
+          vatRate: data.vatRate,
+        });
+      } catch (err) {
+        console.error("Failed to save settings:", err);
+      }
+    })();
   }, [
     loaded,
     data.companyName,
@@ -6327,14 +6505,63 @@ function LedgerApp() {
     data.vatRate,
   ]);
 
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    setLogoutError("");
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("Logout failed:", err);
+      setLogoutError(err?.message || "Failed to sign out. Please try again.");
+    } finally {
+      setLoggingOut(false);
+    }
+  }, []);
+
+  const LogoutPanel = () => (
+    <div>
+      <SectionTitle sub="End your session securely.">Logout</SectionTitle>
+      <Card style={{ marginBottom: 16, maxWidth: 560 }}>
+        <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, marginBottom: 18 }}>
+          When you log out, your Supabase session will be cleared and you will return to the login screen.
+        </p>
+        {logoutError && (
+          <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 14, borderRadius: 8, marginBottom: 18 }}>
+            {logoutError}
+          </div>
+        )}
+        <Button
+          onClick={handleLogout}
+          icon={X}
+          variant="danger"
+          disabled={loggingOut}
+        >
+          {loggingOut ? "Signing out…" : "Sign out"}
+        </Button>
+      </Card>
+    </div>
+  );
+
   function saveCompanyName() {
     mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
+  }
+
+  if (!authChecked) {
+    return (
+      <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>
+        Checking authentication…
+      </div>
+    );
+  }
+
+  if (!authSession) {
+    return <Login />;
   }
 
   if (!loaded) {
     return (
       <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>
-        Loading your ledger?
+        Loading your ledger…
       </div>
     );
   }
@@ -6350,6 +6577,7 @@ function LedgerApp() {
     { key: "payroll", label: "Payroll", icon: Banknote },
     { key: "accounts", label: "Chart of Accounts", icon: BookOpen },
     { key: "export", label: "Export", icon: FileSpreadsheet },
+    { key: "logout", label: "Logout", icon: X },
   ];
 
   const navGroups = [
@@ -6361,7 +6589,7 @@ function LedgerApp() {
       label: "Operations",
       keys: ["projects", "invoicing", "employees", "payroll"],
     },
-    { label: "Setup", keys: ["accounts", "export"] },
+    { label: "Setup", keys: ["accounts", "export", "logout"] },
   ];
 
   const brandInitial = (companyNameDraft || data.companyName || "M")
@@ -6422,13 +6650,13 @@ function LedgerApp() {
               textTransform: "uppercase",
             }}
           >
-            Ledger ? GHS
+            Ledger · GHS
           </div>
         </div>
         <button
           onClick={() => setTheme(theme === "light" ? "dark" : "light")}
           title="Toggle Theme"
-          aria-label="Toggle dark mode"
+          aria-label="Toggle theme"
           style={{
             display: "flex",
             alignItems: "center",
@@ -6445,31 +6673,10 @@ function LedgerApp() {
           }}
         >
           {theme === "light" ? (
-            <Moon size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
-          ) : (
             <Sun size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
+          ) : (
+            <Moon size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
           )}
-        </button>
-        <button
-          onClick={signOut}
-          title="Sign Out"
-          aria-label="Sign out"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            border: `1px solid ${RULE}`,
-            background: PAPER_RAISED,
-            color: ALERT,
-            cursor: "pointer",
-            flexShrink: 0,
-            transition: "all 0.2s ease",
-          }}
-        >
-          <LogOut size={16} strokeWidth={2} style={{ display: "block" }} />
         </button>
       </div>
       {navGroups.map((group) => (
@@ -6534,7 +6741,9 @@ function LedgerApp() {
         .print-only { display: none; }
         .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
         @media (max-width: 768px) { .grid-fin { grid-template-columns: 1fr !important; } }
-        .table-card { width: 100%; border-collapse: collapse; }
+        .table-card { width: 100%; border-collapse: collapse; background: var(--paper-raised); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.06); }
+        .table-card th, .table-card td { padding: 14px 16px; }
+        .table-card thead tr { background: var(--paper); }
         @media (max-width: 700px) {
           .table-card thead { display: none; }
           .table-card, .table-card tbody, .table-card tr, .table-card td { display: block; width: 100%; box-sizing: border-box; }
@@ -6635,6 +6844,7 @@ function LedgerApp() {
               padding: "24px 14px",
               flexShrink: 0,
               background: PAPER_RAISED,
+              boxShadow: "1px 0 20px rgba(0,0,0,0.04)",
               position: "sticky",
               top: 0,
               height: "100vh",
@@ -6652,7 +6862,10 @@ function LedgerApp() {
           style={{
             flex: 1,
             padding: isMobile ? "20px 16px 88px" : "32px 40px",
-            maxWidth: isMobile ? "100%" : 980,
+            maxWidth: isMobile ? "100%" : 1100,
+            width: "100%",
+            margin: "0 auto",
+            minHeight: "100vh",
             boxSizing: "border-box",
             position: "relative",
           }}
@@ -6684,7 +6897,8 @@ function LedgerApp() {
               setPrintContent={setPrintContent}
             />
           )}
-          {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
+              {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
+          {tab === "logout" && <LogoutPanel />}
         </main>
 
         {isMobile && (
@@ -6717,93 +6931,5 @@ function LedgerApp() {
 
       <div className="print-only">{printContent}</div>
     </div>
-  );
-}
-
-// ==========================================
-// ERROR BOUNDARY (Catches blank screen crashes)
-// ==========================================
-class ErrorBoundary extends React.Component<
-  { children: ReactNode },
-  { hasError: boolean; error: any }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 40, fontFamily: "sans-serif", background: "#fff", color: "#A63D40", height: "100vh" }}>
-          <h2 style={{ marginBottom: 16 }}>?? App Crashed (Blank Screen Error)</h2>
-          <p style={{ marginBottom: 16, color: "#333" }}>
-            The app failed to render. This is usually because a database table is missing or returned unexpected data.
-          </p>
-          <pre style={{ background: "#f4f4f4", padding: 16, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-all", border: "1px solid #ccc" }}>
-            <strong>Error Message:</strong>
-            {"\n"}
-            {this.state.error?.message || "Unknown error"}
-            {"\n\n"}
-            <strong>Stack Trace:</strong>
-            {"\n"}
-            {this.state.error?.stack || "No stack trace available"}
-          </pre>
-          <button 
-            onClick={() => window.location.reload()} 
-            style={{ marginTop: 16, padding: "10px 20px", background: "#2F5233", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}
-          >
-            Reload App
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// ==========================================
-// MAIN APP WRAPPER (Handles Auth + Loading)
-// ==========================================
-export default function App() {
-  const [session, setSession] = useState<any>(undefined);
-
-  useEffect(() => {
-    // Check initial session
-    getSession()
-      .then(setSession)
-      .catch((err) => {
-        console.error("Session error:", err);
-        setSession(null);
-      });
-    
-    // Listen for auth changes (login/logout)
-    const unsubscribe = onAuthStateChange(setSession);
-    return unsubscribe;
-  }, []);
-
-  // 1. Still loading session status
-  if (session === undefined) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#1A1A1A", color: "#C9A84C", fontFamily: "sans-serif", fontSize: 18 }}>
-        Loading Modulo Ledger...
-      </div>
-    );
-  }
-
-  // 2. No session found, show Login screen
-  if (!session) {
-    return <Login />;
-  }
-
-  // 3. Session exists, render the main ledger application wrapped in the Error Boundary
-  return (
-    <ErrorBoundary>
-      <LedgerApp />
-    </ErrorBoundary>
   );
 }
