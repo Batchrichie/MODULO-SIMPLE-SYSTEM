@@ -177,6 +177,38 @@ function payrollLineToRow(l, runId) {
 }
 
 // ---------------------------------------------------------------------------
+// Auth: email/password sign-in. Once a user is logged in, Supabase attaches
+// their JWT to every request, so RLS treats them as "authenticated" instead
+// of "anon" and the authenticated-role policies from Ticket 1 apply.
+// ---------------------------------------------------------------------------
+
+export async function signIn(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data;
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+
+export async function getSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data.session;
+}
+
+// Call once (e.g. in App.jsx) to react to login/logout events.
+// Returns an unsubscribe function - call it on unmount.
+export function onAuthStateChange(callback) {
+  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    callback(session);
+  });
+  return () => listener.subscription.unsubscribe();
+}
+
+// ---------------------------------------------------------------------------
 // Load: fetch all 11 tables and assemble the nested structure App.jsx expects
 // ---------------------------------------------------------------------------
 
@@ -264,38 +296,6 @@ export async function saveSettings(settingsData) {
     if (error) throw error;
   } catch (err) {
     console.error("Error saving settings:", err);
-  }
-}
-
-export async function saveLedgerState(settingsData) {
-  try {
-    const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData || {};
-
-    await saveSettings(rest);
-    await db.saveAccounts(accounts);
-    await db.saveProjects(projects);
-    await db.saveEmployees(employees);
-
-    if (journal && journal.length > 0) {
-      for (const entry of journal) {
-        await db.saveJournalEntry(entry);
-      }
-    }
-
-    if (invoices && invoices.length > 0) {
-      for (const invoice of invoices) {
-        await db.saveInvoice(invoice);
-      }
-    }
-
-    if (payrollRuns && payrollRuns.length > 0) {
-      for (const run of payrollRuns) {
-        await db.savePayrollRun(run);
-      }
-    }
-  } catch (err) {
-    console.error("Error saving ledger state:", err);
-    throw err;
   }
 }
 

@@ -29,8 +29,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
+  LogOut, // <-- ADD THIS IMPORT
 } from "lucide-react";
-import { loadLedgerState, saveSettings, db } from "./supabaseClient";
+
+// Import auth functions and Login component
+import { loadLedgerState, saveSettings, db, getSession, onAuthStateChange, signOut } from "./supabaseClient";
+import Login from "./Login";
 
 // ---------- Design Tokens (CSS Variables for Theming) ----------
 const INK = "var(--ink)";
@@ -6207,163 +6211,23 @@ function ExportPanel({ data, isMobile }) {
 }
 
 // ---------- App ----------
-export default function App() {
+// ... (All your existing UI panels above this) ...
+
+function LedgerApp() {
   useGoogleFonts();
   const isMobile = useIsMobile();
   const [data, setData] = useState(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState(() => {
-    if (typeof window === "undefined") return "dashboard";
-    const validTabs = [
-      "dashboard",
-      "accounts",
-      "journal",
-      "ledger",
-      "financials",
-      "projects",
-      "invoicing",
-      "employees",
-      "payroll",
-      "export",
-    ];
-    try {
-      const saved = window.localStorage.getItem("modulo_tab");
-      return validTabs.includes(saved) ? saved : "dashboard";
-    } catch {
-      return "dashboard";
-    }
+    // ... your existing tab logic ...
   });
   const [companyNameDraft, setCompanyNameDraft] = useState("");
   const [theme, setTheme] = useState(() => {
-    if (typeof window === "undefined") return "light";
-    try {
-      return window.localStorage.getItem("modulo_theme") || "light";
-    } catch {
-      return "light";
-    }
+    // ... your existing theme logic ...
   });
   const [printContent, setPrintContent] = useState(null);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-    try {
-      window.localStorage.setItem("modulo_theme", theme);
-    } catch {
-      // localStorage unavailable — theme just won't persist
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("modulo_tab", tab);
-    } catch {
-      // localStorage unavailable — last tab just won't persist
-    }
-  }, [tab]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const remote = await loadLedgerState();
-        if (remote) {
-          const remoteAccounts = remote.accounts || [];
-          const defaultCodes = new Set(DEFAULT_ACCOUNTS.map((a) => a.code));
-          const customAccounts = remoteAccounts.filter(
-            (a) => !defaultCodes.has(a.code)
-          );
-          const mergedAccounts = [...DEFAULT_ACCOUNTS, ...customAccounts];
-
-          setData({
-            ...DEFAULT_DATA,
-            ...remote,
-            accounts: mergedAccounts,
-            company: { ...DEFAULT_COMPANY, ...(remote.company || {}) },
-          });
-          setCompanyNameDraft(remote.companyName || DEFAULT_DATA.companyName);
-        } else {
-          setCompanyNameDraft(DEFAULT_DATA.companyName);
-        }
-      } catch (err) {
-        console.error("Failed to load ledger data:", err);
-        setCompanyNameDraft(DEFAULT_DATA.companyName);
-      }
-      setLoaded(true);
-    })();
-  }, []);
-
-  const mutate = useCallback((fn) => {
-    setData((prev) => fn(prev));
-  }, []);
-
-  useEffect(() => {
-    if (!loaded) return;
-    saveSettings({
-      companyName: data.companyName,
-      company: data.company,
-      nextEntryNum: data.nextEntryNum,
-      nextInvoiceNum: data.nextInvoiceNum,
-      ssnitEmployeeRate: data.ssnitEmployeeRate,
-      ssnitEmployerRate: data.ssnitEmployerRate,
-      brackets: data.brackets,
-      nhilGetfundRate: data.nhilGetfundRate,
-      vatRate: data.vatRate,
-    });
-  }, [
-    loaded,
-    data.companyName,
-    data.company,
-    data.nextEntryNum,
-    data.nextInvoiceNum,
-    data.ssnitEmployeeRate,
-    data.ssnitEmployerRate,
-    data.brackets,
-    data.nhilGetfundRate,
-    data.vatRate,
-  ]);
-
-  function saveCompanyName() {
-    mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
-  }
-
-  if (!loaded) {
-    return (
-      <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>
-        Loading your ledger…
-      </div>
-    );
-  }
-
-  const nav = [
-    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { key: "journal", label: "Journal", icon: PenLine },
-    { key: "ledger", label: "Trial Balance", icon: Scale },
-    { key: "financials", label: "Financials", icon: TrendingUp },
-    { key: "projects", label: "Projects", icon: Briefcase },
-    { key: "invoicing", label: "Invoicing", icon: Receipt },
-    { key: "employees", label: "Employees", icon: Users },
-    { key: "payroll", label: "Payroll", icon: Banknote },
-    { key: "accounts", label: "Chart of Accounts", icon: BookOpen },
-    { key: "export", label: "Export", icon: FileSpreadsheet },
-  ];
-
-  const navGroups = [
-    {
-      label: "Overview",
-      keys: ["dashboard", "journal", "ledger", "financials"],
-    },
-    {
-      label: "Operations",
-      keys: ["projects", "invoicing", "employees", "payroll"],
-    },
-    { label: "Setup", keys: ["accounts", "export"] },
-  ];
-
-  const brandInitial = (companyNameDraft || data.companyName || "M")
-    .trim()
-    .charAt(0)
-    .toUpperCase();
+  // ... keep all your existing useEffects and logic ...
 
   const sidebarContent = (
     <>
@@ -6377,54 +6241,20 @@ export default function App() {
           borderBottom: `1px solid ${RULE}`,
         }}
       >
-        <div
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 8,
-            background: GREEN,
-            color: PAPER,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: FONT_DISPLAY,
-            fontWeight: 700,
-            fontSize: 15,
-            flexShrink: 0,
-          }}
-        >
-          {brandInitial}
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <input
-            style={{
-              ...inputStyle,
-              fontFamily: FONT_DISPLAY,
-              fontWeight: 700,
-              fontSize: 15,
-              border: "none",
-              padding: "2px 0",
-              background: "transparent",
-            }}
-            value={companyNameDraft}
-            onChange={(e) => setCompanyNameDraft(e.target.value)}
-            onBlur={saveCompanyName}
-          />
-          <div
-            style={{
-              fontSize: 10.5,
-              color: MUTED,
-              letterSpacing: 0.6,
-              textTransform: "uppercase",
-            }}
-          >
-            Ledger · GHS
-          </div>
-        </div>
+        {/* ... existing brand initial and input ... */}
+        
         <button
           onClick={() => setTheme(theme === "light" ? "dark" : "light")}
           title="Toggle Theme"
-          aria-label="Toggle dark mode"
+          // ... existing styles ...
+        >
+          {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
+
+        {/* NEW: SIGN OUT BUTTON */}
+        <button
+          onClick={signOut}
+          title="Sign Out"
           style={{
             display: "flex",
             alignItems: "center",
@@ -6434,263 +6264,111 @@ export default function App() {
             borderRadius: 8,
             border: `1px solid ${RULE}`,
             background: PAPER_RAISED,
-            color: INK,
+            color: ALERT, // Make it red to indicate logout
             cursor: "pointer",
             flexShrink: 0,
             transition: "all 0.2s ease",
           }}
         >
-          {theme === "light" ? (
-            <Moon size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
-          ) : (
-            <Sun size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
-          )}
+          <LogOut size={16} />
         </button>
       </div>
-      {navGroups.map((group) => (
-        <div key={group.label} style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              fontSize: 10.5,
-              color: MUTED,
-              fontWeight: 700,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-              padding: "0 9px",
-              marginBottom: 6,
-            }}
-          >
-            {group.label}
-          </div>
-          <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {group.keys.map((k) => {
-              const n = nav.find((x) => x.key === k);
-              if (!n) return null;
-              return (
-                <NavItem
-                  key={n.key}
-                  icon={n.icon}
-                  label={n.label}
-                  active={tab === n.key}
-                  onClick={() => setTab(n.key)}
-                />
-              );
-            })}
-          </nav>
-        </div>
-      ))}
+      
+      {/* ... keep existing navGroups ... */}
     </>
   );
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: isMobile ? "column" : "row",
-        minHeight: "100vh",
-        background: PAPER,
-        fontFamily: FONT_BODY,
-        color: INK,
-      }}
-    >
-      <style>{`
-        :root {
-          --ink: #1F2A24; --paper: #F7F4EE; --paper-raised: #FFFFFF; --rule: #DCD5C4; --green: #2F5233; --green-deep: #1E3A21; --gold: #A8761A; --alert: #A63D40; --muted: #6B6255; --input-bg: #FFFFFF; --nav-hover: #F1EEE4; --nav-active: #EAF1EA; --success-bg: #EAF1EA; --alert-bg: #F6E8E8;
-        }
-        .dark {
-          --ink: #EAE6DF; --paper: #121615; --paper-raised: #1A2120; --rule: #2E3735; --green: #4CAF50; --green-deep: #1E3A21; --gold: #D4AF37; --alert: #EF5350; --muted: #8A9A91; --input-bg: #121615; --nav-hover: #242B2A; --nav-active: #1E2A24; --success-bg: #1E2A24; --alert-bg: #2A1C1D;
-        }
-        @media print {
-          .no-print { display: none !important; }
-          .print-only { display: block !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
-          body { background: white !important; }
-          :root { --ink: #000; --paper: #fff; --paper-raised: #fff; --rule: #ccc; --muted: #333; }
-        }
-        .print-only { display: none; }
-        .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
-        @media (max-width: 768px) { .grid-fin { grid-template-columns: 1fr !important; } }
-        .table-card { width: 100%; border-collapse: collapse; }
-        @media (max-width: 700px) {
-          .table-card thead { display: none; }
-          .table-card, .table-card tbody, .table-card tr, .table-card td { display: block; width: 100%; box-sizing: border-box; }
-          .table-card tr { margin-bottom: 16px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper-raised); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-          .table-card td { display: flex; justify-content: space-between; align-items: center; border: none; border-bottom: 1px solid var(--rule); padding: 10px 12px; text-align: right; }
-          .table-card td:last-child { border-bottom: none; }
-          .table-card td::before { content: attr(data-label); font-weight: 700; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--muted); margin-right: 16px; text-align: left; }
-          .table-card tfoot tr { background: var(--paper); border-style: dashed; box-shadow: none; margin-top: 8px; }
-          .table-card tfoot td { border-bottom: 1px solid var(--rule); }
-        }
-        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--green) !important; box-shadow: 0 0 0 2px rgba(75, 175, 80, 0.15); }
-        .row-hover:hover { background: var(--nav-hover); }
-        .btn-hover:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        @media (max-width: 600px) { .modal-card { padding: 16px !important; } }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: var(--paper); }
-        ::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-      `}</style>
-
-      <div className="no-print" style={{ display: "contents" }}>
-        {isMobile ? (
-          <div
-            style={{
-              borderBottom: `1px solid ${RULE}`,
-              padding: "12px 16px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              background: PAPER_RAISED,
-              position: "sticky",
-              top: 0,
-              zIndex: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 7,
-                background: GREEN,
-                color: PAPER,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: FONT_DISPLAY,
-                fontWeight: 700,
-                fontSize: 13,
-                flexShrink: 0,
-              }}
-            >
-              {brandInitial}
-            </div>
-            <div
-              style={{
-                fontFamily: FONT_DISPLAY,
-                fontWeight: 700,
-                fontSize: 15,
-                color: INK,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                flex: 1,
-              }}
-            >
-              {data.companyName}
-            </div>
-            <button
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-              title="Toggle Theme"
-              aria-label="Toggle dark mode"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                border: `1px solid ${RULE}`,
-                background: PAPER_RAISED,
-                color: INK,
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-            >
-              {theme === "light" ? (
-                <Moon size={18} color={INK} strokeWidth={2} style={{ display: "block" }} />
-              ) : (
-                <Sun size={18} color={INK} strokeWidth={2} style={{ display: "block" }} />
-              )}
-            </button>
-          </div>
-        ) : (
-          <aside
-            style={{
-              width: 240,
-              borderRight: `1px solid ${RULE}`,
-              padding: "24px 14px",
-              flexShrink: 0,
-              background: PAPER_RAISED,
-              position: "sticky",
-              top: 0,
-              height: "100vh",
-              overflowY: "auto",
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {sidebarContent}
-          </aside>
-        )}
-
-        <main
-          style={{
-            flex: 1,
-            padding: isMobile ? "20px 16px 88px" : "32px 40px",
-            maxWidth: isMobile ? "100%" : 980,
-            boxSizing: "border-box",
-            position: "relative",
-          }}
-        >
-          {tab === "dashboard" && (
-            <DashboardPanel data={data} setTab={setTab} />
-          )}
-          {tab === "accounts" && <AccountsPanel data={data} mutate={mutate} />}
-          {tab === "journal" && <JournalPanel data={data} mutate={mutate} />}
-          {tab === "ledger" && <LedgerPanel data={data} />}
-          {tab === "financials" && (
-            <FinancialsPanel data={data} setPrintContent={setPrintContent} />
-          )}
-          {tab === "projects" && <ProjectsPanel data={data} mutate={mutate} />}
-          {tab === "invoicing" && (
-            <InvoicingPanel
-              data={data}
-              mutate={mutate}
-              setPrintContent={setPrintContent}
-            />
-          )}
-          {tab === "employees" && (
-            <EmployeesPanel data={data} mutate={mutate} />
-          )}
-          {tab === "payroll" && (
-            <PayrollPanel
-              data={data}
-              mutate={mutate}
-              setPrintContent={setPrintContent}
-            />
-          )}
-          {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
-        </main>
-
-        {isMobile && (
-          <nav
-            style={{
-              position: "fixed",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 20,
-              background: PAPER_RAISED,
-              borderTop: `1px solid ${RULE}`,
-              display: "flex",
-              overflowX: "auto",
-              boxShadow: "0 -2px 10px rgba(0,0,0,0.06)",
-            }}
-          >
-            {nav.map((n) => (
-              <BottomNavItem
-                key={n.key}
-                icon={n.icon}
-                label={n.label}
-                active={tab === n.key}
-                onClick={() => setTab(n.key)}
-              />
-            ))}
-          </nav>
-        )}
-      </div>
-
-      <div className="print-only">{printContent}</div>
+    <div style={{ /* ... your existing main layout ... */ }}>
+      {/* ... your existing styles and layout ... */}
     </div>
+  );
+}
+
+// ==========================================
+// ERROR BOUNDARY (Catches blank screen crashes)
+// ==========================================
+class ErrorBoundary extends React.Component<
+  { children: ReactNode },
+  { hasError: boolean; error: any }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, fontFamily: "sans-serif", background: "#fff", color: "#A63D40", height: "100vh" }}>
+          <h2 style={{ marginBottom: 16 }}>⚠️ App Crashed (Blank Screen Error)</h2>
+          <p style={{ marginBottom: 16, color: "#333" }}>
+            The app failed to render. This is usually because a database table is missing or returned unexpected data.
+          </p>
+          <pre style={{ background: "#f4f4f4", padding: 16, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-all", border: "1px solid #ccc" }}>
+            <strong>Error Message:</strong>
+            {"\n"}
+            {this.state.error?.message || "Unknown error"}
+            {"\n\n"}
+            <strong>Stack Trace:</strong>
+            {"\n"}
+            {this.state.error?.stack || "No stack trace available"}
+          </pre>
+          <button 
+            onClick={() => window.location.reload()} 
+            style={{ marginTop: 16, padding: "10px 20px", background: "#2F5233", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}
+          >
+            Reload App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ==========================================
+// MAIN APP WRAPPER (Handles Auth + Loading)
+// ==========================================
+export default function App() {
+  const [session, setSession] = useState<any>(undefined);
+
+  useEffect(() => {
+    // Check initial session
+    getSession()
+      .then(setSession)
+      .catch((err) => {
+        console.error("Session error:", err);
+        setSession(null);
+      });
+    
+    // Listen for auth changes (login/logout)
+    const unsubscribe = onAuthStateChange(setSession);
+    return unsubscribe;
+  }, []);
+
+  // 1. Still loading session status
+  if (session === undefined) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#1A1A1A", color: "#C9A84C", fontFamily: "sans-serif", fontSize: 18 }}>
+        Loading Modulo Ledger...
+      </div>
+    );
+  }
+
+  // 2. No session found, show Login screen
+  if (!session) {
+    return <Login />;
+  }
+
+  // 3. Session exists, render the main ledger application wrapped in the Error Boundary
+  return (
+    <ErrorBoundary>
+      <LedgerApp />
+    </ErrorBoundary>
   );
 }
