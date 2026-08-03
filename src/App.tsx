@@ -3282,6 +3282,8 @@ function EmployeesPanel({ data, mutate }) {
     ssnitNo: "",
     niaCard: "",
     designation: "",
+    exemptPaye: false,
+    exemptSsnit: false,
   });
 
   function addEmployee() {
@@ -3295,6 +3297,8 @@ function EmployeesPanel({ data, mutate }) {
       ssnitNo: form.ssnitNo.trim(),
       niaCard: form.niaCard.trim(),
       designation: form.designation.trim(),
+      exemptPaye: form.exemptPaye,
+      exemptSsnit: form.exemptSsnit,
     };
     mutate((d) => ({
       ...d,
@@ -3307,9 +3311,12 @@ function EmployeesPanel({ data, mutate }) {
       ssnitNo: "",
       niaCard: "",
       designation: "",
+      exemptPaye: false,
+      exemptSsnit: false,
     });
     setShowModal(false);
   }
+
   function toggleActive(id) {
     mutate((d) => {
       const updatedEmployees = d.employees.map((e) =>
@@ -3320,6 +3327,7 @@ function EmployeesPanel({ data, mutate }) {
       return { ...d, employees: updatedEmployees };
     });
   }
+
   function removeEmployee(id) {
     mutate((d) => ({
       ...d,
@@ -3331,7 +3339,7 @@ function EmployeesPanel({ data, mutate }) {
   return (
     <div>
       <SectionTitle
-        sub="Base monthly salary before deductions. SSNIT No., NIA Card, and Designation appear on the payslip."
+        sub="Base monthly salary before deductions. Exempt employees from PAYE or SSNIT as needed."
         action={
           <Button onClick={() => setShowModal(true)} icon={Plus}>
             Add employee
@@ -3352,6 +3360,7 @@ function EmployeesPanel({ data, mutate }) {
                 <Th>Designation</Th>
                 <Th>SSNIT No.</Th>
                 <Th right>Base Salary</Th>
+                <Th>Exemptions</Th>
                 <Th>Status</Th>
                 <Th right>&nbsp;</Th>
               </tr>
@@ -3368,6 +3377,41 @@ function EmployeesPanel({ data, mutate }) {
                   </Td>
                   <Td right mono label="Base Salary">
                     GHS {fmt(e.baseSalary)}
+                  </Td>
+                  <Td label="Exemptions">
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {e.exemptPaye && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: ALERT,
+                            background: "var(--alert-bg)",
+                            padding: "2px 6px",
+                            borderRadius: 3,
+                            fontWeight: 700,
+                          }}
+                        >
+                          PAYE
+                        </span>
+                      )}
+                      {e.exemptSsnit && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: ALERT,
+                            background: "var(--alert-bg)",
+                            padding: "2px 6px",
+                            borderRadius: 3,
+                            fontWeight: 700,
+                          }}
+                        >
+                          SSNIT
+                        </span>
+                      )}
+                      {!e.exemptPaye && !e.exemptSsnit && (
+                        <span style={{ fontSize: 11, color: MUTED }}>None</span>
+                      )}
+                    </div>
                   </Td>
                   <Td label="Status">
                     <button
@@ -3401,7 +3445,7 @@ function EmployeesPanel({ data, mutate }) {
               ))}
               {data.employees.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ color: MUTED, padding: 10 }}>
+                  <td colSpan={7} style={{ color: MUTED, padding: 10 }}>
                     No employees added yet.
                   </td>
                 </tr>
@@ -3466,6 +3510,57 @@ function EmployeesPanel({ data, mutate }) {
                 placeholder="GHA-XXXXXXXXX-X"
               />
             </div>
+
+            <div
+              style={{
+                flex: "1 1 100%",
+                display: "flex",
+                gap: 24,
+                padding: "8px 0",
+                borderTop: `1px solid ${RULE}`,
+                marginTop: 8,
+              }}
+            >
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontFamily: FONT_BODY,
+                  fontSize: 13,
+                  color: INK,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.exemptPaye}
+                  onChange={(e) => setForm({ ...form, exemptPaye: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                Exempt from PAYE (e.g. Second Job)
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontFamily: FONT_BODY,
+                  fontSize: 13,
+                  color: INK,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.exemptSsnit}
+                  onChange={(e) => setForm({ ...form, exemptSsnit: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                Exempt from SSNIT (e.g. Not Registered)
+              </label>
+            </div>
+
             <div style={{ flex: "1 1 100%" }}>
               <Button onClick={addEmployee} icon={Plus} fullWidth>
                 Add employee
@@ -4529,11 +4624,18 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
       .filter((e) => e.active)
       .map((e) => {
         const gross = e.baseSalary;
-        const ssnitEmployee = gross * data.ssnitEmployeeRate;
-        const ssnitEmployer = gross * data.ssnitEmployerRate;
+        const isExemptSsnit = e.exemptSsnit || false;
+        const isExemptPaye = e.exemptPaye || false;
+
+        const ssnitEmployee = isExemptSsnit ? 0 : gross * data.ssnitEmployeeRate;
+        const ssnitEmployer = isExemptSsnit ? 0 : gross * data.ssnitEmployerRate;
+
         const chargeable = gross - ssnitEmployee;
-        const paye = computePAYE(chargeable, data.brackets);
+
+        const paye = isExemptPaye ? 0 : computePAYE(chargeable, data.brackets);
+
         const net = gross - ssnitEmployee - paye;
+
         return {
           employeeId: e.id,
           name: e.name,
