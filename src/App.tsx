@@ -3276,6 +3276,7 @@ function FinancialsPanel({ data, setPrintContent }) {
 
 function EmployeesPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [form, setForm] = useState({
     name: "",
     baseSalary: "",
@@ -3286,25 +3287,7 @@ function EmployeesPanel({ data, mutate }) {
     exemptSsnit: false,
   });
 
-  function addEmployee() {
-    if (!form.name.trim() || !parseFloat(form.baseSalary)) return;
-    const id = "EMP-" + Date.now();
-    const newEmp = {
-      id,
-      name: form.name.trim(),
-      baseSalary: parseFloat(form.baseSalary),
-      active: true,
-      ssnitNo: form.ssnitNo.trim(),
-      niaCard: form.niaCard.trim(),
-      designation: form.designation.trim(),
-      exemptPaye: form.exemptPaye,
-      exemptSsnit: form.exemptSsnit,
-    };
-    mutate((d) => ({
-      ...d,
-      employees: [...d.employees, newEmp],
-    }));
-    db.saveEmployees([newEmp]);
+  function resetForm() {
     setForm({
       name: "",
       baseSalary: "",
@@ -3314,6 +3297,63 @@ function EmployeesPanel({ data, mutate }) {
       exemptPaye: false,
       exemptSsnit: false,
     });
+  }
+
+  function openAddModal() {
+    setEditingEmployeeId(null);
+    resetForm();
+    setShowModal(true);
+  }
+
+  function openEditModal(employee) {
+    setEditingEmployeeId(employee.id);
+    setForm({
+      name: employee.name || "",
+      baseSalary: String(employee.baseSalary || ""),
+      ssnitNo: employee.ssnitNo || "",
+      niaCard: employee.niaCard || "",
+      designation: employee.designation || "",
+      exemptPaye: employee.exemptPaye || false,
+      exemptSsnit: employee.exemptSsnit || false,
+    });
+    setShowModal(true);
+  }
+
+  function saveEmployee() {
+    if (!form.name.trim() || !parseFloat(form.baseSalary)) return;
+
+    const employeePayload = {
+      id: editingEmployeeId || "EMP-" + Date.now(),
+      name: form.name.trim(),
+      baseSalary: parseFloat(form.baseSalary),
+      active: editingEmployeeId
+        ? data.employees.find((e) => e.id === editingEmployeeId)?.active ?? true
+        : true,
+      ssnitNo: form.ssnitNo.trim(),
+      niaCard: form.niaCard.trim(),
+      designation: form.designation.trim(),
+      exemptPaye: form.exemptPaye,
+      exemptSsnit: form.exemptSsnit,
+    };
+
+    if (editingEmployeeId) {
+      mutate((d) => ({
+        ...d,
+        employees: d.employees.map((e) =>
+          e.id === editingEmployeeId ? employeePayload : e
+        ),
+      }));
+      db.saveEmployees([employeePayload]);
+    } else {
+      mutate((d) => ({
+        ...d,
+        employees: [...d.employees, employeePayload],
+      }));
+      db.saveEmployees([employeePayload]);
+    }
+
+    resetForm();
+    setEditingEmployeeId(null);
     setShowModal(false);
   }
 
@@ -3341,7 +3381,7 @@ function EmployeesPanel({ data, mutate }) {
       <SectionTitle
         sub="Base monthly salary before deductions. Exempt employees from PAYE or SSNIT as needed."
         action={
-          <Button onClick={() => setShowModal(true)} icon={Plus}>
+          <Button onClick={openAddModal} icon={Plus}>
             Add employee
           </Button>
         }
@@ -3429,17 +3469,32 @@ function EmployeesPanel({ data, mutate }) {
                     </button>
                   </Td>
                   <Td right label="Action">
-                    <button
-                      onClick={() => removeEmployee(e.id)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: MUTED,
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                      <button
+                        onClick={() => openEditModal(e)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: MUTED,
+                        }}
+                        title="Edit employee"
+                      >
+                        <PenLine size={14} />
+                      </button>
+                      <button
+                        onClick={() => removeEmployee(e.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: MUTED,
+                        }}
+                        title="Remove employee"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </Td>
                 </tr>
               ))}
@@ -3456,7 +3511,14 @@ function EmployeesPanel({ data, mutate }) {
       </Card>
 
       {showModal && (
-        <Modal title="Add employee" onClose={() => setShowModal(false)}>
+        <Modal
+          title={editingEmployeeId ? "Edit employee" : "Add employee"}
+          onClose={() => {
+            resetForm();
+            setEditingEmployeeId(null);
+            setShowModal(false);
+          }}
+        >
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
             <div style={{ flex: "1 1 100%" }}>
               <label style={labelStyle}>Full name</label>
@@ -3562,8 +3624,8 @@ function EmployeesPanel({ data, mutate }) {
             </div>
 
             <div style={{ flex: "1 1 100%" }}>
-              <Button onClick={addEmployee} icon={Plus} fullWidth>
-                Add employee
+              <Button onClick={saveEmployee} icon={editingEmployeeId ? PenLine : Plus} fullWidth>
+                {editingEmployeeId ? "Save changes" : "Add employee"}
               </Button>
             </div>
           </div>
