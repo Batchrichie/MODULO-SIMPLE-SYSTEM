@@ -3,8 +3,8 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
-  useRef,
 } from "react";
+import type { CSSProperties, ComponentType, ReactNode } from "react";
 import * as XLSX from "xlsx";
 import {
   BookOpen,
@@ -22,7 +22,6 @@ import {
   Briefcase,
   Receipt,
   TrendingUp,
-  Menu,
   X,
   Sun,
   Moon,
@@ -286,7 +285,7 @@ const DEFAULT_DATA = {
   vatRate: 0.15,
 };
 
-function fmt(n) {
+function fmt(n: number | string | null | undefined) {
   const v = Number(n) || 0;
   return v.toLocaleString("en-GH", {
     minimumFractionDigits: 2,
@@ -294,7 +293,10 @@ function fmt(n) {
   });
 }
 
-function computePAYE(chargeable, brackets) {
+function computePAYE(
+  chargeable: number,
+  brackets: Array<{ upto: number; rate: number }>
+) {
   let tax = 0;
   let prev = 0;
   for (const b of brackets) {
@@ -306,14 +308,24 @@ function computePAYE(chargeable, brackets) {
   return tax;
 }
 
-function projectName(projects, id) {
+function projectName(
+  projects: Array<{ id: string; name: string }>,
+  id?: string | null
+) {
   if (!id || id === "GEN") return GENERAL_PROJECT.name;
   const p = projects.find((p) => p.id === id);
   return p ? p.name : "General / Office";
 }
 
 // ---------- Small UI atoms ----------
-function NavItem({ icon: Icon, label, active, onClick }) {
+type NavItemProps = {
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+};
+
+function NavItem({ icon: Icon, label, active = false, onClick }: NavItemProps) {
   const [hover, setHover] = useState(false);
   return (
     <button
@@ -363,7 +375,14 @@ function NavItem({ icon: Icon, label, active, onClick }) {
   );
 }
 
-function BottomNavItem({ icon: Icon, label, active, onClick }) {
+type BottomNavItemProps = {
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+};
+
+function BottomNavItem({ icon: Icon, label, active = false, onClick }: BottomNavItemProps) {
   return (
     <button
       onClick={onClick}
@@ -397,7 +416,12 @@ function BottomNavItem({ icon: Icon, label, active, onClick }) {
   );
 }
 
-function Card({ children, style }) {
+type CardProps = {
+  children: ReactNode;
+  style?: CSSProperties;
+};
+
+function Card({ children, style }: CardProps) {
   return (
     <div
       style={{
@@ -414,7 +438,13 @@ function Card({ children, style }) {
   );
 }
 
-function SectionTitle({ children, sub, action }) {
+type SectionTitleProps = {
+  children: ReactNode;
+  sub?: string;
+  action?: ReactNode;
+};
+
+function SectionTitle({ children, sub, action }: SectionTitleProps) {
   return (
     <div
       style={{
@@ -456,7 +486,11 @@ function SectionTitle({ children, sub, action }) {
   );
 }
 
-function TableScroll({ children }) {
+type TableScrollProps = {
+  children: ReactNode;
+};
+
+function TableScroll({ children }: TableScrollProps) {
   return (
     <div
       style={{
@@ -470,7 +504,12 @@ function TableScroll({ children }) {
   );
 }
 
-function Th({ children, right }) {
+type ThProps = {
+  children: ReactNode;
+  right?: boolean;
+};
+
+function Th({ children, right = false }: ThProps) {
   return (
     <th
       style={{
@@ -491,7 +530,16 @@ function Th({ children, right }) {
   );
 }
 
-function Td({ children, right, mono, bold, style, label }) {
+type TdProps = {
+  children: ReactNode;
+  right?: boolean;
+  mono?: boolean;
+  bold?: boolean;
+  style?: CSSProperties;
+  label?: string;
+};
+
+function Td({ children, right = false, mono = false, bold = false, style, label }: TdProps) {
   return (
     <td
       data-label={label}
@@ -535,15 +583,25 @@ const labelStyle = {
   letterSpacing: 0.4,
 };
 
+type ButtonProps = {
+  children: ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "ghost" | "danger";
+  disabled?: boolean;
+  icon?: ComponentType<{ size?: number; strokeWidth?: number }>;
+  type?: "button" | "submit" | "reset";
+  fullWidth?: boolean;
+};
+
 function Button({
   children,
   onClick,
   variant = "primary",
-  disabled,
+  disabled = false,
   icon: Icon,
   type,
-  fullWidth,
-}) {
+  fullWidth = false,
+}: ButtonProps) {
   const styles = {
     primary: { background: GREEN, color: PAPER, border: `1px solid ${GREEN}` },
     ghost: {
@@ -587,7 +645,15 @@ function Button({
   );
 }
 
-function Modal({ title, sub, onClose, children, wide }) {
+type ModalProps = {
+  title: string;
+  sub?: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+};
+
+function Modal({ title, sub, onClose, children, wide = false }: ModalProps) {
   return (
     <div
       onClick={onClose}
@@ -1739,7 +1805,14 @@ function ProjectsPanel({ data, mutate }) {
   );
 }
 
-function ProjectSelect({ value, onChange, projects, style }) {
+type ProjectSelectProps = {
+  value: string;
+  onChange: (value: string) => void;
+  projects: Array<{ id: string; name: string }>;
+  style?: CSSProperties;
+};
+
+function ProjectSelect({ value, onChange, projects, style }: ProjectSelectProps) {
   return (
     <select
       style={style || inputStyle}
