@@ -100,14 +100,14 @@ function invoiceItemToRow(it, invoiceId) {
 }
 
 function paymentFromRow(r) {
-  return { id: r.id, date: r.date, amountGhs: r.amount_ghs, method: r.method, reference: r.reference };
+  return { id: r.id, date: r.date, amountGHS: r.amount_ghs, method: r.method, reference: r.reference };
 }
 function paymentToRow(p, invoiceId) {
   return {
     id: p.id,
     invoice_id: invoiceId,
     date: p.date,
-    amount_ghs: p.amountGhs ?? null,
+    amount_ghs: p.amountGHS ?? null,
     method: p.method ?? null,
     reference: p.reference ?? null,
   };

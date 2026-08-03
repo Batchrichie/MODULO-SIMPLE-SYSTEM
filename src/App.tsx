@@ -1232,7 +1232,7 @@ function DashboardPanel({ data, setTab }) {
                     {recentEntries.map(e => (
                       <tr key={e.id} className="row-hover" style={{ cursor: "pointer" }} onClick={() => setTab("journal")}>
                         <Td label="Date">{e.date}</Td>
-                        <Td label="Description">{e.description || "—"}</Td>
+                        <Td label="Description">{e.description || "?"}</Td>
                         <Td right mono label="Amount">GHS {fmt(e.lines.reduce((s, l) => s + l.debit, 0))}</Td>
                       </tr>
                     ))}
@@ -1585,7 +1585,7 @@ function ProjectsPanel({ data, mutate }) {
                     letterSpacing: 0.5,
                   }}
                 >
-                  {p.projectType} •{" "}
+                  {p.projectType} ?{" "}
                   {p.recognitionMethod === "POC"
                     ? "Percentage of Completion"
                     : "Point-in-Time"}
@@ -1951,10 +1951,10 @@ function JournalEntryForm({ data, mutate, onDone }) {
                     value={l.account}
                     onChange={(e) => updateLine(i, "account", e.target.value)}
                   >
-                    <option value="">Select account…</option>
+                    <option value="">Select account?</option>
                     {data.accounts.map((a) => (
                       <option key={a.code} value={a.code}>
-                        {a.code} — {a.name}
+                        {a.code} ? {a.name}
                       </option>
                     ))}
                   </select>
@@ -2068,7 +2068,7 @@ function JournalEntryForm({ data, mutate, onDone }) {
           }}
         >
           {balanced ? <Check size={16} /> : <AlertTriangle size={16} />}
-          {balanced ? "Balanced — ready to post" : "Not balanced yet"}
+          {balanced ? "Balanced ? ready to post" : "Not balanced yet"}
         </div>
       </div>
 
@@ -2127,7 +2127,7 @@ function JournalPanel({ data, mutate }) {
                   </Td>
                   <Td label="Date">{e.date}</Td>
                   <Td label="Description">
-                    {e.description || <span style={{ color: MUTED }}>—</span>}
+                    {e.description || <span style={{ color: MUTED }}>?</span>}
                   </Td>
                   <Td label="Project">
                     {projectName(data.projects, e.project)}
@@ -2167,7 +2167,7 @@ function JournalPanel({ data, mutate }) {
       {viewingEntry && (
         <Modal
           title={`Entry Details: ${viewingEntry.entryNumber}`}
-          sub={`${viewingEntry.date} — ${
+          sub={`${viewingEntry.date} ? ${
             viewingEntry.description || "No description"
           }`}
           onClose={() => setViewingEntry(null)}
@@ -2191,7 +2191,7 @@ function JournalPanel({ data, mutate }) {
                   const acc = data.accounts.find((a) => a.code === l.account);
                   return (
                     <tr key={i} className="row-hover">
-                      <Td>{acc ? `${acc.code} — ${acc.name}` : l.account}</Td>
+                      <Td>{acc ? `${acc.code} ? ${acc.name}` : l.account}</Td>
                       <Td right mono>
                         {l.debit > 0 ? fmt(l.debit) : ""}
                       </Td>
@@ -2299,7 +2299,7 @@ function LedgerPanel({ data }) {
                   label="Balance"
                   style={{ color: isBalanced ? GREEN : ALERT }}
                 >
-                  {isBalanced ? "Balanced ✓" : "Out of balance"}
+                  {isBalanced ? "Balanced ?" : "Out of balance"}
                 </Td>
               </tr>
             </tfoot>
@@ -2795,7 +2795,7 @@ function FinancialsPanel({ data, setPrintContent }) {
             <img src={LOGO_SRC} alt="logo" style={finStyles.logo} />
             <div>
               <div style={finStyles.company}>{company.name}</div>
-              <div style={finStyles.tagline}>Design · Build · Deliver</div>
+              <div style={finStyles.tagline}>Design ? Build ? Deliver</div>
             </div>
           </div>
           <div style={finStyles.headerRight}>
@@ -2983,7 +2983,7 @@ function FinancialsPanel({ data, setPrintContent }) {
                 {cf.map((r, i) => (
                   <tr key={i}>
                     <td style={finStyles.td}>{r.date}</td>
-                    <td style={finStyles.td}>{r.description || "—"}</td>
+                    <td style={finStyles.td}>{r.description || "?"}</td>
                     <td
                       style={{
                         ...finStyles.td,
@@ -3033,10 +3033,10 @@ function FinancialsPanel({ data, setPrintContent }) {
         <div style={finStyles.footerNote}>
           Prepared from the general ledger for internal management review.
           <br />
-          {company.name} · {company.addressLine} · {company.cityLine} ·{" "}
+          {company.name} ? {company.addressLine} ? {company.cityLine} ?{" "}
           {company.poBox}
           <br />
-          Phone: {company.phone} · Telephone: {company.telephone} ·{" "}
+          Phone: {company.phone} ? Telephone: {company.telephone} ?{" "}
           {company.email}
         </div>
       </div>
@@ -3140,7 +3140,7 @@ function FinancialsPanel({ data, setPrintContent }) {
 
       {view === "company" && (
         <>
-          <SectionTitle sub="Assets, liabilities, and equity — company-wide (projects share one balance sheet, they aren't separate legal entities).">
+          <SectionTitle sub="Assets, liabilities, and equity ? company-wide (projects share one balance sheet, they aren't separate legal entities).">
             Statement of Financial Position
           </SectionTitle>
           <Card style={{ marginBottom: 16 }}>
@@ -3227,7 +3227,7 @@ function FinancialsPanel({ data, setPrintContent }) {
                       <Td mono label="Entry">
                         {r.entryNumber}
                       </Td>
-                      <Td label="Description">{r.description || "—"}</Td>
+                      <Td label="Description">{r.description || "?"}</Td>
                       <Td
                         right
                         mono
@@ -3388,10 +3388,10 @@ function EmployeesPanel({ data, mutate }) {
                 <tr key={e.id} className="row-hover">
                   <Td label="Name">{e.name}</Td>
                   <Td label="Designation">
-                    {e.designation || <span style={{ color: MUTED }}>—</span>}
+                    {e.designation || <span style={{ color: MUTED }}>?</span>}
                   </Td>
                   <Td mono label="SSNIT No.">
-                    {e.ssnitNo || <span style={{ color: MUTED }}>—</span>}
+                    {e.ssnitNo || <span style={{ color: MUTED }}>?</span>}
                   </Td>
                   <Td right mono label="Base Salary">
                     GHS {fmt(e.baseSalary)}
@@ -3744,7 +3744,7 @@ function InvoiceDocument({ data, inv }) {
   const company = data.company || DEFAULT_COMPANY;
 
   const formatDate = (value) => {
-    if (!value) return "—";
+    if (!value) return "?";
     const [year, month, day] = value.split("-").map(Number);
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString("en-GB", {
@@ -3835,7 +3835,7 @@ function InvoiceDocument({ data, inv }) {
                 marginTop: 2,
               }}
             >
-              Design · Build · Deliver
+              Design ? Build ? Deliver
             </div>
           </div>
         </div>
@@ -3909,13 +3909,13 @@ function InvoiceDocument({ data, inv }) {
           <div style={cardRowStyle}>
             <span style={{ color: "#6B6B6B" }}>Location</span>
             <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
-              {inv.location || "—"}
+              {inv.location || "?"}
             </span>
           </div>
           <div style={cardRowStyle}>
             <span style={{ color: "#6B6B6B" }}>For</span>
             <span style={{ fontWeight: 600, color: "#2D2D2D" }}>
-              {inv.forText || "—"}
+              {inv.forText || "?"}
             </span>
           </div>
           <div style={cardRowStyle}>
@@ -4081,7 +4081,7 @@ function InvoiceDocument({ data, inv }) {
                     verticalAlign: "top",
                   }}
                 >
-                  {it.unit || "—"}
+                  {it.unit || "?"}
                 </td>
                 <td
                   style={{
@@ -4264,14 +4264,14 @@ function InvoiceDocument({ data, inv }) {
       >
         We execute the best designs with utmost empathy and professionalism.
         <br />
-        Thank you for entrusting to us your dreams — we will help make it a reality.
+        Thank you for entrusting to us your dreams ? we will help make it a reality.
         <br />
         <br />
-        <span style={{ color: "#E8E4DC" }}>—</span>
+        <span style={{ color: "#E8E4DC" }}>?</span>
         <br />
-        {company.addressLine} · {company.cityLine} · {company.poBox}
+        {company.addressLine} ? {company.cityLine} ? {company.poBox}
         <br />
-        Phone: {company.phone} · Telephone: {company.telephone} · {company.email}
+        Phone: {company.phone} ? Telephone: {company.telephone} ? {company.email}
       </div>
     </div>
   );
@@ -4502,7 +4502,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
           <img src={LOGO_SRC} alt="Modulo Development Logo" style={receiptStyles.logo} />
           <div>
             <div style={receiptStyles.company}>{data.company.name}</div>
-            <div style={receiptStyles.tagline}>Design · Build · Deliver</div>
+            <div style={receiptStyles.tagline}>Design ? Build ? Deliver</div>
           </div>
         </div>
         <div style={receiptStyles.headerRight}>
@@ -4566,7 +4566,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
         <tbody>
           <tr>
             <td style={receiptStyles.td}>{payment.method}</td>
-            <td style={receiptStyles.td}>{payment.reference || "—"}</td>
+            <td style={receiptStyles.td}>{payment.reference || "?"}</td>
             <td style={{ ...receiptStyles.td, ...receiptStyles.tdRight, fontWeight: 700 }}>GHS {fmt(payment.amountGHS)}</td>
           </tr>
         </tbody>
@@ -4587,7 +4587,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
         </div>
         <div style={receiptStyles.summaryRow}>
           <span>Paid For</span>
-          <span>{inv.forText || inv.projectLabel || "—"}</span>
+          <span>{inv.forText || inv.projectLabel || "?"}</span>
         </div>
         <div style={receiptStyles.summaryHighlight}>
           <span>Outstanding Balance</span>
@@ -4608,9 +4608,9 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
 
       <div style={receiptStyles.footerNote}>
         Thank you for your business.<br />
-        {data.company.name} · {data.company.addressLine} · {data.company.cityLine}
+        {data.company.name} ? {data.company.addressLine} ? {data.company.cityLine}
         <br />
-        Phone: {data.company.phone} · Telephone: {data.company.telephone} · Mail: {data.company.email}
+        Phone: {data.company.phone} ? Telephone: {data.company.telephone} ? Mail: {data.company.email}
       </div>
     </div>
   );
@@ -4810,7 +4810,7 @@ function Payslip({ data, run, r }) {
           <img src={LOGO_SRC} alt="Modulo Development Logo" style={payslipStyles.darkLogo} />
           <div>
             <div style={payslipStyles.darkCompany}>{data.company.name}</div>
-            <div style={payslipStyles.darkTagline}>Design · Build · Deliver</div>
+            <div style={payslipStyles.darkTagline}>Design ? Build ? Deliver</div>
           </div>
         </div>
         <div style={payslipStyles.headerRight}>
@@ -4826,11 +4826,11 @@ function Payslip({ data, run, r }) {
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>SSNIT Number</div>
-          <div style={payslipStyles.fieldValue}>{emp.ssnitNo || "—"}</div>
+          <div style={payslipStyles.fieldValue}>{emp.ssnitNo || "?"}</div>
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>Designation</div>
-          <div style={payslipStyles.fieldValue}>{(emp.designation || "—").toUpperCase()}</div>
+          <div style={payslipStyles.fieldValue}>{(emp.designation || "?").toUpperCase()}</div>
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>Month / Year</div>
@@ -4838,7 +4838,7 @@ function Payslip({ data, run, r }) {
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>NIA Card</div>
-          <div style={payslipStyles.fieldValue}>{emp.niaCard || "—"}</div>
+          <div style={payslipStyles.fieldValue}>{emp.niaCard || "?"}</div>
         </div>
         <div style={payslipStyles.field}>
           <div style={payslipStyles.fieldLabel}>Department</div>
@@ -4851,40 +4851,40 @@ function Payslip({ data, run, r }) {
           <div style={payslipStyles.colHeader}>Earnings</div>
           <div style={payslipStyles.colRow}>
             <span style={payslipStyles.colLabel}>Basic Salary</span>
-            <span style={payslipStyles.colValue}>GH₵ {fmt(r.gross)}</span>
+            <span style={payslipStyles.colValue}>GH? {fmt(r.gross)}</span>
           </div>
           <div style={{ ...payslipStyles.colRow, ...payslipStyles.colTotal }}>
             <span style={{ ...payslipStyles.colLabel, color: "#2D2D2D" }}>Total Earnings</span>
-            <span style={{ ...payslipStyles.colValue, color: "#2D2D2D" }}>GH₵ {fmt(r.gross)}</span>
+            <span style={{ ...payslipStyles.colValue, color: "#2D2D2D" }}>GH? {fmt(r.gross)}</span>
           </div>
         </div>
         <div style={payslipStyles.colCard}>
           <div style={payslipStyles.colHeader}>Deductions</div>
           <div style={payslipStyles.colRow}>
             <span style={payslipStyles.colLabel}>P.A.Y.E</span>
-            <span style={payslipStyles.colValue}>GH₵ {fmt(r.paye)}</span>
+            <span style={payslipStyles.colValue}>GH? {fmt(r.paye)}</span>
           </div>
           <div style={payslipStyles.colRow}>
             <span style={payslipStyles.colLabel}>Tier 1 + 2 (QFTL) 5.5%</span>
-            <span style={payslipStyles.colValue}>GH₵ {fmt(r.ssnitEmployee)}</span>
+            <span style={payslipStyles.colValue}>GH? {fmt(r.ssnitEmployee)}</span>
           </div>
           <div style={{ ...payslipStyles.colRow, ...payslipStyles.colTotal }}>
             <span style={{ ...payslipStyles.colLabel, color: "#2D2D2D" }}>Total Deductions</span>
-            <span style={{ ...payslipStyles.colValue, color: "#A63D40" }}>GH₵ {fmt(r.paye + r.ssnitEmployee)}</span>
+            <span style={{ ...payslipStyles.colValue, color: "#A63D40" }}>GH? {fmt(r.paye + r.ssnitEmployee)}</span>
           </div>
         </div>
       </div>
 
       <div style={payslipStyles.netHighlight}>
         <div style={payslipStyles.netLabel}>Net Pay</div>
-        <div style={payslipStyles.netAmount}>GH₵ {fmt(r.net)}</div>
+        <div style={payslipStyles.netAmount}>GH? {fmt(r.net)}</div>
       </div>
 
       <div style={payslipStyles.employerSection}>
         <div style={payslipStyles.empTitle}>Employer Contributions</div>
         <div style={payslipStyles.empRow}>
-          <span style={payslipStyles.colLabel}>Tier 1 (SSNIT) — {(data.ssnitEmployerRate * 100).toFixed(0)}%</span>
-          <span style={payslipStyles.colValue}>GH₵ {fmt(r.ssnitEmployer)}</span>
+          <span style={payslipStyles.colLabel}>Tier 1 (SSNIT) ? {(data.ssnitEmployerRate * 100).toFixed(0)}%</span>
+          <span style={payslipStyles.colValue}>GH? {fmt(r.ssnitEmployer)}</span>
         </div>
       </div>
 
@@ -4901,7 +4901,7 @@ function Payslip({ data, run, r }) {
 
       <div style={payslipStyles.footerNote}>
         This is a computer-generated payslip and does not require a physical signature.<br />
-        {data.company.name} · {data.company.addressLine}, {data.company.cityLine} · {data.company.poBox}
+        {data.company.name} ? {data.company.addressLine}, {data.company.cityLine} ? {data.company.poBox}
       </div>
     </div>
   );
@@ -5084,7 +5084,7 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
                 marginBottom: 10,
               }}
             >
-              Monthly PAYE bands (GHS) — estimated from 2026 GRA annual bands.
+              Monthly PAYE bands (GHS) ? estimated from 2026 GRA annual bands.
             </p>
             <TableScroll>
               <table
@@ -5202,7 +5202,7 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
                 {run.period}
               </span>
               <span style={{ marginLeft: 12, fontSize: 12, color: MUTED }}>
-                {run.rows.length} employees • Total Net: GHS {fmt(run.rows.reduce((s, r) => s + r.net, 0))}
+                {run.rows.length} employees ? Total Net: GHS {fmt(run.rows.reduce((s, r) => s + r.net, 0))}
               </span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -5382,7 +5382,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       id: entryNumber,
       entryNumber,
       date,
-      description: `Invoice ${invoiceNumber} — ${billTo.trim()}`,
+      description: `Invoice ${invoiceNumber} ? ${billTo.trim()}`,
       period: date.slice(0, 7),
       project,
       lines: [
@@ -5502,7 +5502,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
           >
             {revenueOptions.map((a) => (
               <option key={a.code} value={a.code}>
-                {a.code} — {a.name}
+                {a.code} ? {a.name}
               </option>
             ))}
           </select>
@@ -5604,7 +5604,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
                     ? fmt(
                         (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0)
                       )
-                    : "—"}
+                    : "?"}
                 </Td>
                 <Td right>
                   <button
@@ -5765,7 +5765,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       id: entryNumber,
       entryNumber,
       date,
-      description: `Payment received — ${inv.invoiceNumber} (${inv.billTo})`,
+      description: `Payment received ? ${inv.invoiceNumber} (${inv.billTo})`,
       period: date.slice(0, 7),
       project: inv.project,
       lines: [
@@ -6011,10 +6011,10 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
                                 });
                             }}
                           >
-                            <option value="">Reprint Receipt…</option>
+                            <option value="">Reprint Receipt?</option>
                             {inv.payments.map((p, i) => (
                               <option key={p.id} value={p.id}>
-                                Receipt {i + 1} — GHS {fmt(p.amountGHS)}
+                                Receipt {i + 1} ? GHS {fmt(p.amountGHS)}
                               </option>
                             ))}
                           </select>
@@ -6052,7 +6052,7 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
       )}
       {payingInv && (
         <Modal
-          title={`Record payment — ${payingInv.invoiceNumber}`}
+          title={`Record payment ? ${payingInv.invoiceNumber}`}
           onClose={() => setPayingInv(null)}
         >
           <RecordPaymentForm
@@ -6090,7 +6090,7 @@ function ExportPanel({ data, isMobile }) {
           Date: e.date,
           Description: e.description,
           Project: projectName(data.projects, e.project),
-          Account: `${l.account} — ${acc ? acc.name : ""}`,
+          Account: `${l.account} ? ${acc ? acc.name : ""}`,
           Debit: l.debit || "",
           Credit: l.credit || "",
         });
@@ -6211,23 +6211,163 @@ function ExportPanel({ data, isMobile }) {
 }
 
 // ---------- App ----------
-// ... (All your existing UI panels above this) ...
-
 function LedgerApp() {
   useGoogleFonts();
   const isMobile = useIsMobile();
   const [data, setData] = useState(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState(() => {
-    // ... your existing tab logic ...
+    if (typeof window === "undefined") return "dashboard";
+    const validTabs = [
+      "dashboard",
+      "accounts",
+      "journal",
+      "ledger",
+      "financials",
+      "projects",
+      "invoicing",
+      "employees",
+      "payroll",
+      "export",
+    ];
+    try {
+      const saved = window.localStorage.getItem("modulo_tab");
+      return validTabs.includes(saved) ? saved : "dashboard";
+    } catch {
+      return "dashboard";
+    }
   });
   const [companyNameDraft, setCompanyNameDraft] = useState("");
   const [theme, setTheme] = useState(() => {
-    // ... your existing theme logic ...
+    if (typeof window === "undefined") return "light";
+    try {
+      return window.localStorage.getItem("modulo_theme") || "light";
+    } catch {
+      return "light";
+    }
   });
   const [printContent, setPrintContent] = useState(null);
 
-  // ... keep all your existing useEffects and logic ...
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
+    try {
+      window.localStorage.setItem("modulo_theme", theme);
+    } catch {
+      // localStorage unavailable G?? theme just won't persist
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("modulo_tab", tab);
+    } catch {
+      // localStorage unavailable G?? last tab just won't persist
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const remote = await loadLedgerState();
+        if (remote) {
+          const remoteAccounts = remote.accounts || [];
+          const defaultCodes = new Set(DEFAULT_ACCOUNTS.map((a) => a.code));
+          const customAccounts = remoteAccounts.filter(
+            (a) => !defaultCodes.has(a.code)
+          );
+          const mergedAccounts = [...DEFAULT_ACCOUNTS, ...customAccounts];
+
+          setData({
+            ...DEFAULT_DATA,
+            ...remote,
+            accounts: mergedAccounts,
+            company: { ...DEFAULT_COMPANY, ...(remote.company || {}) },
+          });
+          setCompanyNameDraft(remote.companyName || DEFAULT_DATA.companyName);
+        } else {
+          setCompanyNameDraft(DEFAULT_DATA.companyName);
+        }
+      } catch (err) {
+        console.error("Failed to load ledger data:", err);
+        setCompanyNameDraft(DEFAULT_DATA.companyName);
+      }
+      setLoaded(true);
+    })();
+  }, []);
+
+  const mutate = useCallback((fn) => {
+    setData((prev) => fn(prev));
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    saveSettings({
+      companyName: data.companyName,
+      company: data.company,
+      nextEntryNum: data.nextEntryNum,
+      nextInvoiceNum: data.nextInvoiceNum,
+      ssnitEmployeeRate: data.ssnitEmployeeRate,
+      ssnitEmployerRate: data.ssnitEmployerRate,
+      brackets: data.brackets,
+      nhilGetfundRate: data.nhilGetfundRate,
+      vatRate: data.vatRate,
+    });
+  }, [
+    loaded,
+    data.companyName,
+    data.company,
+    data.nextEntryNum,
+    data.nextInvoiceNum,
+    data.ssnitEmployeeRate,
+    data.ssnitEmployerRate,
+    data.brackets,
+    data.nhilGetfundRate,
+    data.vatRate,
+  ]);
+
+  function saveCompanyName() {
+    mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
+  }
+
+  if (!loaded) {
+    return (
+      <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>
+        Loading your ledger?
+      </div>
+    );
+  }
+
+  const nav = [
+    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { key: "journal", label: "Journal", icon: PenLine },
+    { key: "ledger", label: "Trial Balance", icon: Scale },
+    { key: "financials", label: "Financials", icon: TrendingUp },
+    { key: "projects", label: "Projects", icon: Briefcase },
+    { key: "invoicing", label: "Invoicing", icon: Receipt },
+    { key: "employees", label: "Employees", icon: Users },
+    { key: "payroll", label: "Payroll", icon: Banknote },
+    { key: "accounts", label: "Chart of Accounts", icon: BookOpen },
+    { key: "export", label: "Export", icon: FileSpreadsheet },
+  ];
+
+  const navGroups = [
+    {
+      label: "Overview",
+      keys: ["dashboard", "journal", "ledger", "financials"],
+    },
+    {
+      label: "Operations",
+      keys: ["projects", "invoicing", "employees", "payroll"],
+    },
+    { label: "Setup", keys: ["accounts", "export"] },
+  ];
+
+  const brandInitial = (companyNameDraft || data.companyName || "M")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
 
   const sidebarContent = (
     <>
@@ -6241,20 +6381,54 @@ function LedgerApp() {
           borderBottom: `1px solid ${RULE}`,
         }}
       >
-        {/* ... existing brand initial and input ... */}
-        
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 8,
+            background: GREEN,
+            color: PAPER,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: FONT_DISPLAY,
+            fontWeight: 700,
+            fontSize: 15,
+            flexShrink: 0,
+          }}
+        >
+          {brandInitial}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <input
+            style={{
+              ...inputStyle,
+              fontFamily: FONT_DISPLAY,
+              fontWeight: 700,
+              fontSize: 15,
+              border: "none",
+              padding: "2px 0",
+              background: "transparent",
+            }}
+            value={companyNameDraft}
+            onChange={(e) => setCompanyNameDraft(e.target.value)}
+            onBlur={saveCompanyName}
+          />
+          <div
+            style={{
+              fontSize: 10.5,
+              color: MUTED,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+            }}
+          >
+            Ledger ? GHS
+          </div>
+        </div>
         <button
           onClick={() => setTheme(theme === "light" ? "dark" : "light")}
           title="Toggle Theme"
-          // ... existing styles ...
-        >
-          {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-        </button>
-
-        {/* NEW: SIGN OUT BUTTON */}
-        <button
-          onClick={signOut}
-          title="Sign Out"
+          aria-label="Toggle dark mode"
           style={{
             display: "flex",
             alignItems: "center",
@@ -6264,23 +6438,284 @@ function LedgerApp() {
             borderRadius: 8,
             border: `1px solid ${RULE}`,
             background: PAPER_RAISED,
-            color: ALERT, // Make it red to indicate logout
+            color: INK,
             cursor: "pointer",
             flexShrink: 0,
             transition: "all 0.2s ease",
           }}
         >
-          <LogOut size={16} />
+          {theme === "light" ? (
+            <Moon size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
+          ) : (
+            <Sun size={16} color={INK} strokeWidth={2} style={{ display: "block" }} />
+          )}
+        </button>
+        <button
+          onClick={signOut}
+          title="Sign Out"
+          aria-label="Sign out"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            border: `1px solid ${RULE}`,
+            background: PAPER_RAISED,
+            color: ALERT,
+            cursor: "pointer",
+            flexShrink: 0,
+            transition: "all 0.2s ease",
+          }}
+        >
+          <LogOut size={16} strokeWidth={2} style={{ display: "block" }} />
         </button>
       </div>
-      
-      {/* ... keep existing navGroups ... */}
+      {navGroups.map((group) => (
+        <div key={group.label} style={{ marginBottom: 18 }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              color: MUTED,
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              padding: "0 9px",
+              marginBottom: 6,
+            }}
+          >
+            {group.label}
+          </div>
+          <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {group.keys.map((k) => {
+              const n = nav.find((x) => x.key === k);
+              if (!n) return null;
+              return (
+                <NavItem
+                  key={n.key}
+                  icon={n.icon}
+                  label={n.label}
+                  active={tab === n.key}
+                  onClick={() => setTab(n.key)}
+                />
+              );
+            })}
+          </nav>
+        </div>
+      ))}
     </>
   );
 
   return (
-    <div style={{ /* ... your existing main layout ... */ }}>
-      {/* ... your existing styles and layout ... */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        minHeight: "100vh",
+        background: PAPER,
+        fontFamily: FONT_BODY,
+        color: INK,
+      }}
+    >
+      <style>{`
+        :root {
+          --ink: #1F2A24; --paper: #F7F4EE; --paper-raised: #FFFFFF; --rule: #DCD5C4; --green: #2F5233; --green-deep: #1E3A21; --gold: #A8761A; --alert: #A63D40; --muted: #6B6255; --input-bg: #FFFFFF; --nav-hover: #F1EEE4; --nav-active: #EAF1EA; --success-bg: #EAF1EA; --alert-bg: #F6E8E8;
+        }
+        .dark {
+          --ink: #EAE6DF; --paper: #121615; --paper-raised: #1A2120; --rule: #2E3735; --green: #4CAF50; --green-deep: #1E3A21; --gold: #D4AF37; --alert: #EF5350; --muted: #8A9A91; --input-bg: #121615; --nav-hover: #242B2A; --nav-active: #1E2A24; --success-bg: #1E2A24; --alert-bg: #2A1C1D;
+        }
+        @media print {
+          .no-print { display: none !important; }
+          .print-only { display: block !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
+          body { background: white !important; }
+          :root { --ink: #000; --paper: #fff; --paper-raised: #fff; --rule: #ccc; --muted: #333; }
+        }
+        .print-only { display: none; }
+        .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+        @media (max-width: 768px) { .grid-fin { grid-template-columns: 1fr !important; } }
+        .table-card { width: 100%; border-collapse: collapse; }
+        @media (max-width: 700px) {
+          .table-card thead { display: none; }
+          .table-card, .table-card tbody, .table-card tr, .table-card td { display: block; width: 100%; box-sizing: border-box; }
+          .table-card tr { margin-bottom: 16px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper-raised); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+          .table-card td { display: flex; justify-content: space-between; align-items: center; border: none; border-bottom: 1px solid var(--rule); padding: 10px 12px; text-align: right; }
+          .table-card td:last-child { border-bottom: none; }
+          .table-card td::before { content: attr(data-label); font-weight: 700; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--muted); margin-right: 16px; text-align: left; }
+          .table-card tfoot tr { background: var(--paper); border-style: dashed; box-shadow: none; margin-top: 8px; }
+          .table-card tfoot td { border-bottom: 1px solid var(--rule); }
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--green) !important; box-shadow: 0 0 0 2px rgba(75, 175, 80, 0.15); }
+        .row-hover:hover { background: var(--nav-hover); }
+        .btn-hover:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        @media (max-width: 600px) { .modal-card { padding: 16px !important; } }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--paper); }
+        ::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+      `}</style>
+
+      <div className="no-print" style={{ display: "contents" }}>
+        {isMobile ? (
+          <div
+            style={{
+              borderBottom: `1px solid ${RULE}`,
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: PAPER_RAISED,
+              position: "sticky",
+              top: 0,
+              zIndex: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 7,
+                background: GREEN,
+                color: PAPER,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 700,
+                fontSize: 13,
+                flexShrink: 0,
+              }}
+            >
+              {brandInitial}
+            </div>
+            <div
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 700,
+                fontSize: 15,
+                color: INK,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+              }}
+            >
+              {data.companyName}
+            </div>
+            <button
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+              title="Toggle Theme"
+              aria-label="Toggle dark mode"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                border: `1px solid ${RULE}`,
+                background: PAPER_RAISED,
+                color: INK,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              {theme === "light" ? (
+                <Moon size={18} color={INK} strokeWidth={2} style={{ display: "block" }} />
+              ) : (
+                <Sun size={18} color={INK} strokeWidth={2} style={{ display: "block" }} />
+              )}
+            </button>
+          </div>
+        ) : (
+          <aside
+            style={{
+              width: 240,
+              borderRight: `1px solid ${RULE}`,
+              padding: "24px 14px",
+              flexShrink: 0,
+              background: PAPER_RAISED,
+              position: "sticky",
+              top: 0,
+              height: "100vh",
+              overflowY: "auto",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {sidebarContent}
+          </aside>
+        )}
+
+        <main
+          style={{
+            flex: 1,
+            padding: isMobile ? "20px 16px 88px" : "32px 40px",
+            maxWidth: isMobile ? "100%" : 980,
+            boxSizing: "border-box",
+            position: "relative",
+          }}
+        >
+          {tab === "dashboard" && (
+            <DashboardPanel data={data} setTab={setTab} />
+          )}
+          {tab === "accounts" && <AccountsPanel data={data} mutate={mutate} />}
+          {tab === "journal" && <JournalPanel data={data} mutate={mutate} />}
+          {tab === "ledger" && <LedgerPanel data={data} />}
+          {tab === "financials" && (
+            <FinancialsPanel data={data} setPrintContent={setPrintContent} />
+          )}
+          {tab === "projects" && <ProjectsPanel data={data} mutate={mutate} />}
+          {tab === "invoicing" && (
+            <InvoicingPanel
+              data={data}
+              mutate={mutate}
+              setPrintContent={setPrintContent}
+            />
+          )}
+          {tab === "employees" && (
+            <EmployeesPanel data={data} mutate={mutate} />
+          )}
+          {tab === "payroll" && (
+            <PayrollPanel
+              data={data}
+              mutate={mutate}
+              setPrintContent={setPrintContent}
+            />
+          )}
+          {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
+        </main>
+
+        {isMobile && (
+          <nav
+            style={{
+              position: "fixed",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 20,
+              background: PAPER_RAISED,
+              borderTop: `1px solid ${RULE}`,
+              display: "flex",
+              overflowX: "auto",
+              boxShadow: "0 -2px 10px rgba(0,0,0,0.06)",
+            }}
+          >
+            {nav.map((n) => (
+              <BottomNavItem
+                key={n.key}
+                icon={n.icon}
+                label={n.label}
+                active={tab === n.key}
+                onClick={() => setTab(n.key)}
+              />
+            ))}
+          </nav>
+        )}
+      </div>
+
+      <div className="print-only">{printContent}</div>
     </div>
   );
 }
@@ -6305,7 +6740,7 @@ class ErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div style={{ padding: 40, fontFamily: "sans-serif", background: "#fff", color: "#A63D40", height: "100vh" }}>
-          <h2 style={{ marginBottom: 16 }}>⚠️ App Crashed (Blank Screen Error)</h2>
+          <h2 style={{ marginBottom: 16 }}>?? App Crashed (Blank Screen Error)</h2>
           <p style={{ marginBottom: 16, color: "#333" }}>
             The app failed to render. This is usually because a database table is missing or returned unexpected data.
           </p>
