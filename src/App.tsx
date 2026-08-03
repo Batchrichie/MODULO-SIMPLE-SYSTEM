@@ -3374,7 +3374,7 @@ function EmployeesPanel({ data, mutate }) {
               </tr>
             </thead>
             <tbody>
-              {data.employees.map((e) => (
+              {(data.employees || []).map((e) => (
                 <tr key={e.id} className="row-hover">
                   <Td label="Name">{e.name}</Td>
                   <Td label="Designation">
@@ -3466,7 +3466,7 @@ function EmployeesPanel({ data, mutate }) {
                   </Td>
                 </tr>
               ))}
-              {data.employees.length === 0 && (
+              {(data.employees || []).length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ color: MUTED, padding: 10 }}>
                     No employees added yet.
@@ -6484,7 +6484,6 @@ export default function App() {
           nextInvoiceNum: data.nextInvoiceNum,
           ssnitEmployeeRate: data.ssnitEmployeeRate,
           ssnitEmployerRate: data.ssnitEmployerRate,
-          brackets: data.brackets,
           nhilGetfundRate: data.nhilGetfundRate,
           vatRate: data.vatRate,
         });
@@ -6500,7 +6499,6 @@ export default function App() {
     data.nextInvoiceNum,
     data.ssnitEmployeeRate,
     data.ssnitEmployerRate,
-    data.brackets,
     data.nhilGetfundRate,
     data.vatRate,
   ]);

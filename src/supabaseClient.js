@@ -63,6 +63,8 @@ function employeeFromRow(r) {
     ssnitNo: r.ssnit_no,
     niaCard: r.nia_card,
     designation: r.designation,
+    exemptPaye: r.exempt_paye ?? false,
+    exemptSsnit: r.exempt_ssnit ?? false,
   };
 }
 function employeeToRow(e) {
@@ -74,6 +76,8 @@ function employeeToRow(e) {
     ssnit_no: e.ssnitNo ?? null,
     nia_card: e.niaCard ?? null,
     designation: e.designation ?? null,
+    // exempt_paye and exempt_ssnit are omitted because the current remote
+    // employees table schema does not expose those columns yet.
   };
 }
 
