@@ -31,7 +31,7 @@ import {
   FileText,
 } from "lucide-react";
 import Login from "./Login.jsx";
-import { loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates, savePayeBrackets, db, getTrialBalance, getBalanceSheet, getProfitAndLoss, getSession, onAuthStateChange, signOut } from "./supabaseClient";
+import { loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates, savePayeBrackets, db, getTrialBalance, getBalanceSheet, getProfitAndLoss, getSession, onAuthStateChange, signOut, runPayrollAndFetch } from "./supabaseClient";
 
 // ---------- Design Tokens (CSS Variables for Theming) ----------
 const INK = "var(--ink)";
@@ -282,21 +282,6 @@ function fmt(n: number | string | null | undefined) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-function computePAYE(
-  chargeable: number,
-  brackets: Array<{ upto: number; rate: number }>
-) {
-  let tax = 0;
-  let prev = 0;
-  for (const b of brackets) {
-    if (chargeable <= prev) break;
-    const slice = Math.min(chargeable, b.upto) - prev;
-    if (slice > 0) tax += slice * b.rate;
-    prev = b.upto;
-  }
-  return tax;
 }
 
 function projectName(
@@ -4886,7 +4871,8 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
   const [period, setPeriod] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   );
-  const [draft, setDraft] = useState(null);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState("");
   const [showBrackets, setShowBrackets] = useState(false);
   const [savingTaxSettings, setSavingTaxSettings] = useState(false);
   const [taxSaveMessage, setTaxSaveMessage] = useState("");
@@ -4967,84 +4953,32 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
     }
   }
 
-  function buildDraft() {
-    const rows = data.employees
-      .filter((e) => e.active)
-      .map((e) => {
-        const gross = e.baseSalary;
-        const isExemptSsnit = e.exemptSsnit || false;
-        const isExemptPaye = e.exemptPaye || false;
-
-        const ssnitEmployee = isExemptSsnit ? 0 : gross * data.ssnitEmployeeRate;
-        const ssnitEmployer = isExemptSsnit ? 0 : gross * data.ssnitEmployerRate;
-
-        const chargeable = gross - ssnitEmployee;
-
-        const paye = isExemptPaye ? 0 : computePAYE(chargeable, data.brackets);
-
-        const net = gross - ssnitEmployee - paye;
-
-        return {
-          employeeId: e.id,
-          name: e.name,
-          gross,
-          ssnitEmployee,
-          ssnitEmployer,
-          paye,
-          net,
-        };
-      });
-    setDraft(rows);
-  }
-
-  async function postPayroll() {
-    if (!draft || draft.length === 0) return;
-    const totalGross = draft.reduce((s, r) => s + r.gross, 0);
-    const totalSsnitEmployer = draft.reduce((s, r) => s + r.ssnitEmployer, 0);
-    const totalSsnitEmployee = draft.reduce((s, r) => s + r.ssnitEmployee, 0);
-    const totalPaye = draft.reduce((s, r) => s + r.paye, 0);
-    const totalNet = draft.reduce((s, r) => s + r.net, 0);
-    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
-    const entry = {
-      id: entryNumber,
-      entryNumber,
-      date: `${period}-28`,
-      description: `Payroll posting for ${period}`,
-      period,
-      project: "GEN",
-      lines: [
-        { account: "6000", debit: totalGross, credit: 0 },
-        { account: "6100", debit: totalSsnitEmployer, credit: 0 },
-        {
-          account: "2100",
-          debit: 0,
-          credit: totalSsnitEmployee + totalSsnitEmployer,
-        },
-        { account: "2200", debit: 0, credit: totalPaye },
-        { account: "1000", debit: 0, credit: totalNet },
-      ],
-    };
-    const run = {
-      id: "RUN-" + Date.now(),
-      period,
-      rows: draft,
-      entryNumber,
-      postedAt: new Date().toISOString(),
-    };
-    mutate((d) => ({
-      ...d,
-      journal: [entry, ...d.journal],
-      payrollRuns: [run, ...d.payrollRuns],
-      nextEntryNum: d.nextEntryNum + 1,
-    }));
-    try {
-      await db.savePayrollRun(run);
-      await db.saveJournalEntry(entry);
-    } catch (err) {
-      console.error("Failed to persist payroll run or journal entry:", err);
-      alert("Failed to post payroll to server. Check console for details.");
+  async function handlePostPayroll() {
+    if (!period) return;
+    if (data.payrollRuns.some((r) => r.period === period)) {
+      setPostError("Payroll for this period has already been posted.");
+      return;
     }
-    setDraft(null);
+    setPosting(true);
+    setPostError("");
+    try {
+      // The run_payroll() Postgres function does all the tax math
+      // (respecting exempt_paye / exempt_ssnit), writes the payroll_lines,
+      // and posts the balanced journal entry — all server-side, in one
+      // transaction. We just trigger it and pull back both results so the
+      // UI updates immediately, same as every other posting action.
+      const { run, journalEntry } = await runPayrollAndFetch(period);
+      mutate((d) => ({
+        ...d,
+        payrollRuns: [run, ...d.payrollRuns],
+        journal: [journalEntry, ...d.journal],
+      }));
+    } catch (err) {
+      console.error("Failed to post payroll:", err);
+      setPostError(err?.message || "Failed to post payroll. Check console for details.");
+    } finally {
+      setPosting(false);
+    }
   }
 
   function printPayslip(run, row) {
@@ -5087,12 +5021,16 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
               value={period}
               onChange={(e) => {
                 setPeriod(e.target.value);
-                setDraft(null);
+                setPostError("");
               }}
             />
           </div>
-          <Button onClick={buildDraft} icon={Banknote}>
-            Calculate payroll
+          <Button
+            onClick={handlePostPayroll}
+            icon={Banknote}
+            disabled={posting || alreadyPosted || !period}
+          >
+            {posting ? "Posting…" : alreadyPosted ? "Already Posted" : "Run & Post Payroll"}
           </Button>
           <Button
             variant="ghost"
@@ -5104,6 +5042,11 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
           {alreadyPosted && (
             <span style={{ color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>
               Already posted for this period.
+            </span>
+          )}
+          {postError && (
+            <span style={{ color: ALERT, fontFamily: FONT_BODY, fontSize: 13 }}>
+              {postError}
             </span>
           )}
         </div>
@@ -5278,52 +5221,6 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
           </div>
         )}
       </Card>
-      {draft && (
-        <Card style={{ marginBottom: 16 }}>
-          <TableScroll>
-            <table
-              className="table-card"
-              style={{ width: "100%", borderCollapse: "collapse" }}
-            >
-              <thead>
-                <tr>
-                  <Th>Employee</Th>
-                  <Th right>Gross</Th>
-                  <Th right>
-                    SSNIT ({(data.ssnitEmployeeRate * 100).toFixed(1)}%)
-                  </Th>
-                  <Th right>PAYE</Th>
-                  <Th right>Net Pay</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {draft.map((r) => (
-                  <tr key={r.employeeId} className="row-hover">
-                    <Td label="Employee">{r.name}</Td>
-                    <Td right mono label="Gross">
-                      {fmt(r.gross)}
-                    </Td>
-                    <Td right mono label="SSNIT">
-                      {fmt(r.ssnitEmployee)}
-                    </Td>
-                    <Td right mono label="PAYE">
-                      {fmt(r.paye)}
-                    </Td>
-                    <Td right mono bold label="Net Pay">
-                      {fmt(r.net)}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-          <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-            <Button onClick={postPayroll} disabled={alreadyPosted} icon={Check}>
-              Post to ledger
-            </Button>
-          </div>
-        </Card>
-      )}
       <SectionTitle>Past payroll runs</SectionTitle>
       <Card>
         {data.payrollRuns.length === 0 && (
