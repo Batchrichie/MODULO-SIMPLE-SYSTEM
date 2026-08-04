@@ -76,8 +76,8 @@ function employeeToRow(e) {
     ssnit_no: e.ssnitNo ?? null,
     nia_card: e.niaCard ?? null,
     designation: e.designation ?? null,
-    // exempt_paye and exempt_ssnit are omitted because the current remote
-    // employees table schema does not expose those columns yet.
+    exempt_paye: e.exemptPaye ?? false,
+    exempt_ssnit: e.exemptSsnit ?? false,
   };
 }
 
@@ -234,6 +234,60 @@ export async function getProfitAndLoss(startDate, endDate) {
     return [];
   }
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Payroll automation: the run_payroll() Postgres function does all the tax
+// math server-side (respecting exempt_paye / exempt_ssnit) and posts the
+// journal entry. This helper triggers it, then fetches and formats the
+// resulting run so it matches the shape App.jsx already uses for
+// data.payrollRuns entries (id, period, entryNumber, postedAt, rows[]).
+// ---------------------------------------------------------------------------
+
+export async function runPayrollAndFetch(period) {
+  const { error: rpcError } = await supabase.rpc("run_payroll", { p_period: period });
+  if (rpcError) {
+    console.error("Error running payroll:", rpcError);
+    throw rpcError;
+  }
+
+  // run_payroll() names the journal entry deterministically as JE-PAY-<period>
+  const entryId = `JE-PAY-${period}`;
+
+  const [runResult, entryResult] = await Promise.all([
+    supabase.from("payroll_runs").select("*, payroll_lines(*)").eq("period", period).single(),
+    supabase.from("journal_entries").select("*, journal_lines(*)").eq("id", entryId).single(),
+  ]);
+
+  if (runResult.error) {
+    console.error("Error fetching posted payroll run:", runResult.error);
+    throw runResult.error;
+  }
+  if (entryResult.error) {
+    console.error("Error fetching posted payroll journal entry:", entryResult.error);
+    throw entryResult.error;
+  }
+
+  const run = {
+    id: runResult.data.id,
+    period: runResult.data.period,
+    entryNumber: runResult.data.entry_number,
+    postedAt: runResult.data.posted_at,
+    rows: (runResult.data.payroll_lines || []).map(payrollLineFromRow),
+  };
+
+  const e = entryResult.data;
+  const journalEntry = {
+    id: e.id,
+    entryNumber: e.entry_number,
+    date: e.date,
+    description: e.description,
+    period: e.period,
+    project: e.project,
+    lines: (e.journal_lines || []).map(journalLineFromRow),
+  };
+
+  return { run, journalEntry };
 }
 
 async function loadAppSettings() {
