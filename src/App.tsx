@@ -1887,17 +1887,16 @@ function JournalEntryForm({ data, mutate, onDone }) {
         credit: parseFloat(l.credit) || 0,
       })),
     };
+    mutate((d) => ({
+      ...d,
+      journal: [entry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+    }));
     try {
       await db.saveJournalEntry(entry);
-      mutate((d) => ({
-        ...d,
-        journal: [entry, ...d.journal],
-        nextEntryNum: d.nextEntryNum + 1,
-      }));
     } catch (err) {
       console.error("Failed to save journal entry:", err);
       alert("Failed to save journal entry to server. Check console for details.");
-      return;
     }
     onDone && onDone();
   }
@@ -5415,30 +5414,29 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       period: date.slice(0, 7),
       project,
       lines: [
-        { account: "1100", debit: totals.grandTotalGHS, credit: 0 },
+        { account: "1130", debit: totals.grandTotalGHS, credit: 0 },
         { account: revenueAccount, debit: 0, credit: totals.newSubtotalGHS },
         ...(chargeNhil
-          ? [{ account: "2400", debit: 0, credit: totals.nhilGetfundGHS }]
+          ? [{ account: "2205", debit: 0, credit: totals.nhilGetfundGHS }]
           : []),
         ...(chargeVat
-          ? [{ account: "2300", debit: 0, credit: totals.vatGHS }]
+          ? [{ account: "2200", debit: 0, credit: totals.vatGHS }]
           : []),
       ],
     };
+    mutate((d) => ({
+      ...d,
+      invoices: [inv, ...d.invoices],
+      journal: [entry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+      nextInvoiceNum: d.nextInvoiceNum + 1,
+    }));
     try {
       await db.saveInvoice(inv);
       await db.saveJournalEntry(entry);
-      mutate((d) => ({
-        ...d,
-        invoices: [inv, ...d.invoices],
-        journal: [entry, ...d.journal],
-        nextEntryNum: d.nextEntryNum + 1,
-        nextInvoiceNum: d.nextInvoiceNum + 1,
-      }));
     } catch (err) {
       console.error("Failed to persist invoice or journal entry:", err);
       alert("Failed to save invoice to server. Check console for details.");
-      return;
     }
     onDone && onDone();
   }
@@ -5784,6 +5782,22 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
   const [method, setMethod] = useState("Bank");
   const [reference, setReference] = useState("");
 
+  // Maps the payment method chosen in the form to the real GL account it
+  // actually lands in — Bank Accounts Control, Cash on Hand, or Mobile
+  // Money. Cheques are treated as Bank once deposited/cleared.
+  function cashAccountForMethod(m) {
+    switch (m) {
+      case "Cash":
+        return "1100";
+      case "Mobile Money":
+        return "1120";
+      case "Bank":
+      case "Cheque":
+      default:
+        return "1110";
+    }
+  }
+
   async function record() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return;
@@ -5801,8 +5815,8 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       period: date.slice(0, 7),
       project: inv.project,
       lines: [
-        { account: "1000", debit: amt, credit: 0 },
-        { account: "1100", debit: 0, credit: amt },
+        { account: cashAccountForMethod(method), debit: amt, credit: 0 },
+        { account: "1130", debit: 0, credit: amt },
       ],
     };
     const updatedInvoice = {
@@ -5815,21 +5829,20 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
         inv.payments.length +
         1
     ).padStart(3, "0")}`;
+    mutate((d) => ({
+      ...d,
+      invoices: d.invoices.map((i) =>
+        i.id === inv.id ? updatedInvoice : i
+      ),
+      journal: [entry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+    }));
     try {
       await db.saveInvoice(updatedInvoice);
       await db.saveJournalEntry(entry);
-      mutate((d) => ({
-        ...d,
-        invoices: d.invoices.map((i) =>
-          i.id === inv.id ? updatedInvoice : i
-        ),
-        journal: [entry, ...d.journal],
-        nextEntryNum: d.nextEntryNum + 1,
-      }));
     } catch (err) {
       console.error("Failed to persist payment or journal entry:", err);
       alert("Failed to record payment to server. Check console for details.");
-      return;
     }
     document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
     setPrintContent(
