@@ -1,24 +1,47 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, Session } from '@supabase/supabase-js';
+import type {
+  Account,
+  Project,
+  Employee,
+  JournalEntry,
+  JournalLine,
+  Invoice,
+  InvoiceItem,
+  Payment,
+  PayrollRun,
+  PayrollLine,
+  TaxConfig,
+  TaxRates,
+  PayeBracket,
+  AppData,
+  AppSettingsData,
+  Db,
+} from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error(
-    "Missing Supabase environment variables. Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your .env file."
+    'Missing Supabase environment variables. Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your .env file.'
   );
 }
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-// ---------------------------------------------------------------------------
-// Field-name mapping helpers
-// Postgres columns are snake_case; the React app expects the original
-// camelCase shape from the old ledger_state JSON blob. These helpers convert
-// each direction so App.jsx doesn't need to change.
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Row mappers (snake_case ↔ camelCase)                                */
+/* ------------------------------------------------------------------ */
 
-function accountFromRow(r) {
+interface AccountRow {
+  code: string;
+  name: string;
+  type: string;
+  reporting_group?: string | null;
+  normal?: string | null;
+}
+
+function accountFromRow(r: AccountRow): Account {
   return {
     code: r.code,
     name: r.name,
@@ -27,7 +50,8 @@ function accountFromRow(r) {
     normal: r.normal,
   };
 }
-function accountToRow(a) {
+
+function accountToRow(a: Account): AccountRow {
   return {
     code: a.code,
     name: a.name,
@@ -37,7 +61,17 @@ function accountToRow(a) {
   };
 }
 
-function projectFromRow(r) {
+interface ProjectRow {
+  id: string;
+  name: string;
+  status?: string | null;
+  project_type?: string | null;
+  recognition_method?: string | null;
+  contract_value?: number | null;
+  estimated_cost?: number | null;
+}
+
+function projectFromRow(r: ProjectRow): Project {
   return {
     id: r.id,
     name: r.name,
@@ -48,7 +82,8 @@ function projectFromRow(r) {
     estimatedCost: r.estimated_cost,
   };
 }
-function projectToRow(p) {
+
+function projectToRow(p: Project): ProjectRow {
   return {
     id: p.id,
     name: p.name,
@@ -60,12 +95,24 @@ function projectToRow(p) {
   };
 }
 
-function employeeFromRow(r) {
+interface EmployeeRow {
+  id: string;
+  name: string;
+  base_salary?: number | null;
+  active?: boolean | null;
+  ssnit_no?: string | null;
+  nia_card?: string | null;
+  designation?: string | null;
+  exempt_paye?: boolean | null;
+  exempt_ssnit?: boolean | null;
+}
+
+function employeeFromRow(r: EmployeeRow): Employee {
   return {
     id: r.id,
     name: r.name,
-    baseSalary: r.base_salary,
-    active: r.active,
+    baseSalary: r.base_salary ?? 0,
+    active: r.active ?? true,
     ssnitNo: r.ssnit_no,
     niaCard: r.nia_card,
     designation: r.designation,
@@ -73,7 +120,8 @@ function employeeFromRow(r) {
     exemptSsnit: r.exempt_ssnit ?? false,
   };
 }
-function employeeToRow(e) {
+
+function employeeToRow(e: Employee): EmployeeRow {
   return {
     id: e.id,
     name: e.name,
@@ -87,17 +135,45 @@ function employeeToRow(e) {
   };
 }
 
-function journalLineFromRow(r) {
-  return { account: r.account_code, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 };
+interface JournalLineRow {
+  account_code: string;
+  debit: number;
+  credit: number;
 }
-function journalLineToRow(l, entryId) {
+
+function journalLineFromRow(r: JournalLineRow): JournalLine {
+  return {
+    account: r.account_code,
+    debit: Number(r.debit) || 0,
+    credit: Number(r.credit) || 0,
+  };
+}
+
+function journalLineToRow(l: JournalLine, entryId: string): JournalLineRow & { entry_id: string } {
   return { entry_id: entryId, account_code: l.account, debit: l.debit ?? 0, credit: l.credit ?? 0 };
 }
 
-function invoiceItemFromRow(r) {
-  return { id: r.id, lineType: r.line_type, description: r.description, unit: r.unit, qty: r.qty, rate: r.rate };
+interface InvoiceItemRow {
+  id: string;
+  line_type?: string | null;
+  description?: string | null;
+  unit?: string | null;
+  qty?: number | null;
+  rate?: number | null;
 }
-function invoiceItemToRow(it, invoiceId) {
+
+function invoiceItemFromRow(r: InvoiceItemRow): InvoiceItem {
+  return {
+    id: r.id,
+    lineType: (r.line_type as InvoiceItem['lineType']) ?? 'item',
+    description: r.description ?? '',
+    unit: r.unit,
+    qty: r.qty ?? 0,
+    rate: r.rate ?? 0,
+  };
+}
+
+function invoiceItemToRow(it: InvoiceItem, invoiceId: string): InvoiceItemRow & { invoice_id: string } {
   return {
     id: it.id,
     invoice_id: invoiceId,
@@ -109,10 +185,25 @@ function invoiceItemToRow(it, invoiceId) {
   };
 }
 
-function paymentFromRow(r) {
-  return { id: r.id, date: r.date, amountGHS: r.amount_ghs, method: r.method, reference: r.reference };
+interface PaymentRow {
+  id: string;
+  date: string;
+  amount_ghs?: number | null;
+  method?: string | null;
+  reference?: string | null;
 }
-function paymentToRow(p, invoiceId) {
+
+function paymentFromRow(r: PaymentRow): Payment {
+  return {
+    id: r.id,
+    date: r.date,
+    amountGHS: r.amount_ghs ?? 0,
+    method: r.method ?? '',
+    reference: r.reference,
+  };
+}
+
+function paymentToRow(p: Payment, invoiceId: string): PaymentRow & { invoice_id: string } {
   return {
     id: p.id,
     invoice_id: invoiceId,
@@ -123,26 +214,45 @@ function paymentToRow(p, invoiceId) {
   };
 }
 
-function invoiceFromRow(r) {
+interface InvoiceRow {
+  id: string;
+  invoice_number: string;
+  date: string;
+  due_date?: string | null;
+  bill_to?: string | null;
+  for_text?: string | null;
+  location?: string | null;
+  project?: string | null;
+  project_label?: string | null;
+  currency?: string | null;
+  exchange_rate?: number | null;
+  discount_pct?: number | null;
+  revenue_account?: string | null;
+  status?: string | null;
+  totals?: Invoice['totals'] | null;
+}
+
+function invoiceFromRow(r: InvoiceRow): Invoice {
   return {
     id: r.id,
     invoiceNumber: r.invoice_number,
     date: r.date,
     dueDate: r.due_date,
-    billTo: r.bill_to,
+    billTo: r.bill_to ?? '',
     forText: r.for_text,
     location: r.location,
     project: r.project,
     projectLabel: r.project_label,
-    currency: r.currency,
-    exchangeRate: r.exchange_rate,
-    discountPct: r.discount_pct,
+    currency: (r.currency as Currency) ?? 'GHS',
+    exchangeRate: r.exchange_rate ?? 1,
+    discountPct: r.discount_pct ?? 0,
     revenueAccount: r.revenue_account,
-    status: r.status,
-    totals: r.totals,
+    status: (r.status as InvoiceStatus) ?? 'Sent',
+    totals: r.totals ?? ({} as InvoiceTotals),
   };
 }
-function invoiceToRow(inv) {
+
+function invoiceToRow(inv: Invoice): InvoiceRow {
   return {
     id: inv.id,
     invoice_number: inv.invoiceNumber,
@@ -162,18 +272,29 @@ function invoiceToRow(inv) {
   };
 }
 
-function payrollLineFromRow(r) {
+interface PayrollLineRow {
+  employee_id: string;
+  name?: string | null;
+  gross?: number | null;
+  ssnit_employee?: number | null;
+  ssnit_employer?: number | null;
+  paye?: number | null;
+  net?: number | null;
+}
+
+function payrollLineFromRow(r: PayrollLineRow): PayrollLine {
   return {
     employeeId: r.employee_id,
-    name: r.name,
-    gross: r.gross,
-    ssnitEmployee: r.ssnit_employee,
-    ssnitEmployer: r.ssnit_employer,
-    paye: r.paye,
-    net: r.net,
+    name: r.name ?? '',
+    gross: r.gross ?? 0,
+    ssnitEmployee: r.ssnit_employee ?? 0,
+    ssnitEmployer: r.ssnit_employer ?? 0,
+    paye: r.paye ?? 0,
+    net: r.net ?? 0,
   };
 }
-function payrollLineToRow(l, runId) {
+
+function payrollLineToRow(l: PayrollLine, runId: string): PayrollLineRow & { run_id: string } {
   return {
     run_id: runId,
     employee_id: l.employeeId,
@@ -186,162 +307,213 @@ function payrollLineToRow(l, runId) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Auth: email/password sign-in
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Auth                                                                */
+/* ------------------------------------------------------------------ */
 
-export async function signIn(email, password) {
+export async function signIn(email: string, password: string): Promise<NonNullable<Session>> {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  return data;
+  if (!data.session) throw new Error('No session returned after sign-in');
+  return data.session;
 }
 
-export async function signOut() {
+export async function signUp(email: string, password: string): Promise<void> {
+  const { error } = await supabase.auth.signUp({ email, password });
+  if (error) throw error;
+}
+
+export async function signOut(): Promise<void> {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 }
 
-export async function getSession() {
+export async function getSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   return data.session;
 }
 
-// ---------------------------------------------------------------------------
-// Financial views / RPC
-// ---------------------------------------------------------------------------
-export async function getTrialBalance() {
-  const { data, error } = await supabase.from("vw_trial_balance").select("*");
-  if (error) {
-    console.error("Error fetching Trial Balance:", error);
-    return [];
-  }
-  return data;
+/* ------------------------------------------------------------------ */
+/*  Financial views / RPC                                               */
+/* ------------------------------------------------------------------ */
+
+export interface TrialBalanceRow {
+  code: string;
+  name: string;
+  type: string;
+  total_debit: number;
+  total_credit: number;
+  balance: number;
 }
 
-export async function getBalanceSheet() {
-  const { data, error } = await supabase.from("vw_balance_sheet").select("*");
+export async function getTrialBalance(): Promise<TrialBalanceRow[]> {
+  const { data, error } = await supabase.from('vw_trial_balance').select('*');
   if (error) {
-    console.error("Error fetching Balance Sheet:", error);
+    console.error('Error fetching Trial Balance:', error);
     return [];
   }
-  return data;
+  return (data ?? []) as TrialBalanceRow[];
 }
 
-export async function getProfitAndLoss(startDate, endDate) {
-  const { data, error } = await supabase.rpc("get_profit_and_loss", {
+export async function getBalanceSheet(): Promise<TrialBalanceRow[]> {
+  const { data, error } = await supabase.from('vw_balance_sheet').select('*');
+  if (error) {
+    console.error('Error fetching Balance Sheet:', error);
+    return [];
+  }
+  return (data ?? []) as TrialBalanceRow[];
+}
+
+export interface ProfitLossRow {
+  code: string;
+  name: string;
+  type: string;
+  total_debit: number;
+  total_credit: number;
+  balance: number;
+}
+
+export async function getProfitAndLoss(startDate: string, endDate: string): Promise<ProfitLossRow[]> {
+  const { data, error } = await supabase.rpc('get_profit_and_loss', {
     p_start_date: startDate,
     p_end_date: endDate,
   });
   if (error) {
-    console.error("Error fetching P&L:", error);
+    console.error('Error fetching P&L:', error);
     return [];
   }
-  return data;
+  return (data ?? []) as ProfitLossRow[];
 }
 
-// ---------------------------------------------------------------------------
-// Payroll automation
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Payroll automation                                                  */
+/* ------------------------------------------------------------------ */
 
-export async function runPayrollAndFetch(period) {
-  const { error: rpcError } = await supabase.rpc("run_payroll", { p_period: period });
+export async function runPayrollAndFetch(period: string): Promise<{ run: PayrollRun; journalEntry: JournalEntry }> {
+  const { error: rpcError } = await supabase.rpc('run_payroll', { p_period: period });
   if (rpcError) {
-    console.error("Error running payroll:", rpcError);
+    console.error('Error running payroll:', rpcError);
     throw rpcError;
   }
 
   const entryId = `JE-PAY-${period}`;
 
   const [runResult, entryResult] = await Promise.all([
-    supabase.from("payroll_runs").select("*, payroll_lines(*)").eq("period", period).single(),
-    supabase.from("journal_entries").select("*, journal_lines(*)").eq("id", entryId).single(),
+    supabase.from('payroll_runs').select('*, payroll_lines(*)').eq('period', period).single(),
+    supabase.from('journal_entries').select('*, journal_lines(*)').eq('id', entryId).single(),
   ]);
 
   if (runResult.error) {
-    console.error("Error fetching posted payroll run:", runResult.error);
+    console.error('Error fetching posted payroll run:', runResult.error);
     throw runResult.error;
   }
   if (entryResult.error) {
-    console.error("Error fetching posted payroll journal entry:", entryResult.error);
+    console.error('Error fetching posted payroll journal entry:', entryResult.error);
     throw entryResult.error;
   }
 
-  const run = {
-    id: runResult.data.id,
-    period: runResult.data.period,
-    entryNumber: runResult.data.entry_number,
-    postedAt: runResult.data.posted_at,
-    rows: (runResult.data.payroll_lines || []).map(payrollLineFromRow),
+  const runData = runResult.data as Record<string, unknown> & {
+    payroll_lines?: PayrollLineRow[];
+  };
+  const entryData = entryResult.data as Record<string, unknown> & {
+    journal_lines?: JournalLineRow[];
   };
 
-  const e = entryResult.data;
-  const journalEntry = {
-    id: e.id,
-    entryNumber: e.entry_number,
-    date: e.date,
-    description: e.description,
-    period: e.period,
-    project: e.project,
-    lines: (e.journal_lines || []).map(journalLineFromRow),
+  const run: PayrollRun = {
+    id: String(runData.id),
+    period: String(runData.period),
+    entryNumber: runData.entry_number ? String(runData.entry_number) : null,
+    postedAt: runData.posted_at ? String(runData.posted_at) : null,
+    rows: (runData.payroll_lines ?? []).map(payrollLineFromRow),
+  };
+
+  const journalEntry: JournalEntry = {
+    id: String(entryData.id),
+    entryNumber: String(entryData.entry_number),
+    date: String(entryData.date),
+    description: entryData.description ? String(entryData.description) : null,
+    period: entryData.period ? String(entryData.period) : null,
+    project: entryData.project ? String(entryData.project) : null,
+    lines: (entryData.journal_lines ?? []).map(journalLineFromRow),
   };
 
   return { run, journalEntry };
 }
 
-async function loadAppSettings() {
-  const { data, error } = await supabase.from("app_settings").select("data").eq("id", 1).maybeSingle();
+/* ------------------------------------------------------------------ */
+/*  Settings & tax config                                               */
+/* ------------------------------------------------------------------ */
+
+async function loadAppSettings(): Promise<AppSettingsData> {
+  const { data, error } = await supabase.from('app_settings').select('data').eq('id', 1).maybeSingle();
   if (error) {
-    console.error("Error loading app settings:", error);
+    console.error('Error loading app settings:', error);
     return {};
   }
-  return data?.data || {};
+  return (data?.data as AppSettingsData) ?? {};
 }
 
-async function mergeAppSettings(updates) {
+async function mergeAppSettings(updates: AppSettingsData): Promise<AppSettingsData> {
   const existing = await loadAppSettings();
   const merged = { ...existing, ...updates };
-  const { error } = await supabase.from("app_settings").upsert({ id: 1, data: merged });
+  const { error } = await supabase.from('app_settings').upsert({ id: 1, data: merged });
   if (error) {
-    console.error("Error saving tax settings:", error);
+    console.error('Error saving app settings:', error);
     throw error;
   }
   return merged;
 }
 
-export async function loadTaxConfig() {
+export async function loadTaxConfig(): Promise<TaxConfig> {
   const settings = await loadAppSettings();
   return {
     rates: {
-      ssnitEmployeeRate: settings.ssnitEmployeeRate ?? 0,
-      ssnitEmployerRate: settings.ssnitEmployerRate ?? 0,
-      nhilGetfundRate: settings.nhilGetfundRate ?? 0,
-      vatRate: settings.vatRate ?? 0,
+      ssnitEmployeeRate: Number(settings.ssnitEmployeeRate) || 0,
+      ssnitEmployerRate: Number(settings.ssnitEmployerRate) || 0,
+      nhilGetfundRate: Number(settings.nhilGetfundRate) || 0,
+      vatRate: Number(settings.vatRate) || 0,
     },
-    brackets: Array.isArray(settings.brackets) ? settings.brackets : [],
+    brackets: Array.isArray(settings.brackets) ? (settings.brackets as PayeBracket[]) : [],
   };
 }
 
-export async function saveTaxRates(rates) {
+export async function saveTaxRates(rates: TaxRates): Promise<AppSettingsData> {
   return mergeAppSettings(rates);
 }
 
-export async function savePayeBrackets(brackets) {
+export async function savePayeBrackets(brackets: PayeBracket[]): Promise<AppSettingsData> {
   return mergeAppSettings({ brackets });
 }
 
-export function onAuthStateChange(callback) {
+export function onAuthStateChange(callback: (session: Session | null) => void): () => void {
   const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
     callback(session);
   });
   return () => listener.subscription.unsubscribe();
 }
 
-// ---------------------------------------------------------------------------
-// Load: fetch all tables and assemble nested structure
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Load full ledger state                                              */
+/* ------------------------------------------------------------------ */
 
-export async function loadLedgerState() {
+interface JournalEntryRow {
+  id: string;
+  entry_number: string;
+  date: string;
+  description?: string | null;
+  period?: string | null;
+  project?: string | null;
+}
+
+interface PayrollRunRow {
+  id: string;
+  period: string;
+  entry_number?: string | null;
+  posted_at?: string | null;
+}
+
+export async function loadLedgerState(): Promise<AppData | null> {
   try {
     const [
       { data: settingsData, error: settingsErr },
@@ -356,17 +528,17 @@ export async function loadLedgerState() {
       { data: payrollRuns, error: payrollRunsErr },
       { data: payrollLines, error: payrollLinesErr },
     ] = await Promise.all([
-      supabase.from("app_settings").select("data").eq("id", 1).maybeSingle(),
-      supabase.from("accounts").select("*"),
-      supabase.from("projects").select("*"),
-      supabase.from("journal_entries").select("*").order("date", { ascending: false }),
-      supabase.from("journal_lines").select("*"),
-      supabase.from("invoices").select("*").order("date", { ascending: false }),
-      supabase.from("invoice_items").select("*"),
-      supabase.from("payments").select("*"),
-      supabase.from("employees").select("*"),
-      supabase.from("payroll_runs").select("*").order("period", { ascending: false }),
-      supabase.from("payroll_lines").select("*"),
+      supabase.from('app_settings').select('data').eq('id', 1).maybeSingle(),
+      supabase.from('accounts').select('*'),
+      supabase.from('projects').select('*'),
+      supabase.from('journal_entries').select('*').order('date', { ascending: false }),
+      supabase.from('journal_lines').select('*'),
+      supabase.from('invoices').select('*').order('date', { ascending: false }),
+      supabase.from('invoice_items').select('*'),
+      supabase.from('payments').select('*'),
+      supabase.from('employees').select('*'),
+      supabase.from('payroll_runs').select('*').order('period', { ascending: false }),
+      supabase.from('payroll_lines').select('*'),
     ]);
 
     const firstError =
@@ -374,89 +546,88 @@ export async function loadLedgerState() {
       invoicesErr || invoiceItemsErr || paymentsErr || employeesErr || payrollRunsErr || payrollLinesErr;
     if (firstError) throw firstError;
 
-    const journal = (journalEntries || []).map((e) => ({
+    const journal: JournalEntry[] = (journalEntries ?? []).map((e: JournalEntryRow) => ({
       id: e.id,
       entryNumber: e.entry_number,
       date: e.date,
       description: e.description,
       period: e.period,
       project: e.project,
-      lines: (journalLines || []).filter((l) => l.entry_id === e.id).map(journalLineFromRow),
+      lines: (journalLines ?? []).filter((l: JournalLineRow & { entry_id: string }) => l.entry_id === e.id).map(journalLineFromRow),
     }));
 
-    const invoicedInvoices = (invoices || []).map((inv) => ({
+    const invoicedInvoices: Invoice[] = (invoices ?? []).map((inv: InvoiceRow) => ({
       ...invoiceFromRow(inv),
-      items: (invoiceItems || []).filter((it) => it.invoice_id === inv.id).map(invoiceItemFromRow),
-      payments: (payments || []).filter((p) => p.invoice_id === inv.id).map(paymentFromRow),
+      items: (invoiceItems ?? []).filter((it: InvoiceItemRow & { invoice_id: string }) => it.invoice_id === inv.id).map(invoiceItemFromRow),
+      payments: (payments ?? []).filter((p: PaymentRow & { invoice_id: string }) => p.invoice_id === inv.id).map(paymentFromRow),
     }));
 
-    const payrollRunsWithLines = (payrollRuns || []).map((run) => ({
+    const payrollRunsWithLines: PayrollRun[] = (payrollRuns ?? []).map((run: PayrollRunRow) => ({
       id: run.id,
       period: run.period,
       entryNumber: run.entry_number,
       postedAt: run.posted_at,
-      rows: (payrollLines || []).filter((l) => l.run_id === run.id).map(payrollLineFromRow),
+      rows: (payrollLines ?? []).filter((l: PayrollLineRow & { run_id: string }) => l.run_id === run.id).map(payrollLineFromRow),
     }));
 
+    const settings = (settingsData?.data ?? {}) as AppSettingsData;
+
     return {
-      ...(settingsData?.data || {}),
-      accounts: (accounts || []).map(accountFromRow),
-      projects: (projects || []).map(projectFromRow),
+      ...settings,
+      accounts: (accounts ?? []).map(accountFromRow),
+      projects: (projects ?? []).map(projectFromRow),
       journal,
       invoices: invoicedInvoices,
-      employees: (employees || []).map(employeeFromRow),
+      employees: (employees ?? []).map(employeeFromRow),
       payrollRuns: payrollRunsWithLines,
-    };
+    } as AppData;
   } catch (err) {
-    console.error("Error loading relational data:", err);
+    console.error('Error loading relational data:', err);
     return null;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Save: company settings / rates / counters
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Save settings                                                       */
+/* ------------------------------------------------------------------ */
 
-export async function saveSettings(settingsData) {
-  const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData || {};
-  const { data, error } = await supabase.from("app_settings").upsert({ id: 1, data: rest });
+export async function saveSettings(settingsData: Partial<AppData>): Promise<void> {
+  const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData;
+  const { error } = await supabase.from('app_settings').upsert({ id: 1, data: rest });
   if (error) {
-    console.error("Error saving settings:", error);
+    console.error('Error saving settings:', error);
     throw error;
   }
-  return data;
 }
 
-// ---------------------------------------------------------------------------
-// Granular save functions
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Granular DB operations                                              */
+/* ------------------------------------------------------------------ */
 
-async function upsertTable(tableName, rows) {
+async function upsertTable<T>(tableName: string, rows: T[]): Promise<void> {
   if (!rows || rows.length === 0) return;
-  const { data, error } = await supabase.from(tableName).upsert(rows);
+  const { error } = await supabase.from(tableName).upsert(rows as Record<string, unknown>[]);
   if (error) {
     console.error(`Error upserting ${tableName}:`, error);
     throw error;
   }
-  return data;
 }
 
-async function deleteFromTable(tableName, column, value) {
-  const { data, error } = await supabase.from(tableName).delete().eq(column, value);
+async function deleteFromTable(tableName: string, column: string, value: string): Promise<void> {
+  const { error } = await supabase.from(tableName).delete().eq(column, value);
   if (error) {
     console.error(`Error deleting from ${tableName}:`, error);
     throw error;
   }
-  return data;
 }
 
-export const db = {
-  saveAccounts: (accounts) => upsertTable("accounts", (accounts || []).map(accountToRow)),
-  saveProjects: (projects) => upsertTable("projects", (projects || []).map(projectToRow)),
-  saveEmployees: (employees) => upsertTable("employees", (employees || []).map(employeeToRow)),
+export const db: Db = {
+  saveAccounts: (accounts) => upsertTable('accounts', (accounts ?? []).map(accountToRow)),
+  saveProjects: (projects) => upsertTable('projects', (projects ?? []).map(projectToRow)),
+  saveEmployees: (employees) => upsertTable('employees', (employees ?? []).map(employeeToRow)),
 
   saveJournalEntry: async (entry) => {
-    await upsertTable("journal_entries", [
+    await upsertTable('journal_entries', [
       {
         id: entry.id,
         entry_number: entry.entryNumber,
@@ -466,64 +637,69 @@ export const db = {
         project: entry.project ?? null,
       },
     ]);
-    await deleteFromTable("journal_lines", "entry_id", entry.id);
+    await deleteFromTable('journal_lines', 'entry_id', entry.id);
     if (entry.lines && entry.lines.length > 0) {
-      await upsertTable("journal_lines", entry.lines.map((l) => journalLineToRow(l, entry.id)));
+      await upsertTable('journal_lines', entry.lines.map((l) => journalLineToRow(l, entry.id)));
     }
   },
 
   saveInvoice: async (invoice) => {
     const row = invoiceToRow(invoice);
-    console.log("[saveInvoice] Upserting invoice row:", JSON.stringify(row, null, 2));
-    let step = "upsert invoices";
+    console.log('[saveInvoice] Upserting invoice row:', JSON.stringify(row, null, 2));
+    let step = 'upsert invoices';
     try {
-      await upsertTable("invoices", [row]);
+      await upsertTable('invoices', [row]);
     } catch (err) {
-      throw new Error(`${step}: ${err.message}`);
+      throw new Error(`${step}: ${(err as Error).message}`);
     }
-    step = "delete old invoice_items";
+    step = 'delete old invoice_items';
     try {
-      await deleteFromTable("invoice_items", "invoice_id", invoice.id);
+      await deleteFromTable('invoice_items', 'invoice_id', invoice.id);
     } catch (err) {
-      throw new Error(`${step}: ${err.message}`);
+      throw new Error(`${step}: ${(err as Error).message}`);
     }
-    step = "delete old payments";
+    step = 'delete old payments';
     try {
-      await deleteFromTable("payments", "invoice_id", invoice.id);
+      await deleteFromTable('payments', 'invoice_id', invoice.id);
     } catch (err) {
-      throw new Error(`${step}: ${err.message}`);
+      throw new Error(`${step}: ${(err as Error).message}`);
     }
     if (invoice.items && invoice.items.length > 0) {
-      step = "upsert invoice_items";
+      step = 'upsert invoice_items';
       const itemRows = invoice.items.map((it) => invoiceItemToRow(it, invoice.id));
-      console.log("[saveInvoice] Item rows:", JSON.stringify(itemRows, null, 2));
+      console.log('[saveInvoice] Item rows:', JSON.stringify(itemRows, null, 2));
       try {
-        await upsertTable("invoice_items", itemRows);
+        await upsertTable('invoice_items', itemRows);
       } catch (err) {
-        throw new Error(`${step}: ${err.message}`);
+        throw new Error(`${step}: ${(err as Error).message}`);
       }
     }
     if (invoice.payments && invoice.payments.length > 0) {
-      step = "upsert payments";
+      step = 'upsert payments';
       try {
-        await upsertTable("payments", invoice.payments.map((p) => paymentToRow(p, invoice.id)));
+        await upsertTable('payments', invoice.payments.map((p) => paymentToRow(p, invoice.id)));
       } catch (err) {
-        throw new Error(`${step}: ${err.message}`);
+        throw new Error(`${step}: ${(err as Error).message}`);
       }
     }
   },
 
   savePayrollRun: async (run) => {
-    await upsertTable("payroll_runs", [
-      { id: run.id, period: run.period, entry_number: run.entryNumber ?? null, posted_at: run.postedAt ?? new Date().toISOString() },
+    await upsertTable('payroll_runs', [
+      {
+        id: run.id,
+        period: run.period,
+        entry_number: run.entryNumber ?? null,
+        posted_at: run.postedAt ?? new Date().toISOString(),
+      },
     ]);
-    await deleteFromTable("payroll_lines", "run_id", run.id);
+    await deleteFromTable('payroll_lines', 'run_id', run.id);
     if (run.rows && run.rows.length > 0) {
-      await upsertTable("payroll_lines", run.rows.map((r) => payrollLineToRow(r, run.id)));
+      await upsertTable('payroll_lines', run.rows.map((r) => payrollLineToRow(r, run.id)));
     }
   },
 
-  deleteAccount: (code) => deleteFromTable("accounts", "code", code),
-  deleteProject: (id) => deleteFromTable("projects", "id", id),
-  deleteEmployee: (id) => deleteFromTable("employees", "id", id),
+  deleteAccount: (code) => deleteFromTable('accounts', 'code', code),
+  deleteProject: (id) => deleteFromTable('projects', 'id', id),
+  deleteEmployee: (id) => deleteFromTable('employees', 'id', id),
 };
