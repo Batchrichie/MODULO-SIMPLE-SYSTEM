@@ -29,6 +29,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
+  MoreHorizontal,
   Landmark,
 } from "lucide-react";
 import {
@@ -154,6 +155,7 @@ const DEFAULT_DATA = {
   payrollRuns: [],
   projects: DEFAULT_PROJECTS,
   invoices: [],
+  bankReconciliations: [],
   nextEntryNum: 1,
   nextInvoiceNum: 7,
   ssnitEmployeeRate: 0,
@@ -6796,7 +6798,6 @@ function BillsPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({
       ...d,
       bills: [bill, ...d.bills],
-      bankReconciliations: [],
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
     }));
@@ -7678,6 +7679,11 @@ export default function App() {
       "invoicing",
       "employees",
       "payroll",
+      "expenses",
+      "reports",
+      "bills",
+      "aged-payables",
+      "bank-reconciliation",
       "export",
       "logout",
     ];
@@ -7697,7 +7703,7 @@ export default function App() {
       return "light";
     }
   });
-  const [printContent, setPrintContent] = useState(null);
+  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -8214,34 +8220,164 @@ export default function App() {
           {tab === "reports" && <ReportsPanel data={data} />}
           {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
           {tab === "logout" && <LogoutPanel />}
-        </main>
+
+          {/* Mobile nav breathing room */}
+          {isMobile && <div style={{ height: 80 }} />}
+          </main>
 
         {isMobile && (
-          <nav
+  <>
+      {/* Primary 5 + More */}
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: "#fff",
+        borderTop: "1px solid #E8E4DC",
+        display: "flex",
+        justifyContent: "space-around",
+        alignItems: "center",
+        padding: "4px 0 8px",
+        zIndex: 50,
+        height: 64,
+      }}
+    >
+      {[
+        nav.find((n) => n.key === "dashboard"),
+        nav.find((n) => n.key === "invoicing"),
+        nav.find((n) => n.key === "expenses"),
+        nav.find((n) => n.key === "projects"),
+        nav.find((n) => n.key === "reports"),
+      ]
+        .filter(Boolean)
+        .map((n) => (
+          <button
+            key={n!.key}
+            onClick={() => { setTab(n!.key); setShowMore(false); }}
             style={{
-              position: "fixed",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 20,
-              background: PAPER_RAISED,
-              borderTop: `1px solid ${RULE}`,
+              flex: 1,
               display: "flex",
-              overflowX: "auto",
-              boxShadow: "0 -2px 10px rgba(0,0,0,0.06)",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
+              background: "none",
+              border: "none",
+              color: tab === n!.key ? NAVY : MUTED,
+              fontSize: 10,
+              cursor: "pointer",
+              padding: "4px 0",
             }}
           >
-            {nav.map((n) => (
-              <BottomNavItem
-                key={n.key}
-                icon={n.icon}
-                label={n.label}
-                active={tab === n.key}
-                onClick={() => setTab(n.key)}
-              />
-            ))}
-          </nav>
-        )}
+            <n!.icon size={22} />
+            <span style={{ fontWeight: 500 }}>{n!.label}</span>
+          </button>
+        ))}
+      <button
+        onClick={() => setShowMore((s) => !s)}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 2,
+          background: "none",
+          border: "none",
+          color: showMore ? NAVY : MUTED,
+          fontSize: 10,
+          cursor: "pointer",
+          padding: "4px 0",
+        }}
+      >
+        <MoreHorizontal size={22} />
+        <span style={{ fontWeight: 500 }}>More</span>
+      </button>
+    </div>
+
+    {/* More popup */}
+    {showMore && (
+      <div
+        onClick={() => setShowMore(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.35)",
+          zIndex: 60,
+          backdropFilter: "blur(2px)",
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            bottom: 76,
+            left: 12,
+            right: 12,
+            background: "#fff",
+            borderRadius: 16,
+            boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
+            padding: "16px 12px",
+            maxHeight: "55vh",
+            overflowY: "auto",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "8pt",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "1.2px",
+              color: "#C9A84C",
+              marginBottom: 12,
+              paddingLeft: 4,
+            }}
+          >
+            All Pages
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 8,
+            }}
+          >
+            {nav
+              .filter(
+                (n) =>
+                  !["dashboard", "invoicing", "expenses", "projects", "reports"].includes(n.key)
+              )
+              .map((n) => (
+                <button
+                  key={n.key}
+                  onClick={() => {
+                    setTab(n.key);
+                    setShowMore(false);
+                  }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    background: tab === n.key ? "#F5F0E6" : "transparent",
+                    border: "1px solid transparent",
+                    borderRadius: 10,
+                    color: tab === n.key ? NAVY : MUTED,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    padding: "12px 4px",
+                  }}
+                >
+                  <n.icon size={20} />
+                  <span style={{ fontWeight: 500 }}>{n.label}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+)}
       </div>
 
       <div className="print-only">{printContent}</div>
