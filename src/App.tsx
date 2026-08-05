@@ -6329,16 +6329,19 @@ export default function App() {
 
         if (remote) {
           const remoteAccounts = remote.accounts || [];
-          const defaultCodes = new Set(DEFAULT_ACCOUNTS.map((a) => a.code));
-          const customAccounts = remoteAccounts.filter(
-            (a) => !defaultCodes.has(a.code)
-          );
-          const mergedAccounts = [...DEFAULT_ACCOUNTS, ...customAccounts];
+          // Trust the live database chart of accounts as the source of truth.
+          // DEFAULT_ACCOUNTS is only a bootstrap for a brand-new install with
+          // zero accounts seeded — merging it in whenever codes collide with
+          // real accounts (e.g. "4200" meaning something different in each)
+          // was silently hiding real accounts and causing postings to hit
+          // the wrong account, or fail the accounts FK entirely for codes
+          // that only exist in the hardcoded list.
+          const accounts = remoteAccounts.length > 0 ? remoteAccounts : DEFAULT_ACCOUNTS;
 
           setData({
             ...DEFAULT_DATA,
             ...remote,
-            accounts: mergedAccounts,
+            accounts,
             company: { ...DEFAULT_COMPANY, ...(remote.company || {}) },
             ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
             ssnitEmployerRate: tax.rates.ssnitEmployerRate,
