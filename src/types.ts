@@ -212,6 +212,7 @@ export interface ExportPanelProps {
 
 export interface NewInvoiceFormProps extends PanelProps {
   onDone?: () => void;
+  cloneSource?: Invoice | null;
 }
 
 export interface RecordPaymentFormProps extends InvoicingPanelProps {

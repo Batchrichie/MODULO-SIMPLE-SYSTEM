@@ -5273,29 +5273,40 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
   );
 }
 
-function NewInvoiceForm({ data, mutate, onDone }) {
-  const [billTo, setBillTo] = useState("");
-  const [forText, setForText] = useState("");
-  const [location, setLocation] = useState("GREATER ACCRA");
-  const [project, setProject] = useState("GEN");
+function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormProps) {
+  const [billTo, setBillTo] = useState(cloneSource?.billTo || "");
+  const [forText, setForText] = useState(cloneSource?.forText || "");
+  const [location, setLocation] = useState(cloneSource?.location || "GREATER ACCRA");
+  const [project, setProject] = useState(cloneSource?.project || "GEN");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState("");
-  const [currency, setCurrency] = useState("GHS");
-  const [exchangeRate, setExchangeRate] = useState("11.2");
-  const [discountPct, setDiscountPct] = useState("0");
-  const [chargeNhil, setChargeNhil] = useState(true);
-  const [chargeVat, setChargeVat] = useState(true);
-  const [revenueAccount, setRevenueAccount] = useState("4100"); // Default: Architectural Design Fees (valid DB account)
-  const [items, setItems] = useState([
-    {
-      id: "1",
-      description: "",
-      unit: "",
-      qty: "1",
-      rate: "",
-      lineType: "item",
-    },
-  ]);
+  const [currency, setCurrency] = useState(cloneSource?.currency || "GHS");
+  const [exchangeRate, setExchangeRate] = useState(String(cloneSource?.exchangeRate || "11.2"));
+  const [discountPct, setDiscountPct] = useState(String(cloneSource?.discountPct || "0"));
+  const [chargeNhil, setChargeNhil] = useState(cloneSource?.totals?.chargeNhil ?? true);
+  const [chargeVat, setChargeVat] = useState(cloneSource?.totals?.chargeVat ?? true);
+  const [revenueAccount, setRevenueAccount] = useState(cloneSource?.revenueAccount || "4100");
+  const [items, setItems] = useState(
+    cloneSource?.items?.length
+      ? cloneSource.items.map((it) => ({
+          id: String(Date.now()) + Math.random().toString(36).slice(2, 6),
+          description: it.description,
+          unit: it.unit || "",
+          qty: String(it.qty),
+          rate: String(it.rate),
+          lineType: it.lineType,
+        }))
+      : [
+          {
+            id: "1",
+            description: "",
+            unit: "",
+            qty: "1",
+            rate: "",
+            lineType: "item",
+          },
+        ]
+  );
 
   // Filter revenue/income accounts (case-insensitive to match DB values like "income", "Revenue", "Income")
   const revenueOptions = data.accounts.filter((a) => {
@@ -5892,9 +5903,10 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
   );
 }
 
-function InvoicingPanel({ data, mutate, setPrintContent }) {
+function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) {
   const [showNew, setShowNew] = useState(false);
-  const [payingInv, setPayingInv] = useState(null);
+  const [payingInv, setPayingInv] = useState<Invoice | null>(null);
+  const [cloneSource, setCloneSource] = useState<Invoice | null>(null);
 
   function doPrint(target) {
     const inv = data.invoices.find((i) => i.id === target.invId);
@@ -6007,6 +6019,16 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
                         >
                           Print
                         </Button>
+                        <Button
+                          variant="ghost"
+                          icon={Plus}
+                          onClick={() => {
+                            setCloneSource(inv);
+                            setShowNew(true);
+                          }}
+                        >
+                          Clone
+                        </Button>
                         {balance > 0.01 && (
                           <Button
                             variant="ghost"
@@ -6069,7 +6091,11 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
           <NewInvoiceForm
             data={data}
             mutate={mutate}
-            onDone={() => setShowNew(false)}
+            onDone={() => {
+              setShowNew(false);
+              setCloneSource(null);
+            }}
+            cloneSource={cloneSource}
           />
         </Modal>
       )}
