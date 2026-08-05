@@ -188,8 +188,22 @@ export interface TaxConfig {
 
 /* ------------------------------------------------------------------ */
 /*  App-level state                                                     */
-/* ------------------------------------------------------------------ */
+/export interface BankReconciliationItem {
+  id: string;
+  reconciliationId: string;
+  journalEntryId: string;
+  accountCode: string;
+  amount: number;
+}
 
+export interface BankReconciliation {
+  id: string;
+  accountCode: string;
+  statementDate: string;
+  statementBalance: number;
+  status: 'Draft' | 'Reconciled';
+  items: BankReconciliationItem[];
+}
 export interface AppData {
   companyName: string;
   company: Company;
@@ -200,6 +214,7 @@ export interface AppData {
   employees: Employee[];
   payrollRuns: PayrollRun[];
   bills: Bill[];
+  bankReconciliations: BankReconciliation[];
   nextEntryNum: number;
   nextInvoiceNum: number;
   ssnitEmployeeRate: number;
@@ -298,6 +313,8 @@ export interface Db {
   saveBill: (bill: Bill) => Promise<void>;
   deleteAccount: (code: string) => Promise<unknown>;
   deleteProject: (id: string) => Promise<unknown>;
-  deleteEmployee: (id: string) => Promise<unknown>;
-  deleteBill: (id: string) => Promise<unknown>;
+  deleteEmployee: (id: string) => Promise<void>;
+  deleteBill: (id: string) => Promise<void>;
+  saveBankReconciliation: (rec: BankReconciliation) => Promise<void>;
+  deleteBankReconciliation: (id: string) => Promise<void>;
 }

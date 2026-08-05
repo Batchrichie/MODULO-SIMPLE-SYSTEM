@@ -6795,6 +6795,7 @@ function BillsPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({
       ...d,
       bills: [bill, ...d.bills],
+      bankReconciliations: [],
       journal: [entry, ...d.journal],
       nextEntryNum: d.nextEntryNum + 1,
     }));
@@ -7146,6 +7147,514 @@ function AgedPayablesPanel({ data }: { data: AppData }) {
     </div>
   );
 }
+function BankReconciliationPanel({ data, mutate }: PanelProps) {
+  const [accountCode, setAccountCode] = useState("");
+  const [statementDate, setStatementDate] = useState(new Date().toISOString().slice(0, 10));
+  const [statementBalance, setStatementBalance] = useState("");
+  const [activeRecId, setActiveRecId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const activeRec = activeRecId
+    ? data.bankReconciliations.find((r) => r.id === activeRecId)
+    : null;
+
+  const finalizedEntryIds = useMemo(() => {
+    const ids = new Set<string>();
+    data.bankReconciliations.forEach((r) => {
+      if (r.accountCode === accountCode && r.status === "Reconciled") {
+        r.items.forEach((i) => ids.add(i.journalEntryId));
+      }
+    });
+    return ids;
+  }, [data.bankReconciliations, accountCode]);
+
+  const candidateEntries = useMemo(() => {
+    if (!accountCode || !statementDate) return [];
+    return data.journal
+      .filter((e) => e.date <= statementDate && !finalizedEntryIds.has(e.id))
+      .map((e) => {
+        const bankLines = e.lines.filter((l) => l.account === accountCode);
+        const netAmount = bankLines.reduce((s, l) => s + l.debit - l.credit, 0);
+        return { entry: e, netAmount, bankLines };
+      })
+      .filter((e) => e.netAmount !== 0);
+  }, [data.journal, accountCode, statementDate, finalizedEntryIds]);
+
+  const clearedEntryIds = useMemo(() => {
+    if (!activeRec) return new Set<string>();
+    return new Set(activeRec.items.map((i) => i.journalEntryId));
+  }, [activeRec]);
+
+  const bookBalance = candidateEntries.reduce((s, e) => s + e.netAmount, 0);
+  const clearedBalance = activeRec?.items.reduce((s, i) => s + i.amount, 0) || 0;
+  const difference = (activeRec?.statementBalance || 0) - clearedBalance;
+  const outstanding = bookBalance - clearedBalance;
+
+  function toggleEntry(entryId: string, amount: number) {
+    if (!activeRec) return;
+    const isCleared = clearedEntryIds.has(entryId);
+    let newItems: BankReconciliationItem[];
+    if (isCleared) {
+      newItems = activeRec.items.filter((i) => i.journalEntryId !== entryId);
+    } else {
+      newItems = [
+        ...activeRec.items,
+        {
+          id: `BRI-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          reconciliationId: activeRec.id,
+          journalEntryId: entryId,
+          accountCode: activeRec.accountCode,
+          amount,
+        },
+      ];
+    }
+    const updatedRec = { ...activeRec, items: newItems };
+    mutate((d) => ({
+      ...d,
+      bankReconciliations: d.bankReconciliations.map((r) =>
+        r.id === activeRec.id ? updatedRec : r
+      ),
+    }));
+  }
+
+  async function createReconciliation() {
+    if (!accountCode || !statementDate || !statementBalance) {
+      alert("Please select an account, statement date, and enter a statement balance.");
+      return;
+    }
+    const id = `BR-${Date.now()}`;
+    const rec: BankReconciliation = {
+      id,
+      accountCode,
+      statementDate,
+      statementBalance: parseFloat(statementBalance) || 0,
+      status: "Draft",
+      items: [],
+    };
+    mutate((d) => ({
+      ...d,
+      bankReconciliations: [rec, ...d.bankReconciliations],
+    }));
+    try {
+      await db.saveBankReconciliation(rec);
+      setActiveRecId(id);
+    } catch (err) {
+      console.error("Failed to create reconciliation:", err);
+      alert("Failed to save reconciliation.");
+    }
+  }
+
+  async function saveReconciliation() {
+    if (!activeRec) return;
+    setSaving(true);
+    try {
+      await db.saveBankReconciliation(activeRec);
+      alert("Reconciliation saved.");
+    } catch (err) {
+      console.error("Failed to save reconciliation:", err);
+      alert("Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function finalizeReconciliation() {
+    if (!activeRec) return;
+    if (Math.abs(difference) > 0.01) {
+      alert(`Difference of GHS ${fmt(difference)} remains. Cannot finalize until balanced.`);
+      return;
+    }
+    const updated = { ...activeRec, status: "Reconciled" as const };
+    mutate((d) => ({
+      ...d,
+      bankReconciliations: d.bankReconciliations.map((r) =>
+        r.id === activeRec.id ? updated : r
+      ),
+    }));
+    try {
+      await db.saveBankReconciliation(updated);
+      setActiveRecId(null);
+    } catch (err) {
+      console.error("Failed to finalize:", err);
+      alert("Failed to finalize reconciliation.");
+    }
+  }
+
+  async function deleteReconciliation(id: string) {
+    if (!confirm("Delete this reconciliation?")) return;
+    const prev = data.bankReconciliations;
+    mutate((d) => ({
+      ...d,
+      bankReconciliations: d.bankReconciliations.filter((r) => r.id !== id),
+    }));
+    try {
+      await db.deleteBankReconciliation(id);
+      if (activeRecId === id) setActiveRecId(null);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      alert("Failed to delete reconciliation.");
+      mutate((d) => ({ ...d, bankReconciliations: prev }));
+    }
+  }
+
+  return (
+    <div style={{ padding: 24 }}>
+      <h2 style={{ marginBottom: 16, color: NAVY }}>Bank Reconciliation</h2>
+
+      {!activeRec && (
+        <div
+          style={{
+            background: "#FAFAF8",
+            border: "1px solid #E8E4DC",
+            borderRadius: 6,
+            padding: "16px 20px",
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              fontSize: "8pt",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "1.2px",
+              color: "#C9A84C",
+              marginBottom: 16,
+            }}
+          >
+            New Reconciliation
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
+                Bank Account
+              </label>
+              <select
+                value={accountCode}
+                onChange={(e) => setAccountCode(e.target.value)}
+                style={{ width: "100%", padding: "6px 8px", fontSize: 13 }}
+              >
+                <option value="">Select account...</option>
+                {data.accounts.map((a) => (
+                  <option key={a.code} value={a.code}>
+                    {a.code} — {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
+                Statement Date
+              </label>
+              <input
+                type="date"
+                value={statementDate}
+                onChange={(e) => setStatementDate(e.target.value)}
+                style={{ width: "100%", padding: "6px 8px", fontSize: 13 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
+                Statement Balance (GHS)
+              </label>
+              <input
+                type="text"
+                value={statementBalance}
+                onChange={(e) => setStatementBalance(e.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder="0.00"
+                style={{ width: "100%", padding: "6px 8px", fontSize: 13 }}
+              />
+            </div>
+          </div>
+          <button
+            onClick={createReconciliation}
+            style={{
+              marginTop: 16,
+              padding: "8px 16px",
+              background: NAVY,
+              color: "#fff",
+              border: "none",
+              borderRadius: 4,
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Start Reconciliation
+          </button>
+        </div>
+      )}
+
+      {activeRec && (
+        <div
+          style={{
+            background: "#FAFAF8",
+            border: "1px solid #E8E4DC",
+            borderRadius: 6,
+            padding: "16px 20px",
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 16,
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: "8pt",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "1.2px",
+                  color: "#C9A84C",
+                  marginBottom: 4,
+                }}
+              >
+                {data.accounts.find((a) => a.code === activeRec.accountCode)?.name ||
+                  activeRec.accountCode}
+              </div>
+              <div style={{ fontSize: 12, color: MUTED }}>
+                Statement date: {activeRec.statementDate} · Status:{" "}
+                <span style={{ color: activeRec.status === "Reconciled" ? GREEN : GOLD, fontWeight: 600 }}>
+                  {activeRec.status}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setActiveRecId(null)}
+                style={{ padding: "6px 12px", fontSize: 12, cursor: "pointer" }}
+              >
+                Back to list
+              </button>
+              <button
+                onClick={saveReconciliation}
+                disabled={saving}
+                style={{ padding: "6px 12px", fontSize: 12, cursor: "pointer" }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                onClick={finalizeReconciliation}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  background: GREEN,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 4,
+                }}
+              >
+                Finalize
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E8E4DC",
+                borderRadius: 6,
+                padding: "12px 16px",
+              }}
+            >
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Book Balance</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>GHS {fmt(bookBalance)}</div>
+            </div>
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E8E4DC",
+                borderRadius: 6,
+                padding: "12px 16px",
+              }}
+            >
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Statement Balance</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>GHS {fmt(activeRec.statementBalance)}</div>
+            </div>
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E8E4DC",
+                borderRadius: 6,
+                padding: "12px 16px",
+              }}
+            >
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Cleared Balance</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>GHS {fmt(clearedBalance)}</div>
+            </div>
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E8E4DC",
+                borderRadius: 6,
+                padding: "12px 16px",
+              }}
+            >
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Outstanding</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>GHS {fmt(outstanding)}</div>
+            </div>
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E8E4DC",
+                borderRadius: 6,
+                padding: "12px 16px",
+              }}
+            >
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Difference</div>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: Math.abs(difference) < 0.01 ? GREEN : ALERT,
+                }}
+              >
+                GHS {fmt(difference)}
+              </div>
+            </div>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${NAVY}` }}>
+                <th style={{ textAlign: "left", padding: "8px", fontSize: 11 }}>Cleared</th>
+                <th style={{ textAlign: "left", padding: "8px", fontSize: 11 }}>Date</th>
+                <th style={{ textAlign: "left", padding: "8px", fontSize: 11 }}>Entry #</th>
+                <th style={{ textAlign: "left", padding: "8px", fontSize: 11 }}>Description</th>
+                <th style={{ textAlign: "right", padding: "8px", fontSize: 11 }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {candidateEntries.map(({ entry, netAmount }) => {
+                const isCleared = clearedEntryIds.has(entry.id);
+                return (
+                  <tr
+                    key={entry.id}
+                    style={{
+                      borderBottom: "1px solid #E8E4DC",
+                      background: isCleared ? "#f0f9f0" : "transparent",
+                    }}
+                  >
+                    <td style={{ padding: "8px" }}>
+                      <input
+                        type="checkbox"
+                        checked={isCleared}
+                        onChange={() => toggleEntry(entry.id, netAmount)}
+                        style={{ width: 16, height: 16, cursor: "pointer" }}
+                      />
+                    </td>
+                    <td style={{ padding: "8px" }}>{entry.date}</td>
+                    <td style={{ padding: "8px", fontFamily: FONT_MONO, fontSize: 12 }}>
+                      {entry.entryNumber}
+                    </td>
+                    <td style={{ padding: "8px" }}>{entry.description || "—"}</td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        textAlign: "right",
+                        fontFamily: FONT_MONO,
+                        color: netAmount > 0 ? GREEN : ALERT,
+                      }}
+                    >
+                      {netAmount > 0 ? "+" : ""}
+                      {fmt(netAmount)}
+                    </td>
+                  </tr>
+                );
+              })}
+              {candidateEntries.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{ padding: 24, textAlign: "center", color: MUTED, fontSize: 13 }}
+                  >
+                    No unreconciled transactions found for this account up to {statementDate}.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3 style={{ marginBottom: 12, color: NAVY, fontSize: 14 }}>Past Reconciliations</h3>
+      {data.bankReconciliations.length === 0 && (
+        <p style={{ color: MUTED, fontSize: 13 }}>No reconciliations yet.</p>
+      )}
+      {data.bankReconciliations.map((rec) => {
+        const recCleared = rec.items.reduce((s, i) => s + i.amount, 0);
+        return (
+          <div
+            key={rec.id}
+            style={{
+              background: "#FAFAF8",
+              border: "1px solid #E8E4DC",
+              borderRadius: 6,
+              padding: "12px 16px",
+              marginBottom: 12,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                {data.accounts.find((a) => a.code === rec.accountCode)?.name || rec.accountCode}
+              </div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                {rec.statementDate} · Statement: GHS {fmt(rec.statementBalance)} · Cleared: GHS{" "}
+                {fmt(recCleared)} ·{" "}
+                <span style={{ color: rec.status === "Reconciled" ? GREEN : GOLD, fontWeight: 600 }}>
+                  {rec.status}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {rec.status === "Draft" && (
+                <button
+                  onClick={() => setActiveRecId(rec.id)}
+                  style={{ padding: "4px 10px", fontSize: 12, cursor: "pointer" }}
+                >
+                  Continue
+                </button>
+              )}
+              <button
+                onClick={() => deleteReconciliation(rec.id)}
+                style={{ padding: "4px 10px", fontSize: 12, cursor: "pointer", color: ALERT }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ------------ App ----------
 // ---------- App ----------
 export default function App() {
   useGoogleFonts();
@@ -7376,6 +7885,7 @@ export default function App() {
     { key: "payroll", label: "Payroll", icon: Banknote },
     { key: "bills", label: "Bills", icon: Receipt },
     { key: "aged-payables", label: "Aged Payables", icon: ArrowUpRight },
+  { key: "bank-reconciliation", label: "Bank Rec", icon: Landmark },
     { key: "reports", label: "Reports", icon: FileText },
     { key: "accounts", label: "Chart of Accounts", icon: BookOpen },
     { key: "export", label: "Export", icon: FileSpreadsheet },
@@ -7387,10 +7897,7 @@ export default function App() {
       label: "Overview",
       keys: ["dashboard", "journal", "ledger", "financials"],
     },
-    {
-      label: "Operations",
-      keys: ["projects", "invoicing", "employees", "payroll"],
-    },
+    { label: "Operations", keys: ["projects", "invoicing", "employees", "payroll", "bills", "aged-payables", "bank-reconciliation"] },
     { label: "Setup", keys: ["accounts", "export", "logout"] },
   ];
 
@@ -7702,6 +8209,7 @@ export default function App() {
           )}
               {tab === "bills" && <BillsPanel data={data} mutate={mutate} />}
           {tab === "aged-payables" && <AgedPayablesPanel data={data} />}
+{tab === "bank-reconciliation" && <BankReconciliationPanel data={data} mutate={mutate} />}
           {tab === "reports" && <ReportsPanel data={data} />}
           {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
           {tab === "logout" && <LogoutPanel />}

@@ -18,6 +18,8 @@ import type {
   Db,
   Bill,
   BillPayment,
+  BankReconciliation,
+  BankReconciliationItem,
 } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -383,7 +385,66 @@ function billPaymentToRow(p: BillPayment, billId: string): BillPaymentRow {
     reference: p.reference ?? null,
   };
 }
+/* ------------------------------------------------------------------ */
+/* Bank Reconciliation mappers                                         */
+/* ------------------------------------------------------------------ */
 
+interface BankReconciliationRow {
+  id: string;
+  account_code: string;
+  statement_date: string;
+  statement_balance: number;
+  status: string;
+}
+
+function bankReconciliationFromRow(r: BankReconciliationRow): BankReconciliation {
+  return {
+    id: r.id,
+    accountCode: r.account_code,
+    statementDate: r.statement_date,
+    statementBalance: r.statement_balance ?? 0,
+    status: (r.status as BankReconciliation['status']) ?? 'Draft',
+    items: [],
+  };
+}
+
+function bankReconciliationToRow(r: BankReconciliation): BankReconciliationRow {
+  return {
+    id: r.id,
+    account_code: r.accountCode,
+    statement_date: r.statementDate,
+    statement_balance: r.statementBalance,
+    status: r.status,
+  };
+}
+
+interface BankReconciliationItemRow {
+  id: string;
+  reconciliation_id: string;
+  journal_entry_id: string;
+  account_code: string;
+  amount: number;
+}
+
+function bankRecItemFromRow(r: BankReconciliationItemRow): BankReconciliationItem {
+  return {
+    id: r.id,
+    reconciliationId: r.reconciliation_id,
+    journalEntryId: r.journal_entry_id,
+    accountCode: r.account_code,
+    amount: r.amount ?? 0,
+  };
+}
+
+function bankRecItemToRow(i: BankReconciliationItem): BankReconciliationItemRow {
+  return {
+    id: i.id,
+    reconciliation_id: i.reconciliationId,
+    journal_entry_id: i.journalEntryId,
+    account_code: i.accountCode,
+    amount: i.amount,
+  };
+}
 /* ------------------------------------------------------------------ */
 /*  Auth                                                                */
 /* ------------------------------------------------------------------ */
@@ -606,7 +667,9 @@ export async function loadLedgerState(): Promise<AppData | null> {
       { data: payrollLines, error: payrollLinesErr },
       { data: billsData, error: billsErr },
       { data: billPaymentsData, error: billPaymentsErr },
-    ] = await Promise.all([
+  { data: bankRecsData, error: bankRecsErr },
+  { data: bankRecItemsData, error: bankRecItemsErr },
+] = await Promise.all([
       supabase.from('app_settings').select('data').eq('id', 1).maybeSingle(),
       supabase.from('accounts').select('*'),
       supabase.from('projects').select('*'),
@@ -620,12 +683,14 @@ export async function loadLedgerState(): Promise<AppData | null> {
       supabase.from('payroll_lines').select('*'),
       supabase.from('bills').select('*').order('date', { ascending: false }),
       supabase.from('bill_payments').select('*'),
-    ]);
+  supabase.from('bank_reconciliations').select('*').order('statement_date', { ascending: false }),
+  supabase.from('bank_reconciliation_items').select('*'),
+])
 
     const firstError =
       settingsErr || accountsErr || projectsErr || journalEntriesErr || journalLinesErr ||
       invoicesErr || invoiceItemsErr || paymentsErr || employeesErr || payrollRunsErr || payrollLinesErr ||
-      billsErr || billPaymentsErr;
+      billsErr || billPaymentsErr || bankRecsErr || bankRecItemsErr;
     if (firstError) throw firstError;
 
     const journal: JournalEntry[] = (journalEntries ?? []).map((e: JournalEntryRow) => ({
@@ -657,18 +722,26 @@ export async function loadLedgerState(): Promise<AppData | null> {
       payments: (billPaymentsData ?? []).filter((p: BillPaymentRow & { bill_id: string }) => p.bill_id === b.id).map(billPaymentFromRow),
     }));
 
-    const settings = (settingsData?.data ?? {}) as AppSettingsData;
+    const bankReconciliations: BankReconciliation[] = (bankRecsData ?? []).map((r: BankReconciliationRow) => ({
+    ...bankReconciliationFromRow(r),
+    items: (bankRecItemsData ?? [])
+      .filter((i: BankReconciliationItemRow & { reconciliation_id: string }) => i.reconciliation_id === r.id)
+      .map(bankRecItemFromRow),
+  }));
 
-    return {
-      ...settings,
-      accounts: (accounts ?? []).map(accountFromRow),
-      projects: (projects ?? []).map(projectFromRow),
-      journal,
-      invoices: invoicedInvoices,
-      employees: (employees ?? []).map(employeeFromRow),
-      payrollRuns: payrollRunsWithLines,
-      bills: billsWithPayments,
-    } as AppData;
+  const settings = (settingsData?.data ?? {}) as AppSettingsData;
+
+  return {
+    ...settings,
+    accounts: (accounts ?? []).map(accountFromRow),
+    projects: (projects ?? []).map(projectFromRow),
+    journal,
+    invoices: invoicedInvoices,
+    employees: (employees ?? []).map(employeeFromRow),
+    payrollRuns: payrollRunsWithLines,
+    bills: billsWithPayments,
+    bankReconciliations,
+  } as AppData;
   } catch (err) {
     console.error('Error loading relational data:', err);
     return null;
@@ -799,4 +872,14 @@ export const db: Db = {
   deleteProject: (id) => deleteFromTable('projects', 'id', id),
   deleteEmployee: (id) => deleteFromTable('employees', 'id', id),
   deleteBill: (id) => deleteFromTable('bills', 'id', id),
+
+  saveBankReconciliation: async (rec) => {
+    await upsertTable('bank_reconciliations', [bankReconciliationToRow(rec)]);
+    await deleteFromTable('bank_reconciliation_items', 'reconciliation_id', rec.id);
+    if (rec.items && rec.items.length > 0) {
+      await upsertTable('bank_reconciliation_items', rec.items.map(bankRecItemToRow));
+    }
+  },
+
+  deleteBankReconciliation: (id) => deleteFromTable('bank_reconciliations', 'id', id),
 };
