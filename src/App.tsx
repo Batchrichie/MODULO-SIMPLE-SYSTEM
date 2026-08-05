@@ -5296,13 +5296,13 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       period: date.slice(0, 7),
       project,
       lines: [
-        { account: "1100", debit: totals.grandTotalGHS, credit: 0 },
+        { account: "1130", debit: totals.grandTotalGHS, credit: 0 },
         { account: revenueAccount, debit: 0, credit: totals.newSubtotalGHS },
         ...(chargeNhil
-          ? [{ account: "2400", debit: 0, credit: totals.nhilGetfundGHS }]
+          ? [{ account: "2205", debit: 0, credit: totals.nhilGetfundGHS }]
           : []),
         ...(chargeVat
-          ? [{ account: "2300", debit: 0, credit: totals.vatGHS }]
+          ? [{ account: "2220", debit: 0, credit: totals.vatGHS }]
           : []),
       ],
     };
@@ -5681,8 +5681,8 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       period: date.slice(0, 7),
       project: inv.project,
       lines: [
-        { account: "1000", debit: amt, credit: 0 },
-        { account: "1100", debit: 0, credit: amt },
+        { account: "1110", debit: amt, credit: 0 },
+        { account: "1130", debit: 0, credit: amt },
       ],
     };
     const updatedInvoice = {
