@@ -29,6 +29,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
+  Landmark,
 } from "lucide-react";
 import {
   assertJournalEntry,
