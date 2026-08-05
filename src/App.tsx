@@ -3174,7 +3174,7 @@ function FinancialsPanel({ data, setPrintContent }) {
   );
 }
 
-function EmployeesPanel({ data, mutate }) {
+function EmployeesPanel({ data, mutate }: EmployeesPanelProps) {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [form, setForm] = useState({
@@ -3691,7 +3691,7 @@ const invTdVal = {
   fontSize: 12.5,
 };
 
-function InvoiceDocument({ data, inv }) {
+function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
   const t = inv.totals;
   const cur = inv.currency;
   const sym = cur === "USD" ? "$" : "GHS";
@@ -4231,7 +4231,7 @@ function InvoiceDocument({ data, inv }) {
   );
 }
 
-function ReceiptDocument({ data, inv, payment, receiptNo }) {
+function ReceiptDocument({ data, inv, payment, receiptNo }: ReceiptDocumentProps) {
   const idx = inv.payments.findIndex((p) => p.id === payment.id);
   const paidThrough = inv.payments
     .slice(0, idx + 1)
@@ -4561,7 +4561,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }) {
   );
 }
 
-function Payslip({ data, run, r }) {
+function Payslip({ data, run, r }: PayslipProps) {
   const emp = data.employees.find((e) => e.id === r.employeeId) || {};
   const [year, month] = run.period.split("-");
   const monthName = new Date(Number(year), Number(month) - 1, 1)
@@ -4845,7 +4845,7 @@ function Payslip({ data, run, r }) {
   );
 }
 
-function PayrollPanel({ data, mutate, setPrintContent }) {
+function PayrollPanel({ data, mutate, setPrintContent }: PayrollPanelProps) {
   const now = new Date();
   const [period, setPeriod] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -5273,7 +5273,7 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
   );
 }
 
-function NewInvoiceForm({ data, mutate, onDone }) {
+function NewInvoiceForm({ data, mutate, onDone }: NewInvoiceFormProps) {
   const [billTo, setBillTo] = useState("");
   const [forText, setForText] = useState("");
   const [location, setLocation] = useState("GREATER ACCRA");
@@ -5759,7 +5759,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
   );
 }
 
-function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
+function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }: RecordPaymentFormProps) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("Bank");
@@ -5884,7 +5884,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
   );
 }
 
-function InvoicingPanel({ data, mutate, setPrintContent }) {
+function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) {
   const [showNew, setShowNew] = useState(false);
   const [payingInv, setPayingInv] = useState(null);
 
@@ -6083,7 +6083,7 @@ function InvoicingPanel({ data, mutate, setPrintContent }) {
   );
 }
 
-function ExportPanel({ data, isMobile }) {
+function ExportPanel({ data, isMobile }: ExportPanelProps) {
   function exportExcel() {
     const wb = XLSX.utils.book_new();
     const coaSheet = XLSX.utils.json_to_sheet(
@@ -6229,7 +6229,7 @@ function ExportPanel({ data, isMobile }) {
 export default function App() {
   useGoogleFonts();
   const isMobile = useIsMobile();
-  const [data, setData] = useState(DEFAULT_DATA);
+  const [data, setData] = useState<AppData>(DEFAULT_DATA)
   const [loaded, setLoaded] = useState(false);
   const [authSession, setAuthSession] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -6266,7 +6266,7 @@ export default function App() {
       return "light";
     }
   });
-  const [printContent, setPrintContent] = useState(null);
+  const [printContent, setPrintContent] = useState<ReactNode | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
