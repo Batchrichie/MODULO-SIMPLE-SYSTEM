@@ -24,11 +24,9 @@ import {
   Sun,
   Menu,
   LogOut,
-  type LucideIcon,
 } from 'lucide-react';
 import './App.css';
 import {
-  supabase,
   signOut,
   getSession,
   onAuthStateChange,
@@ -54,10 +52,6 @@ import type {
   PayrollRun,
   PayrollLine,
   Company,
-  Currency,
-  InvoiceStatus,
-  LineType,
-  PanelProps,
   InvoicingPanelProps,
   PayrollPanelProps,
   EmployeesPanelProps,
@@ -69,50 +63,13 @@ import type {
   PayslipProps,
   ProjectStats,
   NavItem,
-  PayeBracket,
 } from './types';
 
 /* ------------------------------------------------------------------ */
-/*  Constants & helpers                                                 */
+/*  Pure helpers (no business data)                                     */
 /* ------------------------------------------------------------------ */
 
 const FONT_MONO = "'SF Mono', Monaco, monospace";
-
-const DEFAULT_COMPANY: Company = {
-  name: 'Modulo',
-  addressLine: '123 Design Avenue',
-  cityLine: 'Accra, Ghana',
-  poBox: 'P.O. Box 1234',
-  phone: '+233 20 123 4567',
-  telephone: '+233 302 123 456',
-  email: 'hello@modulo.design',
-};
-
-const DEFAULT_DATA: AppData = {
-  companyName: 'Modulo',
-  company: DEFAULT_COMPANY,
-  accounts: [],
-  projects: [],
-  journal: [],
-  invoices: [],
-  employees: [],
-  payrollRuns: [],
-  nextEntryNum: 1,
-  nextInvoiceNum: 1,
-  ssnitEmployeeRate: 0.055,
-  ssnitEmployerRate: 0.13,
-  nhilGetfundRate: 0.06,
-  vatRate: 0.15,
-  brackets: [
-    { upto: 490, rate: 0 },
-    { upto: 600, rate: 0.05 },
-    { upto: 730, rate: 0.1 },
-    { upto: 3896.67, rate: 0.175 },
-    { upto: 19466.67, rate: 0.25 },
-    { upto: 50633.33, rate: 0.3 },
-    { upto: Infinity, rate: 0.35 },
-  ],
-};
 
 function fmt(n: number): string {
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -185,21 +142,6 @@ function useGoogleFonts(): void {
 const LOGO_SRC =
   "https://z-cdn-media.chatglm.cn/files/c4df6667-2cb5-44bd-9e8c-084ed2a10aef.png?auth_key=1885240175-d071a696811b4023895eec2f8f72bcdc-0-f1149165f857bcfa6db14fa029bb57fd";
 
-const DEFAULT_COMPANY = {
-  name: "MODULO DEVELOPMENT LIMITED",
-  addressLine: "Spintex Road (Next to Cassa Trassaco)",
-  poBox: "P. O. Box 1189, Comm 11, Tema",
-  cityLine: "Accra-Ghana",
-  phone: "(054) 628 0061",
-  telephone: "(030) 339 71657",
-  email: "modulodevelopmentltd@yahoo.com",
-  website: "modulodevelopmentltd.com",
-  preparedByName: "Richmond Botchwey",
-  preparedByTitle: "Accountant",
-  authorisedByName: "Mr. Derrick Oppong Sarpong",
-  authorisedByTitle: "Managing Director",
-};
-
 // ---------- Defaults ----------
 // Chart of Accounts is now loaded entirely from the database.
 // No hardcoded accounts - the database is the single source of truth.
@@ -236,24 +178,6 @@ const DEFAULT_PROJECTS = [
 ];
 
 const GENERAL_PROJECT = { id: "GEN", name: "General / Office" };
-
-const DEFAULT_DATA = {
-  companyName: "Modulo Development Limited",
-  company: DEFAULT_COMPANY,
-  accounts: [], // Loaded from database - no hardcoded defaults
-  journal: [],
-  employees: [],
-  payrollRuns: [],
-  projects: DEFAULT_PROJECTS,
-  invoices: [],
-  nextEntryNum: 1,
-  nextInvoiceNum: 7,
-  ssnitEmployeeRate: 0,
-  ssnitEmployerRate: 0,
-  brackets: [],
-  nhilGetfundRate: 0,
-  vatRate: 0,
-};
 
 function fmt(n: number | string | null | undefined) {
   const v = Number(n) || 0;
