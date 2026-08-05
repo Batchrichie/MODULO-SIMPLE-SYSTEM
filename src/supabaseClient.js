@@ -479,14 +479,43 @@ export const db = {
 
   // Invoices are upserted; items and payments are fully replaced
   saveInvoice: async (invoice) => {
-    await upsertTable("invoices", [invoiceToRow(invoice)]);
-    await deleteFromTable("invoice_items", "invoice_id", invoice.id);
-    await deleteFromTable("payments", "invoice_id", invoice.id);
+    const row = invoiceToRow(invoice);
+    console.log("[saveInvoice] Upserting invoice row:", JSON.stringify(row, null, 2));
+    let step = "upsert invoices";
+    try {
+      await upsertTable("invoices", [row]);
+    } catch (err) {
+      throw new Error(`${step}: ${err.message}`);
+    }
+    step = "delete old invoice_items";
+    try {
+      await deleteFromTable("invoice_items", "invoice_id", invoice.id);
+    } catch (err) {
+      throw new Error(`${step}: ${err.message}`);
+    }
+    step = "delete old payments";
+    try {
+      await deleteFromTable("payments", "invoice_id", invoice.id);
+    } catch (err) {
+      throw new Error(`${step}: ${err.message}`);
+    }
     if (invoice.items && invoice.items.length > 0) {
-      await upsertTable("invoice_items", invoice.items.map((it) => invoiceItemToRow(it, invoice.id)));
+      step = "upsert invoice_items";
+      const itemRows = invoice.items.map((it) => invoiceItemToRow(it, invoice.id));
+      console.log("[saveInvoice] Item rows:", JSON.stringify(itemRows, null, 2));
+      try {
+        await upsertTable("invoice_items", itemRows);
+      } catch (err) {
+        throw new Error(`${step}: ${err.message}`);
+      }
     }
     if (invoice.payments && invoice.payments.length > 0) {
-      await upsertTable("payments", invoice.payments.map((p) => paymentToRow(p, invoice.id)));
+      step = "upsert payments";
+      try {
+        await upsertTable("payments", invoice.payments.map((p) => paymentToRow(p, invoice.id)));
+      } catch (err) {
+        throw new Error(`${step}: ${err.message}`);
+      }
     }
   },
 
