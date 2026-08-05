@@ -1,189 +1,175 @@
-import { useState, useEffect, useCallback, useMemo, type ReactNode, type CSSProperties, type ComponentType } from 'react';
-import * as XLSX from 'xlsx';
-import {
+import React, {
+  useState,
+  useEffect,
   useMemo,
-  LayoutDashboard,
+  useCallback,
+} from "react";
+import type { CSSProperties, ComponentType, ReactNode } from "react";
+import * as XLSX from "xlsx";
+import {
+  BookOpen,
   PenLine,
   Scale,
-  TrendingUp,
-  Briefcase,
-  Receipt,
   Users,
   Banknote,
-  BookOpen,
   FileSpreadsheet,
-  X,
   Plus,
-  AlertCircle,
-  CheckCircle2,
-  Printer,
   Trash2,
-  Pencil,
-  ChevronDown,
-  ChevronRight,
-  Moon,
-  Sun,
-  Menu,
-  LogOut,
-  AlertTriangle,
-  ArrowDownRight,
-  ArrowUpRight,
-  FileText,
-  Settings2,
+  Printer,
   Check,
-} from 'lucide-react';
-import './App.css';
-import {
-  signOut,
-  getSession,
-  onAuthStateChange,
-  loadLedgerState,
-  loadTaxConfig,
-  saveSettings,
-  saveTaxRates,
-  savePayeBrackets,
-  runPayrollAndFetch,
-  db,
-} from './supabaseClient';
-import Login from './Login';
-import type {
-  AppData,
-  MutateFn,
-  Account,
-  Project,
-  Employee,
-  JournalEntry,
-  Invoice,
-  InvoiceItem,
-  Payment,
-  PayrollRun,
-  PayrollLine,
-  Company,
-  InvoicingPanelProps,
-  PayrollPanelProps,
-  EmployeesPanelProps,
-  ExportPanelProps,
-  NewInvoiceFormProps,
-  RecordPaymentFormProps,
-  InvoiceDocumentProps,
-  ReceiptDocumentProps,
-  PayslipProps,
-  ProjectStats,
-  NavItem,
-} from './types';
+  AlertTriangle,
+  Settings2,
+  Briefcase,
+  Receipt,
+  TrendingUp,
+  X,
+  Sun,
+  Moon,
+  LayoutDashboard,
+  ArrowUpRight,
+  ArrowDownRight,
+  FileText,
+} from "lucide-react";
+import Login from "./Login.jsx";
+import { loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates, savePayeBrackets, db, getTrialBalance, getBalanceSheet, getProfitAndLoss, getSession, onAuthStateChange, signOut, runPayrollAndFetch } from "./supabaseClient";
 
-/* ------------------------------------------------------------------ */
-/*  Pure helpers (no business data)                                     */
-/* ------------------------------------------------------------------ */
+// ---------- Design Tokens (CSS Variables for Theming) ----------
+const INK = "var(--ink)";
+const PAPER = "var(--paper)";
+const PAPER_RAISED = "var(--paper-raised)";
+const RULE = "var(--rule)";
+const GREEN = "var(--green)";
+const GREEN_DEEP = "var(--green-deep)";
+const GOLD = "var(--gold)";
+const ALERT = "var(--alert)";
+const MUTED = "var(--muted)";
 
-const GREEN = "#2F5233";
-const GREEN_DEEP = "#1E3A21";
-const GOLD = "#A8761A";
-const ALERT = "#A63D40";
-const INK = "#1F2A24";
-const MUTED = "#6B6255";
-const PAPER = "#F7F4EE";
-const PAPER_RAISED = "#FFFFFF";
-const RULE = "#DCD5C4";
-const FONT_BODY = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-const FONT_DISPLAY = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-const LOGO_SRC = "https://z-cdn-media.chatglm.cn/files/c4df6667-2cb5-44bd-9e8c-084ed2a10aef.png?auth_key=1885240175-d071a696811b4023895eec2f8f72bcdc-0-f1149165f857bcfa6db14fa029bb57fd";
+const FONT_DISPLAY = "'Roboto Slab', serif";
+const FONT_BODY = "'Inter', sans-serif";
+const FONT_MONO = "'IBM Plex Mono', monospace";
 
-/* ------------------------------------------------------------------ */
-/*  Pure helpers (no business data)                                     */
-/* ------------------------------------------------------------------ */
-
-const FONT_MONO = "'SF Mono', Monaco, monospace";
-
-function fmt(n: number): string {
-  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function projectName(projects: Project[], id?: string | null): string {
-  if (!id) return '—';
-  const p = projects.find((x) => x.id === id);
-  return p ? p.name : id;
-}
-
-function projectStats(data: AppData): ProjectStats[] {
-  return data.projects.map((p) => {
-    const revenueBilled = data.invoices
-      .filter((inv) => inv.project === p.id)
-      .reduce((s, inv) => s + (inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal), 0);
-    const actualCost = data.journal
-      .filter((je) => je.project === p.id)
-      .flatMap((je) => je.lines)
-      .filter((l) => {
-        const acc = data.accounts.find((a) => a.code === l.account);
-        return acc && acc.type === 'Expense';
-      })
-      .reduce((s, l) => s + l.debit, 0);
-    const estimatedCost = p.estimatedCost ?? 0;
-    const remainingCost = Math.max(estimatedCost - actualCost, 0);
-    const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
-    const wipMargin = revenueBilled - actualCost;
-    return {
-      id: p.id,
-      name: p.name,
-      status: p.status,
-      contractValue: p.contractValue ?? 0,
-      revenueBilled,
-      actualCost,
-      estimatedCost,
-      remainingCost,
-      projectedMargin,
-      wipMargin,
-    };
-  });
-}
-
-const [data, setData] = useState<AppData>({
-  companyName: '',
-  company: { name: '', addressLine: '', cityLine: '', poBox: '', phone: '', telephone: '', email: '' },
-  accounts: [],
-  projects: [],
-  journal: [],
-  invoices: [],
-  employees: [],
-  payrollRuns: [],
-  nextEntryNum: 1,
-  nextInvoiceNum: 1,
-  ssnitEmployeeRate: 0,
-  ssnitEmployerRate: 0,
-  nhilGetfundRate: 0,
-  vatRate: 0,
-  brackets: [],
-});
-
-/* ------------------------------------------------------------------ */
-/*  Hooks                                                               */
-/* ------------------------------------------------------------------ */
-
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(false);
+function useGoogleFonts() {
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    const id = "ledger-app-fonts";
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
+    document.head.appendChild(link);
+  }, []);
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 860 : false
+  );
+  useEffect(() => {
+    function onResize() {
+      setIsMobile(window.innerWidth < 860);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
   return isMobile;
 }
 
-function useGoogleFonts(): void {
-  useEffect(() => {
-    const link = document.createElement('link');
-    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap';
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
-    return () => {
-      document.head.removeChild(link);
-    };
-  }, []);
+// ---------- Letterhead ----------
+const LOGO_SRC =
+  "https://z-cdn-media.chatglm.cn/files/c4df6667-2cb5-44bd-9e8c-084ed2a10aef.png?auth_key=1885240175-d071a696811b4023895eec2f8f72bcdc-0-f1149165f857bcfa6db14fa029bb57fd";
+
+// ---------- Company Defaults ----------
+// MINIMAL FALLBACK ONLY - Real company data must come from database.
+// This empty template ensures the app doesn't crash before DB loads.
+// All actual values should be seeded in app_settings.data.company
+
+const COMPANY_TEMPLATE = {
+  name: "",
+  addressLine: "",
+  poBox: "",
+  cityLine: "",
+  phone: "",
+  telephone: "",
+  email: "",
+  website: "",
+  preparedByName: "",
+  preparedByTitle: "",
+  authorisedByName: "",
+  authorisedByTitle: "",
+};
+
+// ---------- Defaults ----------
+// Chart of Accounts is now loaded entirely from the database.
+// No hardcoded accounts - the database is the single source of truth.
+// This prevents FK violations and ensures consistency between app and DB.
+
+const DEFAULT_PROJECTS = [
+  {
+    id: "PRJ-MANET",
+    name: "Manet Estate Villa",
+    status: "Active",
+    projectType: "Construction Contract",
+    recognitionMethod: "POC",
+    contractValue: 150000,
+    estimatedCost: 120000,
+  },
+  {
+    id: "PRJ-TSEADDO",
+    name: "Tse Addo Permit",
+    status: "Active",
+    projectType: "Permit Processing",
+    recognitionMethod: "POINT_IN_TIME",
+    contractValue: 5000,
+    estimatedCost: 1000,
+  },
+  {
+    id: "PRJ-TAMALE",
+    name: "Tamale Design",
+    status: "Active",
+    projectType: "Architectural Design",
+    recognitionMethod: "POC",
+    contractValue: 25000,
+    estimatedCost: 12000,
+  },
+];
+
+const GENERAL_PROJECT = { id: "GEN", name: "General / Office" };
+
+const DEFAULT_DATA = {
+  companyName: "",  // Loaded from database
+  company: COMPANY_TEMPLATE,  // Loaded from database - empty until DB loads
+  accounts: [], // Loaded from database - no hardcoded defaults
+  journal: [],
+  employees: [],
+  payrollRuns: [],
+  projects: DEFAULT_PROJECTS,
+  invoices: [],
+  nextEntryNum: 1,
+  nextInvoiceNum: 7,
+  ssnitEmployeeRate: 0,
+  ssnitEmployerRate: 0,
+  brackets: [],
+  nhilGetfundRate: 0,
+  vatRate: 0,
+};
+
+function fmt(n: number | string | null | undefined) {
+  const v = Number(n) || 0;
+  return v.toLocaleString("en-GH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-// ---------- Letterhead ----------
+function projectName(
+  projects: Array<{ id: string; name: string }>,
+  id?: string | null
+) {
+  if (!id || id === "GEN") return GENERAL_PROJECT.name;
+  const p = projects.find((p) => p.id === id);
+  return p ? p.name : "General / Office";
+}
 
 // ---------- Small UI atoms ----------
 type NavItemProps = {
@@ -1280,6 +1266,45 @@ function AccountsPanel({ data, mutate }) {
   );
 }
 
+function projectStats(data) {
+  const list = [GENERAL_PROJECT, ...data.projects];
+  return list.map((p) => {
+    let actualCost = 0;
+    let revenueBilled = 0;
+
+    data.journal.forEach((e) => {
+      if ((e.project || "GEN") !== p.id) return;
+      e.lines.forEach((l) => {
+        const acc = data.accounts.find((a) => a.code === l.account);
+        if (acc && acc.type === "Expense") actualCost += l.debit - l.credit;
+      });
+    });
+
+    data.invoices.forEach((inv) => {
+      if ((inv.project || "GEN") !== p.id) return;
+      if (inv.status === "Void") return;
+      revenueBilled += inv.totals.grandTotalGHS;
+    });
+
+    const contractValue = parseFloat(p.contractValue) || 0;
+    const estimatedCost = parseFloat(p.estimatedCost) || 0;
+    const remainingCost = Math.max(0, estimatedCost - actualCost);
+    const projectedMargin = contractValue - estimatedCost;
+    const wipMargin = revenueBilled - actualCost;
+
+    return {
+      ...p,
+      actualCost,
+      revenueBilled,
+      contractValue,
+      estimatedCost,
+      remainingCost,
+      projectedMargin,
+      wipMargin,
+    };
+  });
+}
+
 function ProjectsPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
@@ -1675,15 +1700,14 @@ type ProjectSelectProps = {
 };
 
 function ProjectSelect({ value, onChange, projects, style }: ProjectSelectProps) {
-  const gen = projects.find((p) => p.id === 'GEN');
   return (
     <select
       style={style || inputStyle}
       value={value || "GEN"}
       onChange={(e) => onChange(e.target.value)}
     >
-      <option value="GEN">{gen ? gen.name : 'General / Office'}</option>
-      {projects.filter((p) => p.id !== 'GEN').map((p) => (
+      <option value="GEN">{GENERAL_PROJECT.name}</option>
+      {projects.map((p) => (
         <option key={p.id} value={p.id}>
           {p.name}
         </option>
@@ -2348,7 +2372,7 @@ function FinancialsPanel({ data, setPrintContent }) {
     const projectName =
       projectOptions.find((p) => p.id === view)?.name || "Company";
     const safeProjectName = projectName.replace(/\s+/g, "_");
-    const company = data.company;
+    const company = data.company || COMPANY_TEMPLATE;
     const genDate = new Date().toLocaleDateString("en-GB", {
       day: "numeric",
       month: "long",
@@ -3049,7 +3073,7 @@ function FinancialsPanel({ data, setPrintContent }) {
   );
 }
 
-function EmployeesPanel({ data, mutate }: EmployeesPanelProps) {
+function EmployeesPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [form, setForm] = useState({
@@ -3566,11 +3590,11 @@ const invTdVal = {
   fontSize: 12.5,
 };
 
-function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
+function InvoiceDocument({ data, inv }) {
   const t = inv.totals;
   const cur = inv.currency;
   const sym = cur === "USD" ? "$" : "GHS";
-  const company = data.company;
+  const company = data.company || COMPANY_TEMPLATE;
 
   const formatDate = (value) => {
     if (!value) return "—";
@@ -4106,7 +4130,7 @@ function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
   );
 }
 
-function ReceiptDocument({ data, inv, payment, receiptNo }: ReceiptDocumentProps) {
+function ReceiptDocument({ data, inv, payment, receiptNo }) {
   const idx = inv.payments.findIndex((p) => p.id === payment.id);
   const paidThrough = inv.payments
     .slice(0, idx + 1)
@@ -4436,7 +4460,7 @@ function ReceiptDocument({ data, inv, payment, receiptNo }: ReceiptDocumentProps
   );
 }
 
-function Payslip({ data, run, r }: PayslipProps) {
+function Payslip({ data, run, r }) {
   const emp = data.employees.find((e) => e.id === r.employeeId) || {};
   const [year, month] = run.period.split("-");
   const monthName = new Date(Number(year), Number(month) - 1, 1)
@@ -4720,7 +4744,7 @@ function Payslip({ data, run, r }: PayslipProps) {
   );
 }
 
-function PayrollPanel({ data, mutate, setPrintContent }: PayrollPanelProps) {
+function PayrollPanel({ data, mutate, setPrintContent }) {
   const now = new Date();
   const [period, setPeriod] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -5148,7 +5172,7 @@ function PayrollPanel({ data, mutate, setPrintContent }: PayrollPanelProps) {
   );
 }
 
-function NewInvoiceForm({ data, mutate, onDone }: NewInvoiceFormProps) {
+function NewInvoiceForm({ data, mutate, onDone }) {
   const [billTo, setBillTo] = useState("");
   const [forText, setForText] = useState("");
   const [location, setLocation] = useState("GREATER ACCRA");
@@ -5634,7 +5658,7 @@ function NewInvoiceForm({ data, mutate, onDone }: NewInvoiceFormProps) {
   );
 }
 
-function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }: RecordPaymentFormProps) {
+function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("Bank");
@@ -5759,7 +5783,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }: Recor
   );
 }
 
-function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) {
+function InvoicingPanel({ data, mutate, setPrintContent }) {
   const [showNew, setShowNew] = useState(false);
   const [payingInv, setPayingInv] = useState(null);
 
@@ -5958,7 +5982,7 @@ function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) 
   );
 }
 
-function ExportPanel({ data, isMobile }: ExportPanelProps) {
+function ExportPanel({ data, isMobile }) {
   function exportExcel() {
     const wb = XLSX.utils.book_new();
     const coaSheet = XLSX.utils.json_to_sheet(
@@ -6104,25 +6128,9 @@ function ExportPanel({ data, isMobile }: ExportPanelProps) {
 export default function App() {
   useGoogleFonts();
   const isMobile = useIsMobile();
-  const [data, setData] = useState<AppData>({
-    companyName: '',
-    company: { name: '', addressLine: '', cityLine: '', poBox: '', phone: '', telephone: '', email: '' },
-    accounts: [],
-    projects: [],
-    journal: [],
-    invoices: [],
-    employees: [],
-    payrollRuns: [],
-    nextEntryNum: 1,
-    nextInvoiceNum: 1,
-    ssnitEmployeeRate: 0,
-    ssnitEmployerRate: 0,
-    nhilGetfundRate: 0,
-    vatRate: 0,
-    brackets: [],
-  })
+  const [data, setData] = useState(DEFAULT_DATA);
   const [loaded, setLoaded] = useState(false);
-  const [authSession, setAuthSession] = useState<import('./supabaseClient').Session | null>(null);
+  const [authSession, setAuthSession] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
@@ -6157,7 +6165,7 @@ export default function App() {
       return "light";
     }
   });
-  const [printContent, setPrintContent] = useState<ReactNode | null>(null);
+  const [printContent, setPrintContent] = useState(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -6201,18 +6209,27 @@ export default function App() {
       try {
         const [remote, tax] = await Promise.all([loadLedgerState(), loadTaxConfig()]);
 
-               if (remote) {
+        if (remote) {
+          // Use accounts directly from database - no hardcoded fallback.
+          // The database is the single source of truth for the chart of accounts.
+          const accounts = remote.accounts || [];
+
           setData({
+            ...DEFAULT_DATA,
             ...remote,
-            company: remote.company ?? { name: '', addressLine: '', cityLine: '', poBox: '', phone: '', telephone: '', email: '' },
+            accounts,
+            // Company comes entirely from database - no hardcoded fallback
+            company: remote.company || COMPANY_TEMPLATE,
+            companyName: remote.companyName || "",
             ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
             ssnitEmployerRate: tax.rates.ssnitEmployerRate,
             nhilGetfundRate: tax.rates.nhilGetfundRate,
             vatRate: tax.rates.vatRate,
             brackets: tax.brackets,
           });
-          setCompanyNameDraft(remote.companyName || '');
+          // companyNameDraft already set above
         } else {
+          setCompanyNameDraft("");
           setData((prev) => ({
             ...prev,
             ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
@@ -6221,11 +6238,10 @@ export default function App() {
             vatRate: tax.rates.vatRate,
             brackets: tax.brackets,
           }));
-          setCompanyNameDraft('');
         }
       } catch (err) {
         console.error("Failed to load ledger data:", err);
-        setCompanyNameDraft('');
+        setCompanyNameDraft("");
       }
       setLoaded(true);
     })();
