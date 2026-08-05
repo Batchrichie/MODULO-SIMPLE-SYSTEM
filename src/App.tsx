@@ -30,6 +30,14 @@ import {
   ArrowDownRight,
   FileText,
 } from "lucide-react";
+import {
+  assertJournalEntry,
+  assertInvoice,
+  assertAccount,
+  assertEmployee,
+  assertProject,
+  assertPayment,
+} from "./validation";
 import Login from "./Login.jsx";
 import { loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates, savePayeBrackets, db, getTrialBalance, getBalanceSheet, getProfitAndLoss, getSession, onAuthStateChange, signOut, runPayrollAndFetch } from "./supabaseClient";
 
@@ -1195,9 +1203,9 @@ function AccountsPanel({ data, mutate }) {
   const usedCodes = new Set(data.accounts.map((a) => a.code));
 
   function addAccount() {
-    if (!form.code.trim() || !form.name.trim()) return;
-    if (usedCodes.has(form.code.trim())) {
-      alert("An account with this code already exists.");
+    const err = assertAccount(form, usedCodes);
+    if (err) {
+      alert(err);
       return;
     }
     const newAccount = { ...form, code: form.code.trim() };
@@ -1428,7 +1436,15 @@ function ProjectsPanel({ data, mutate }) {
   }
 
   function saveProject() {
-    if (!form.name.trim()) return;
+    const err = assertProject({
+      name: form.name,
+      contractValue: parseFloat(form.contractValue) || 0,
+      estimatedCost: parseFloat(form.estimatedCost) || 0,
+    });
+    if (err) {
+      alert(err);
+      return;
+    }
     const baseProject = {
       id: editingProjectId ||
         "PRJ-" +
@@ -1819,6 +1835,11 @@ function JournalEntryForm({ data, mutate, onDone }) {
   }
 
   async function post() {
+    const err = assertJournalEntry({ date, description, lines });
+    if (err) {
+      alert(err);
+      return;
+    }
     const validLines = lines.filter(
       (l) => l.account && (parseFloat(l.debit) > 0 || parseFloat(l.credit) > 0)
     );
@@ -3192,7 +3213,14 @@ function EmployeesPanel({ data, mutate }) {
   }
 
   function saveEmployee() {
-    if (!form.name.trim() || !parseFloat(form.baseSalary)) return;
+    const err = assertEmployee({
+      name: form.name,
+      baseSalary: parseFloat(form.baseSalary) || 0,
+    });
+    if (err) {
+      alert(err);
+      return;
+    }
 
     const employeePayload = {
       id: editingEmployeeId || "EMP-" + Date.now(),
@@ -5310,7 +5338,11 @@ function NewInvoiceForm({ data, mutate, onDone }) {
   }
 
   async function create() {
-    if (!billTo.trim() || items.every((it) => !it.description.trim())) return;
+    const err = assertInvoice({ billTo, items, dueDate, date });
+    if (err) {
+      alert(err);
+      return;
+    }
     const year = date.slice(0, 4);
     const invoiceNumber = `SP/${year}/${String(data.nextInvoiceNum).padStart(
       4,
@@ -5739,7 +5771,11 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
 
   async function record() {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) return;
+    const err = assertPayment(amt);
+    if (err) {
+      alert(err);
+      return;
+    }
     const paymentId = "PYT-" + Date.now();
     const payment = { id: paymentId, date, amountGHS: amt, method, reference };
     const paidSoFar = inv.payments.reduce((s, p) => s + p.amountGHS, 0) + amt;
