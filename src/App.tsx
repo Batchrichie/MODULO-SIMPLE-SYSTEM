@@ -6556,6 +6556,187 @@ function ReportsPanel({ data }: { data: AppData }) {
   );
 }
 
+function ExpensesPanel({ data, mutate }: PanelProps) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [vendor, setVendor] = useState("");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("Bank");
+  const [account, setAccount] = useState("");
+  const [project, setProject] = useState("GEN");
+  const [showHistory, setShowHistory] = useState(true);
+
+  const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+  const cashAccount = "1000";
+  const bankAccount = "1000"; // You can split this later if you open a separate Bank account
+
+  async function postExpense() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    if (!account) {
+      alert("Please select an expense account.");
+      return;
+    }
+    if (!description.trim()) {
+      alert("Please enter a description.");
+      return;
+    }
+
+    const entryNumber = `JE-EXP-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const period = date.slice(0, 7);
+
+    const entry: JournalEntry = {
+      id: entryNumber,
+      entryNumber,
+      date,
+      description: `${description.trim()} — ${vendor.trim() || "Cash expense"}`,
+      period,
+      project: project === "GEN" ? null : project,
+      lines: [
+        { account, debit: amt, credit: 0 },
+        { account: method === "Cash" ? cashAccount : bankAccount, debit: 0, credit: amt },
+      ],
+    };
+
+    mutate((d) => ({
+      ...d,
+      journal: [entry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+    }));
+
+    try {
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to save expense:", err);
+      alert("Failed to post expense. Check console for details.");
+      return;
+    }
+
+    // Reset form
+    setAmount("");
+    setDescription("");
+    setVendor("");
+    setAccount("");
+  }
+
+  // Identify auto-generated expense entries
+  const recentExpenses = data.journal
+    .filter((e) => e.entryNumber?.startsWith("JE-EXP-"))
+    .slice(0, 20);
+
+  return (
+    <div>
+      <SectionTitle sub="Record day-to-day costs without touching the double-entry journal.">
+        Quick Expenses
+      </SectionTitle>
+
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
+          <div style={{ flex: "1 1 120px" }}>
+            <label style={labelStyle}>Date</label>
+            <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div style={{ flex: "2 1 200px" }}>
+            <label style={labelStyle}>Description</label>
+            <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Fuel for site visit" />
+          </div>
+          <div style={{ flex: "1 1 150px" }}>
+            <label style={labelStyle}>Vendor / Payee</label>
+            <input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" />
+          </div>
+          <div style={{ flex: "1 1 120px" }}>
+            <label style={labelStyle}>Amount (GHS)</label>
+            <input
+              style={inputStyle}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+              placeholder="0.00"
+            />
+          </div>
+          <div style={{ flex: "1 1 120px" }}>
+            <label style={labelStyle}>Paid via</label>
+            <select style={inputStyle} value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option>Bank</option>
+              <option>Cash</option>
+              <option>Mobile Money</option>
+            </select>
+          </div>
+          <div style={{ flex: "1 1 150px" }}>
+            <label style={labelStyle}>Expense account</label>
+            <select style={inputStyle} value={account} onChange={(e) => setAccount(e.target.value)}>
+              <option value="">Select account…</option>
+              {expenseAccounts.map((a) => (
+                <option key={a.code} value={a.code}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: "1 1 150px" }}>
+            <label style={labelStyle}>Project</label>
+            <ProjectSelect value={project} onChange={setProject} projects={data.projects} />
+          </div>
+          <Button onClick={postExpense} icon={Plus}>
+            Post expense
+          </Button>
+        </div>
+      </Card>
+
+      <SectionTitle
+        sub="Recently posted through this quick-entry panel."
+        action={
+          <Button variant="ghost" onClick={() => setShowHistory((s) => !s)}>
+            {showHistory ? "Hide" : "Show"} history
+          </Button>
+        }
+      >
+        Expense History
+      </SectionTitle>
+
+      {showHistory && (
+        <Card>
+          <TableScroll>
+            <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <Th>Entry</Th>
+                  <Th>Date</Th>
+                  <Th>Description</Th>
+                  <Th>Project</Th>
+                  <Th right>Amount</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentExpenses.map((e) => (
+                  <tr key={e.id} className="row-hover">
+                    <Td mono label="Entry">{e.entryNumber}</Td>
+                    <Td label="Date">{e.date}</Td>
+                    <Td label="Description">{e.description}</Td>
+                    <Td label="Project">{projectName(data.projects, e.project)}</Td>
+                    <Td right mono label="Amount">
+                      GHS {fmt(e.lines.find((l) => l.debit > 0)?.debit || 0)}
+                    </Td>
+                  </tr>
+                ))}
+                {recentExpenses.length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ color: MUTED, padding: 10 }}>
+                      No quick expenses posted yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </TableScroll>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ---------- App ----------
 export default function App() {
   useGoogleFonts();
@@ -6777,6 +6958,7 @@ export default function App() {
   const nav = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { key: "journal", label: "Journal", icon: PenLine },
+    { key: "expenses", label: "Expenses", icon: Receipt },
     { key: "ledger", label: "Trial Balance", icon: Scale },
     { key: "financials", label: "Financials", icon: TrendingUp },
     { key: "projects", label: "Projects", icon: Briefcase },
@@ -7084,6 +7266,7 @@ export default function App() {
           )}
           {tab === "accounts" && <AccountsPanel data={data} mutate={mutate} />}
           {tab === "journal" && <JournalPanel data={data} mutate={mutate} />}
+          {tab === "expenses" && <ExpensesPanel data={data} mutate={mutate} />}
           {tab === "ledger" && <LedgerPanel data={data} />}
           {tab === "financials" && (
             <FinancialsPanel data={data} setPrintContent={setPrintContent} />
