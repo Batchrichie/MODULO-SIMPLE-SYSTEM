@@ -95,136 +95,9 @@ const DEFAULT_COMPANY = {
 };
 
 // ---------- Defaults ----------
-const DEFAULT_ACCOUNTS = [
-  {
-    code: "1500",
-    name: "Property, Plant & Equipment",
-    type: "Asset",
-    normal: "Debit",
-  },
-  { code: "1000", name: "Cash and Bank", type: "Asset", normal: "Debit" },
-  { code: "1100", name: "Accounts Receivable", type: "Asset", normal: "Debit" },
-  {
-    code: "1200",
-    name: "Inventory / Materials",
-    type: "Asset",
-    normal: "Debit",
-  },
-  {
-    code: "1300",
-    name: "Work in Progress (WIP)",
-    type: "Asset",
-    normal: "Debit",
-  },
-  {
-    code: "1400",
-    name: "Retention Receivable",
-    type: "Asset",
-    normal: "Debit",
-  },
-  {
-    code: "2000",
-    name: "Accounts Payable",
-    type: "Liability",
-    normal: "Credit",
-  },
-  { code: "2100", name: "SSNIT Payable", type: "Liability", normal: "Credit" },
-  { code: "2200", name: "PAYE Payable", type: "Liability", normal: "Credit" },
-  { code: "2300", name: "VAT Payable", type: "Liability", normal: "Credit" },
-  {
-    code: "2400",
-    name: "NHIL & GETFund Payable",
-    type: "Liability",
-    normal: "Credit",
-  },
-  {
-    code: "2500",
-    name: "Retention Payable (Subcontractors)",
-    type: "Liability",
-    normal: "Credit",
-  },
-  { code: "3000", name: "Owner's Equity", type: "Equity", normal: "Credit" },
-  { code: "3100", name: "Retained Earnings", type: "Equity", normal: "Credit" },
-
-  // Expanded Revenue Accounts
-  {
-    code: "4000",
-    name: "Construction Contract Revenue",
-    type: "Revenue",
-    normal: "Credit",
-  },
-  {
-    code: "4050",
-    name: "Design & Consultancy Revenue",
-    type: "Revenue",
-    normal: "Credit",
-  },
-  {
-    code: "4100",
-    name: "Permit Processing Revenue",
-    type: "Revenue",
-    normal: "Credit",
-  },
-  {
-    code: "4150",
-    name: "Architectural Drawings Revenue",
-    type: "Revenue",
-    normal: "Credit",
-  },
-  { code: "4200", name: "Other Income", type: "Revenue", normal: "Credit" },
-
-  // Cost of Sales
-  { code: "5000", name: "Site Materials", type: "Expense", normal: "Debit" },
-  { code: "5100", name: "Site Labour", type: "Expense", normal: "Debit" },
-  {
-    code: "5200",
-    name: "Subcontractor Costs",
-    type: "Expense",
-    normal: "Debit",
-  },
-  { code: "5300", name: "Site Security", type: "Expense", normal: "Debit" },
-  { code: "5400", name: "Site Utilities", type: "Expense", normal: "Debit" },
-  {
-    code: "5500",
-    name: "Transportation & Haulage",
-    type: "Expense",
-    normal: "Debit",
-  },
-  { code: "5600", name: "Equipment Rental", type: "Expense", normal: "Debit" },
-
-  // Administrative Expenses
-  {
-    code: "6000",
-    name: "Salary & Wages Expense",
-    type: "Expense",
-    normal: "Debit",
-  },
-  {
-    code: "6100",
-    name: "Employer SSNIT Expense",
-    type: "Expense",
-    normal: "Debit",
-  },
-  { code: "6200", name: "Rent Expense", type: "Expense", normal: "Debit" },
-  {
-    code: "6300",
-    name: "Utilities Expense (Office)",
-    type: "Expense",
-    normal: "Debit",
-  },
-  {
-    code: "6400",
-    name: "Printing, Stamping & Admin",
-    type: "Expense",
-    normal: "Debit",
-  },
-  {
-    code: "6500",
-    name: "Miscellaneous Expense",
-    type: "Expense",
-    normal: "Debit",
-  },
-];
+// Chart of Accounts is now loaded entirely from the database.
+// No hardcoded accounts - the database is the single source of truth.
+// This prevents FK violations and ensures consistency between app and DB.
 
 const DEFAULT_PROJECTS = [
   {
@@ -261,7 +134,7 @@ const GENERAL_PROJECT = { id: "GEN", name: "General / Office" };
 const DEFAULT_DATA = {
   companyName: "Modulo Development Limited",
   company: DEFAULT_COMPANY,
-  accounts: DEFAULT_ACCOUNTS,
+  accounts: [], // Loaded from database - no hardcoded defaults
   journal: [],
   employees: [],
   payrollRuns: [],
@@ -5306,7 +5179,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
   const [discountPct, setDiscountPct] = useState("0");
   const [chargeNhil, setChargeNhil] = useState(true);
   const [chargeVat, setChargeVat] = useState(true);
-  const [revenueAccount, setRevenueAccount] = useState("4000");
+  const [revenueAccount, setRevenueAccount] = useState("4100"); // Default: Architectural Design Fees (valid DB account)
   const [items, setItems] = useState([
     {
       id: "1",
@@ -5318,7 +5191,11 @@ function NewInvoiceForm({ data, mutate, onDone }) {
     },
   ]);
 
-  const revenueOptions = data.accounts.filter((a) => a.type === "Revenue" || a.type === "Income");
+  // Filter revenue/income accounts (case-insensitive to match DB values like "income", "Revenue", "Income")
+  const revenueOptions = data.accounts.filter((a) => {
+    const type = (a.type || "").toLowerCase();
+    return type === "revenue" || type === "income";
+  });
   const totals = useMemo(
     () =>
       computeInvoiceTotals(
@@ -5414,13 +5291,13 @@ function NewInvoiceForm({ data, mutate, onDone }) {
       period: date.slice(0, 7),
       project,
       lines: [
-        { account: "1130", debit: totals.grandTotalGHS, credit: 0 },
+        { account: "1100", debit: totals.grandTotalGHS, credit: 0 },
         { account: revenueAccount, debit: 0, credit: totals.newSubtotalGHS },
         ...(chargeNhil
-          ? [{ account: "2205", debit: 0, credit: totals.nhilGetfundGHS }]
+          ? [{ account: "2400", debit: 0, credit: totals.nhilGetfundGHS }]
           : []),
         ...(chargeVat
-          ? [{ account: "2200", debit: 0, credit: totals.vatGHS }]
+          ? [{ account: "2300", debit: 0, credit: totals.vatGHS }]
           : []),
       ],
     };
@@ -5782,22 +5659,6 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
   const [method, setMethod] = useState("Bank");
   const [reference, setReference] = useState("");
 
-  // Maps the payment method chosen in the form to the real GL account it
-  // actually lands in — Bank Accounts Control, Cash on Hand, or Mobile
-  // Money. Cheques are treated as Bank once deposited/cleared.
-  function cashAccountForMethod(m) {
-    switch (m) {
-      case "Cash":
-        return "1100";
-      case "Mobile Money":
-        return "1120";
-      case "Bank":
-      case "Cheque":
-      default:
-        return "1110";
-    }
-  }
-
   async function record() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return;
@@ -5815,8 +5676,8 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       period: date.slice(0, 7),
       project: inv.project,
       lines: [
-        { account: cashAccountForMethod(method), debit: amt, credit: 0 },
-        { account: "1130", debit: 0, credit: amt },
+        { account: "1000", debit: amt, credit: 0 },
+        { account: "1100", debit: 0, credit: amt },
       ],
     };
     const updatedInvoice = {
@@ -6344,15 +6205,9 @@ export default function App() {
         const [remote, tax] = await Promise.all([loadLedgerState(), loadTaxConfig()]);
 
         if (remote) {
-          const remoteAccounts = remote.accounts || [];
-          // Trust the live database chart of accounts as the source of truth.
-          // DEFAULT_ACCOUNTS is only a bootstrap for a brand-new install with
-          // zero accounts seeded — merging it in whenever codes collide with
-          // real accounts (e.g. "4200" meaning something different in each)
-          // was silently hiding real accounts and causing postings to hit
-          // the wrong account, or fail the accounts FK entirely for codes
-          // that only exist in the hardcoded list.
-          const accounts = remoteAccounts.length > 0 ? remoteAccounts : DEFAULT_ACCOUNTS;
+          // Use accounts directly from database - no hardcoded fallback.
+          // The database is the single source of truth for the chart of accounts.
+          const accounts = remote.accounts || [];
 
           setData({
             ...DEFAULT_DATA,
