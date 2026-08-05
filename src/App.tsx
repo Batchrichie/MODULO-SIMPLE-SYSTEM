@@ -630,6 +630,55 @@ function getComplianceNotifications() {
   return alerts;
 }
 
+// ---------- Helper: Identify & Sort Current Working Projects ----------
+function getPrioritizedProjects(data, stats) {
+  const now = new Date();
+  const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+  
+  // Enrich projects with activity scores
+  const enriched = stats
+    .filter(p => p.status === "Active" && p.id !== "GEN")
+    .map(p => {
+      // Find recent journal entries for this project (last 30 days)
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const recentEntries = data.journal.filter(e => 
+        (e.project || "GEN") === p.id && e.date >= thirtyDaysAgo
+      );
+      
+      // Find recent invoices for this project (last 30 days)
+      const recentInvoices = data.invoices.filter(inv => 
+        (inv.project || "GEN") === p.id && inv.date >= thirtyDaysAgo && inv.status !== "Void"
+      );
+      
+      // Calculate activity score
+      const entryScore = recentEntries.length * 10;
+      const invoiceScore = recentInvoices.length * 15;
+      const costActivity = p.actualCost > 0 ? 20 : 0; // Has actual costs incurred
+      const revenueActivity = p.revenueBilled > 0 ? 15 : 0; // Has billed revenue
+      
+      const totalScore = entryScore + invoiceScore + costActivity + revenueActivity;
+      
+      // Determine if this is a "current focus" project
+      const isCurrentFocus = totalScore >= 20 || p.actualCost > 0;
+      
+      return {
+        ...p,
+        activityScore: totalScore,
+        isCurrentFocus,
+        recentEntryCount: recentEntries.length,
+        recentInvoiceCount: recentInvoices.length,
+        lastActivityDate: [...recentEntries.map(e => e.date), ...recentInvoices.map(i => i.date)].sort().pop() || null,
+      };
+    });
+  
+  // Sort: Current Focus first (by score descending), then others by contract value
+  return enriched.sort((a, b) => {
+    if (a.isCurrentFocus && !b.isCurrentFocus) return -1;
+    if (!a.isCurrentFocus && b.isCurrentFocus) return 1;
+    return b.activityScore - a.activityScore || b.contractValue - a.contractValue;
+  });
+}
+
 function getDashboardMetrics(data) {
   const balanceFor = (code) => {
     let debit = 0, credit = 0;
@@ -918,6 +967,9 @@ function DashboardPanel({ data, setTab }) {
   const recentEntries = data.journal.slice(0, 5);
   const alerts = getComplianceNotifications();
   
+  // Get prioritized projects (current/active projects FIRST!)
+  const prioritizedProjects = useMemo(() => getPrioritizedProjects(data, stats), [data, stats]);
+  
   const today = new Date().toISOString().slice(0, 10);
   const outstandingInvoices = data.invoices
     .map(inv => {
@@ -930,7 +982,8 @@ function DashboardPanel({ data, setTab }) {
     .sort((a,b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 5);
 
-  const activeProjects = stats.filter(p => p.status === "Active" && p.id !== "GEN").slice(0, 3);
+  // Use prioritized projects (active/current first, up to 3)
+  const activeProjects = prioritizedProjects.slice(0, 3);
 
   return (
     <div>
@@ -959,7 +1012,7 @@ function DashboardPanel({ data, setTab }) {
 
       {/* 2. Operational Drivers (The Real Engine) */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
-        <KpiCard title="Active Contracts" value={metrics.totalContractValue} icon={Briefcase} accent={GREEN} sub={`${activeProjects.length} ongoing projects`} />
+        <KpiCard title="Active Contracts" value={metrics.totalContractValue} icon={Briefcase} accent={GREEN} sub={`${prioritizedProjects.length} ongoing projects`} />
         <KpiCard title="Est. Cost (Portfolio)" value={metrics.totalEstimatedCost} icon={Briefcase} accent={INK} sub="Total budgeted" />
         <KpiCard title="Actual Cost to Date" value={metrics.totalActualCost} icon={TrendingUp} accent={GOLD} sub={`${metrics.totalEstimatedCost > 0 ? ((metrics.totalActualCost / metrics.totalEstimatedCost) * 100).toFixed(0) : 0}% of budget used`} />
         <KpiCard 
@@ -1039,29 +1092,49 @@ function DashboardPanel({ data, setTab }) {
         </div>
       </div>
       
-      {/* 5. Active Projects Health & Recent Activity */}
+      {/* 5. Active Projects Health & Recent Activity - SORTED BY ACTIVITY */}
       <div className="grid-fin">
         <div style={{ gridColumn: "1 / -1" }}>
-          <SectionTitle sub="Top active project engagements.">
+          <SectionTitle sub="Current working projects shown first.">
             Active Projects Health
           </SectionTitle>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             {activeProjects.map(p => {
               const costPct = p.estimatedCost > 0 ? (p.actualCost / p.estimatedCost) * 100 : 0;
               const marginPct = p.contractValue > 0 ? (p.wipMargin / p.contractValue) * 100 : 0;
+              const isActiveProject = p.isCurrentFocus;
               return (
-                <Card key={p.id} style={{ flex: "1 1 280px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <Card key={p.id} style={{ 
+                  flex: "1 1 280px",
+                  borderLeft: isActiveProject ? `4px solid ${GREEN}` : undefined,
+                  boxShadow: isActiveProject ? "0 2px 12px rgba(16,185,129,0.15)" : undefined
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, alignItems: "center" }}>
                     <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK }}>{p.name}</div>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 13, color: p.wipMargin >= 0 ? GREEN : ALERT }}>
-                      Margin: {marginPct.toFixed(0)}%
-                    </div>
+                    {isActiveProject ? (
+                      <span style={{ 
+                        display: "flex", alignItems: "center", gap: 4,
+                        fontSize: 10, fontWeight: 600, color: GREEN, 
+                        background: "rgba(16,185,129,0.1)", padding: "3px 8px", borderRadius: 12 
+                      }}>
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: GREEN }}></span>
+                        CURRENT
+                      </span>
+                    ) : (
+                      <div style={{ fontFamily: FONT_MONO, fontSize: 13, color: p.wipMargin >= 0 ? GREEN : ALERT }}>
+                        Margin: {marginPct.toFixed(0)}%
+                      </div>
+                    )}
                   </div>
                   <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>
                     Contract: GHS {fmt(p.contractValue)} | Est. Cost: GHS {fmt(p.estimatedCost)}
                   </div>
                   <div style={{ background: "var(--paper)", borderRadius: 4, height: 8, overflow: "hidden", border: `1px solid ${RULE}` }}>
-                    <div style={{ width: `${Math.min(costPct, 100)}%`, height: "100%", background: costPct > 90 ? ALERT : costPct > 75 ? GOLD : GREEN, transition: "width 0.3s ease" }}></div>
+                    <div style={{ 
+                      width: `${Math.min(costPct, 100)}%`, height: "100%", 
+                      background: costPct > 90 ? ALERT : costPct > 75 ? GOLD : GREEN, 
+                      transition: "width 0.3s ease" 
+                    }}></div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginTop: 4 }}>
                     <span>Cost Incurred: GHS {fmt(p.actualCost)}</span>
