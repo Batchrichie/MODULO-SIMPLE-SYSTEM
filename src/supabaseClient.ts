@@ -16,6 +16,8 @@ import type {
   AppData,
   AppSettingsData,
   Db,
+  Bill,
+  BillPayment,
 } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -243,12 +245,12 @@ function invoiceFromRow(r: InvoiceRow): Invoice {
     location: r.location,
     project: r.project,
     projectLabel: r.project_label,
-    currency: (r.currency as Currency) ?? 'GHS',
+    currency: (r.currency as import('./types').Currency) ?? 'GHS',
     exchangeRate: r.exchange_rate ?? 1,
     discountPct: r.discount_pct ?? 0,
     revenueAccount: r.revenue_account,
-    status: (r.status as InvoiceStatus) ?? 'Sent',
-    totals: r.totals ?? ({} as InvoiceTotals),
+    status: (r.status as import('./types').InvoiceStatus) ?? 'Sent',
+    totals: r.totals ?? ({} as Invoice['totals']),
   };
 }
 
@@ -304,6 +306,81 @@ function payrollLineToRow(l: PayrollLine, runId: string): PayrollLineRow & { run
     ssnit_employer: l.ssnitEmployer ?? null,
     paye: l.paye ?? null,
     net: l.net ?? null,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bill mappers                                                        */
+/* ------------------------------------------------------------------ */
+
+interface BillRow {
+  id: string;
+  bill_number: string;
+  date: string;
+  due_date?: string | null;
+  vendor: string;
+  description?: string | null;
+  project?: string | null;
+  amount?: number | null;
+  status?: string | null;
+}
+
+interface BillPaymentRow {
+  id: string;
+  bill_id: string;
+  date: string;
+  amount?: number | null;
+  method?: string | null;
+  reference?: string | null;
+}
+
+function billFromRow(r: BillRow): Bill {
+  return {
+    id: r.id,
+    billNumber: r.bill_number,
+    date: r.date,
+    dueDate: r.due_date,
+    vendor: r.vendor,
+    description: r.description,
+    project: r.project,
+    amount: r.amount ?? 0,
+    status: (r.status as Bill['status']) ?? 'Unpaid',
+    payments: [],
+  };
+}
+
+function billToRow(b: Bill): BillRow {
+  return {
+    id: b.id,
+    bill_number: b.billNumber,
+    date: b.date,
+    due_date: b.dueDate ?? null,
+    vendor: b.vendor,
+    description: b.description ?? null,
+    project: b.project ?? null,
+    amount: b.amount ?? null,
+    status: b.status ?? null,
+  };
+}
+
+function billPaymentFromRow(r: BillPaymentRow): BillPayment {
+  return {
+    id: r.id,
+    date: r.date,
+    amount: r.amount ?? 0,
+    method: r.method ?? '',
+    reference: r.reference,
+  };
+}
+
+function billPaymentToRow(p: BillPayment, billId: string): BillPaymentRow {
+  return {
+    id: p.id,
+    bill_id: billId,
+    date: p.date,
+    amount: p.amount ?? null,
+    method: p.method ?? null,
+    reference: p.reference ?? null,
   };
 }
 
@@ -527,6 +604,8 @@ export async function loadLedgerState(): Promise<AppData | null> {
       { data: employees, error: employeesErr },
       { data: payrollRuns, error: payrollRunsErr },
       { data: payrollLines, error: payrollLinesErr },
+      { data: billsData, error: billsErr },
+      { data: billPaymentsData, error: billPaymentsErr },
     ] = await Promise.all([
       supabase.from('app_settings').select('data').eq('id', 1).maybeSingle(),
       supabase.from('accounts').select('*'),
@@ -539,11 +618,14 @@ export async function loadLedgerState(): Promise<AppData | null> {
       supabase.from('employees').select('*'),
       supabase.from('payroll_runs').select('*').order('period', { ascending: false }),
       supabase.from('payroll_lines').select('*'),
+      supabase.from('bills').select('*').order('date', { ascending: false }),
+      supabase.from('bill_payments').select('*'),
     ]);
 
     const firstError =
       settingsErr || accountsErr || projectsErr || journalEntriesErr || journalLinesErr ||
-      invoicesErr || invoiceItemsErr || paymentsErr || employeesErr || payrollRunsErr || payrollLinesErr;
+      invoicesErr || invoiceItemsErr || paymentsErr || employeesErr || payrollRunsErr || payrollLinesErr ||
+      billsErr || billPaymentsErr;
     if (firstError) throw firstError;
 
     const journal: JournalEntry[] = (journalEntries ?? []).map((e: JournalEntryRow) => ({
@@ -570,6 +652,11 @@ export async function loadLedgerState(): Promise<AppData | null> {
       rows: (payrollLines ?? []).filter((l: PayrollLineRow & { run_id: string }) => l.run_id === run.id).map(payrollLineFromRow),
     }));
 
+    const billsWithPayments: Bill[] = (billsData ?? []).map((b: BillRow) => ({
+      ...billFromRow(b),
+      payments: (billPaymentsData ?? []).filter((p: BillPaymentRow & { bill_id: string }) => p.bill_id === b.id).map(billPaymentFromRow),
+    }));
+
     const settings = (settingsData?.data ?? {}) as AppSettingsData;
 
     return {
@@ -580,6 +667,7 @@ export async function loadLedgerState(): Promise<AppData | null> {
       invoices: invoicedInvoices,
       employees: (employees ?? []).map(employeeFromRow),
       payrollRuns: payrollRunsWithLines,
+      bills: billsWithPayments,
     } as AppData;
   } catch (err) {
     console.error('Error loading relational data:', err);
@@ -592,7 +680,7 @@ export async function loadLedgerState(): Promise<AppData | null> {
 /* ------------------------------------------------------------------ */
 
 export async function saveSettings(settingsData: Partial<AppData>): Promise<void> {
-  const { accounts, projects, journal, invoices, employees, payrollRuns, ...rest } = settingsData;
+  const { accounts, projects, journal, invoices, employees, payrollRuns, bills, ...rest } = settingsData;
   const { error } = await supabase.from('app_settings').upsert({ id: 1, data: rest });
   if (error) {
     console.error('Error saving settings:', error);
@@ -699,7 +787,16 @@ export const db: Db = {
     }
   },
 
+  saveBill: async (bill) => {
+    await upsertTable('bills', [billToRow(bill)]);
+    await deleteFromTable('bill_payments', 'bill_id', bill.id);
+    if (bill.payments && bill.payments.length > 0) {
+      await upsertTable('bill_payments', bill.payments.map((p) => billPaymentToRow(p, bill.id)));
+    }
+  },
+
   deleteAccount: (code) => deleteFromTable('accounts', 'code', code),
   deleteProject: (id) => deleteFromTable('projects', 'id', id),
   deleteEmployee: (id) => deleteFromTable('employees', 'id', id),
+  deleteBill: (id) => deleteFromTable('bills', 'id', id),
 };

@@ -25,6 +25,11 @@ export interface Company {
   phone: string;
   telephone: string;
   email: string;
+  website?: string | null;
+  preparedByName?: string | null;
+  preparedByTitle?: string | null;
+  authorisedByName?: string | null;
+  authorisedByTitle?: string | null;
 }
 
 export interface Account {
@@ -35,17 +40,14 @@ export interface Account {
   normal?: 'Debit' | 'Credit' | null;
 }
 
-export interface ProjectStats {
+export interface Project {
   id: string;
   name: string;
   status?: string | null;
-  contractValue: number;
-  revenueBilled: number;
-  actualCost: number;
-  estimatedCost: number;
-  remainingCost: number;
-  projectedMargin: number;
-  wipMargin: number;
+  projectType?: string | null;
+  recognitionMethod?: string | null;
+  contractValue?: number | null;
+  estimatedCost?: number | null;
 }
 
 export interface Employee {
@@ -146,9 +148,30 @@ export interface PayrollRun {
   rows: PayrollLine[];
 }
 
+export interface BillPayment {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  reference?: string | null;
+}
+
+export interface Bill {
+  id: string;
+  billNumber: string;
+  date: string;
+  dueDate?: string | null;
+  vendor: string;
+  description?: string | null;
+  project?: string | null;
+  amount: number;
+  status: 'Unpaid' | 'Partially Paid' | 'Paid';
+  payments: BillPayment[];
+}
+
 export interface PayeBracket {
-  upto: number; // use Infinity for the top band
-  rate: number; // e.g. 0.1 for 10%
+  upto: number;
+  rate: number;
 }
 
 export interface TaxRates {
@@ -167,19 +190,23 @@ export interface TaxConfig {
 /*  App-level state                                                     */
 /* ------------------------------------------------------------------ */
 
-export interface Company {
-  name: string;
-  addressLine: string;
-  cityLine: string;
-  poBox: string;
-  phone: string;
-  telephone: string;
-  email: string;
-  website?: string | null;
-  preparedByName?: string | null;
-  preparedByTitle?: string | null;
-  authorisedByName?: string | null;
-  authorisedByTitle?: string | null;
+export interface AppData {
+  companyName: string;
+  company: Company;
+  accounts: Account[];
+  projects: Project[];
+  journal: JournalEntry[];
+  invoices: Invoice[];
+  employees: Employee[];
+  payrollRuns: PayrollRun[];
+  bills: Bill[];
+  nextEntryNum: number;
+  nextInvoiceNum: number;
+  ssnitEmployeeRate: number;
+  ssnitEmployerRate: number;
+  nhilGetfundRate: number;
+  vatRate: number;
+  brackets: PayeBracket[];
 }
 
 export type MutateFn = (fn: (prev: AppData) => AppData) => void;
@@ -239,6 +266,7 @@ export interface PayslipProps {
 }
 
 export interface ProjectStats {
+  id: string;
   name: string;
   status?: string | null;
   contractValue: number;
@@ -247,6 +275,7 @@ export interface ProjectStats {
   estimatedCost: number;
   remainingCost: number;
   projectedMargin: number;
+  wipMargin: number;
 }
 
 export interface NavItem {
@@ -266,7 +295,9 @@ export interface Db {
   saveJournalEntry: (entry: JournalEntry) => Promise<void>;
   saveInvoice: (invoice: Invoice) => Promise<void>;
   savePayrollRun: (run: PayrollRun) => Promise<void>;
+  saveBill: (bill: Bill) => Promise<void>;
   deleteAccount: (code: string) => Promise<unknown>;
   deleteProject: (id: string) => Promise<unknown>;
   deleteEmployee: (id: string) => Promise<unknown>;
+  deleteBill: (id: string) => Promise<unknown>;
 }

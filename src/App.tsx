@@ -6736,7 +6736,416 @@ function ExpensesPanel({ data, mutate }: PanelProps) {
     </div>
   );
 }
+function BillsPanel({ data, mutate }: PanelProps) {
+  const [showNew, setShowNew] = useState(false);
+  const [payingBill, setPayingBill] = useState<Bill | null>(null);
+  const [vendor, setVendor] = useState("");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState("");
+  const [project, setProject] = useState("GEN");
+  const [expenseAccount, setExpenseAccount] = useState("");
 
+  const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+
+  async function createBill() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    if (!vendor.trim()) {
+      alert("Please enter a vendor name.");
+      return;
+    }
+    if (!expenseAccount) {
+      alert("Please select an expense account.");
+      return;
+    }
+
+    const billNumber = `BL-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const bill: Bill = {
+      id: billNumber,
+      billNumber,
+      date,
+      dueDate: dueDate || date,
+      vendor: vendor.trim(),
+      description: description.trim() || null,
+      project: project === "GEN" ? null : project,
+      amount: amt,
+      status: "Unpaid",
+      payments: [],
+    };
+
+    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const entry: JournalEntry = {
+      id: entryNumber,
+      entryNumber,
+      date,
+      description: `Bill ${billNumber} — ${vendor.trim()}`,
+      period: date.slice(0, 7),
+      project: project === "GEN" ? null : project,
+      lines: [
+        { account: expenseAccount, debit: amt, credit: 0 },
+        { account: "2000", debit: 0, credit: amt },
+      ],
+    };
+
+    mutate((d) => ({
+      ...d,
+      bills: [bill, ...d.bills],
+      journal: [entry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+    }));
+
+    try {
+      await db.saveBill(bill);
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to save bill:", err);
+      alert("Failed to save bill. Check console for details.");
+      return;
+    }
+
+    setVendor("");
+    setDescription("");
+    setAmount("");
+    setDueDate("");
+    setExpenseAccount("");
+    setShowNew(false);
+  }
+
+  async function recordPayment(bill: Bill) {
+    if (!payingBill) return;
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) {
+      alert("Please enter a valid payment amount.");
+      return;
+    }
+
+    const paymentId = "BPT-" + Date.now();
+    const payment: BillPayment = {
+      id: paymentId,
+      date,
+      amount: amt,
+      method: "Bank",
+      reference: "",
+    };
+
+    const paidSoFar = bill.payments.reduce((s, p) => s + p.amount, 0) + amt;
+    const newStatus: Bill['status'] =
+      paidSoFar >= bill.amount - 0.01 ? "Paid" : "Partially Paid";
+
+    const updatedBill = { ...bill, payments: [...bill.payments, payment], status: newStatus };
+
+    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const entry: JournalEntry = {
+      id: entryNumber,
+      entryNumber,
+      date,
+      description: `Payment — ${bill.billNumber} (${bill.vendor})`,
+      period: date.slice(0, 7),
+      project: bill.project,
+      lines: [
+        { account: "2000", debit: amt, credit: 0 },
+        { account: "1000", debit: 0, credit: amt },
+      ],
+    };
+
+    mutate((d) => ({
+      ...d,
+      bills: d.bills.map((b) => (b.id === bill.id ? updatedBill : b)),
+      journal: [entry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+    }));
+
+    try {
+      await db.saveBill(updatedBill);
+      await db.saveJournalEntry(entry);
+    } catch (err) {
+      console.error("Failed to record bill payment:", err);
+      alert("Failed to record payment. Check console for details.");
+      return;
+    }
+
+    setPayingBill(null);
+    setAmount("");
+  }
+
+  return (
+    <div>
+      <SectionTitle
+        sub="Record vendor bills and track what you owe. Payments post automatically to the ledger."
+        action={
+          <Button onClick={() => setShowNew(true)} icon={Plus}>
+            New bill
+          </Button>
+        }
+      >
+        Bills & Payables
+      </SectionTitle>
+
+      <Card>
+        <TableScroll>
+          <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <Th>Bill #</Th>
+                <Th>Vendor</Th>
+                <Th>Due Date</Th>
+                <Th right>Amount</Th>
+                <Th right>Paid</Th>
+                <Th right>Balance</Th>
+                <Th>Status</Th>
+                <Th right>&nbsp;</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.bills.map((bill) => {
+                const paid = bill.payments.reduce((s, p) => s + p.amount, 0);
+                const balance = bill.amount - paid;
+                return (
+                  <tr key={bill.id} className="row-hover">
+                    <Td mono label="Bill #">{bill.billNumber}</Td>
+                    <Td label="Vendor">{bill.vendor}</Td>
+                    <Td label="Due Date">{bill.dueDate || "—"}</Td>
+                    <Td right mono label="Amount">GHS {fmt(bill.amount)}</Td>
+                    <Td right mono label="Paid">GHS {fmt(paid)}</Td>
+                    <Td right mono bold label="Balance" style={{ color: balance > 0.01 ? ALERT : GREEN }}>
+                      GHS {fmt(balance)}
+                    </Td>
+                    <Td label="Status">{bill.status}</Td>
+                    <Td right label="Action">
+                      {balance > 0.01 && (
+                        <Button variant="ghost" icon={Banknote} onClick={() => { setPayingBill(bill); setDate(new Date().toISOString().slice(0, 10)); }}>
+                          Pay
+                        </Button>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+              {data.bills.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ color: MUTED, padding: 10 }}>
+                    No bills recorded yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </TableScroll>
+      </Card>
+
+      {showNew && (
+        <Modal title="New Vendor Bill" sub="Record what you owe a vendor." onClose={() => setShowNew(false)}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <div style={{ flex: "1 1 150px" }}>
+              <label style={labelStyle}>Vendor</label>
+              <input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" />
+            </div>
+            <div style={{ flex: "2 1 200px" }}>
+              <label style={labelStyle}>Description</label>
+              <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Diesel for generators" />
+            </div>
+            <div style={{ flex: "1 1 120px" }}>
+              <label style={labelStyle}>Amount (GHS)</label>
+              <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
+            </div>
+            <div style={{ flex: "1 1 120px" }}>
+              <label style={labelStyle}>Date</label>
+              <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div style={{ flex: "1 1 120px" }}>
+              <label style={labelStyle}>Due Date</label>
+              <input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div style={{ flex: "1 1 150px" }}>
+              <label style={labelStyle}>Expense Account</label>
+              <select style={inputStyle} value={expenseAccount} onChange={(e) => setExpenseAccount(e.target.value)}>
+                <option value="">Select…</option>
+                {expenseAccounts.map((a) => (
+                  <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: "1 1 150px" }}>
+              <label style={labelStyle}>Project</label>
+              <ProjectSelect value={project} onChange={setProject} projects={data.projects} />
+            </div>
+            <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
+          </div>
+        </Modal>
+      )}
+
+      {payingBill && (
+        <Modal title={`Pay bill — ${payingBill.billNumber}`} onClose={() => setPayingBill(null)}>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: MUTED }}>
+              Outstanding: <b style={{ color: INK }}>GHS {fmt(payingBill.amount - payingBill.payments.reduce((s, p) => s + p.amount, 0))}</b>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              <div style={{ flex: "1 1 150px" }}>
+                <label style={labelStyle}>Payment Date</label>
+                <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+              </div>
+              <div style={{ flex: "1 1 150px" }}>
+                <label style={labelStyle}>Amount (GHS)</label>
+                <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
+              </div>
+            </div>
+            <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth>Record payment</Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function AgedPayablesPanel({ data }: { data: AppData }) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const aged = useMemo(() => {
+    const buckets = {
+      current: [] as Bill[],
+      d30: [] as Bill[],
+      d60: [] as Bill[],
+      d90: [] as Bill[],
+      d90plus: [] as Bill[],
+    };
+    const totals = { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0 };
+
+    data.bills.forEach((bill) => {
+      const paid = bill.payments.reduce((s, p) => s + p.amount, 0);
+      const balance = bill.amount - paid;
+      if (balance <= 0.01) return;
+
+      const daysOverdue = Math.floor(
+        (new Date(today).getTime() - new Date(bill.dueDate || bill.date).getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+
+      if (daysOverdue <= 0) {
+        buckets.current.push(bill);
+        totals.current += balance;
+      } else if (daysOverdue <= 30) {
+        buckets.d30.push(bill);
+        totals.d30 += balance;
+      } else if (daysOverdue <= 60) {
+        buckets.d60.push(bill);
+        totals.d60 += balance;
+      } else if (daysOverdue <= 90) {
+        buckets.d90.push(bill);
+        totals.d90 += balance;
+      } else {
+        buckets.d90plus.push(bill);
+        totals.d90plus += balance;
+      }
+    });
+
+    return { buckets, totals };
+  }, [data, today]);
+
+  const bucketMeta = [
+    { key: 'current' as const, label: 'Current (Not yet due)', color: GREEN },
+    { key: 'd30' as const, label: '1 – 30 days overdue', color: GOLD },
+    { key: 'd60' as const, label: '31 – 60 days overdue', color: '#E67E22' },
+    { key: 'd90' as const, label: '61 – 90 days overdue', color: ALERT },
+    { key: 'd90plus' as const, label: '90+ days overdue', color: '#7B241C' },
+  ];
+
+  const totalOutstanding =
+    aged.totals.current +
+    aged.totals.d30 +
+    aged.totals.d60 +
+    aged.totals.d90 +
+    aged.totals.d90plus;
+
+  return (
+    <div>
+      <SectionTitle sub="Outstanding vendor balances grouped by how long they have been overdue.">
+        Aged Payables
+      </SectionTitle>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        {bucketMeta.map((b) => (
+          <Card key={b.key} style={{ flex: '1 1 160px', borderTop: `3px solid ${b.color}` }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>
+              {b.label}
+            </div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 20, fontWeight: 700, color: INK }}>
+              GHS {fmt(aged.totals[b.key])}
+            </div>
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+              {aged.buckets[b.key].length} bill{aged.buckets[b.key].length === 1 ? '' : 's'}
+            </div>
+          </Card>
+        ))}
+        <Card style={{ flex: '1 1 160px', borderTop: `3px solid ${INK}` }}>
+          <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>
+            Total Outstanding
+          </div>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 20, fontWeight: 700, color: INK }}>
+            GHS {fmt(totalOutstanding)}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <TableScroll>
+          <table className="table-card" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <Th>Vendor</Th>
+                <Th>Bill #</Th>
+                <Th>Date</Th>
+                <Th>Due Date</Th>
+                <Th right>Days Overdue</Th>
+                <Th right>Balance (GHS)</Th>
+                <Th>Bucket</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {bucketMeta.flatMap((b) =>
+                aged.buckets[b.key].map((bill) => {
+                  const paid = bill.payments.reduce((s, p) => s + p.amount, 0);
+                  const balance = bill.amount - paid;
+                  const days = Math.floor(
+                    (new Date(today).getTime() - new Date(bill.dueDate || bill.date).getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  );
+                  return (
+                    <tr key={bill.id} className="row-hover">
+                      <Td label="Vendor">{bill.vendor}</Td>
+                      <Td mono label="Bill #">{bill.billNumber}</Td>
+                      <Td label="Date">{bill.date}</Td>
+                      <Td label="Due Date">{bill.dueDate || '—'}</Td>
+                      <Td right mono label="Days Overdue" style={{ color: days > 0 ? ALERT : MUTED }}>
+                        {days > 0 ? `+${days}` : '0'}
+                      </Td>
+                      <Td right mono bold label="Balance">GHS {fmt(balance)}</Td>
+                      <Td label="Bucket">
+                        <span style={{ color: b.color, fontWeight: 700, fontSize: 11 }}>{b.label}</span>
+                      </Td>
+                    </tr>
+                  );
+                })
+              )}
+              {totalOutstanding === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ color: MUTED, padding: 14, textAlign: 'center' }}>
+                    No outstanding payables. All bills paid!
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </TableScroll>
+      </Card>
+    </div>
+  );
+}
 // ---------- App ----------
 export default function App() {
   useGoogleFonts();
@@ -6965,6 +7374,8 @@ export default function App() {
     { key: "invoicing", label: "Invoicing", icon: Receipt },
     { key: "employees", label: "Employees", icon: Users },
     { key: "payroll", label: "Payroll", icon: Banknote },
+    { key: "bills", label: "Bills", icon: Receipt },
+    { key: "aged-payables", label: "Aged Payables", icon: ArrowUpRight },
     { key: "reports", label: "Reports", icon: FileText },
     { key: "accounts", label: "Chart of Accounts", icon: BookOpen },
     { key: "export", label: "Export", icon: FileSpreadsheet },
@@ -7289,7 +7700,9 @@ export default function App() {
               setPrintContent={setPrintContent}
             />
           )}
-              {tab === "reports" && <ReportsPanel data={data} />}
+              {tab === "bills" && <BillsPanel data={data} mutate={mutate} />}
+          {tab === "aged-payables" && <AgedPayablesPanel data={data} />}
+          {tab === "reports" && <ReportsPanel data={data} />}
           {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
           {tab === "logout" && <LogoutPanel />}
         </main>
