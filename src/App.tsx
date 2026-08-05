@@ -4976,6 +4976,23 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
     }, 100);
   }
 
+  function printAllPayslips(run) {
+    document.title = `Payslips_${run.period}`;
+
+    setPrintContent(
+      <div>
+        {run.rows.map((r) => (
+          <Payslip key={r.employeeId} data={data} run={run} r={r} />
+        ))}
+      </div>
+    );
+
+    setTimeout(() => {
+      window.print();
+      document.title = "Modulo Ledger";
+    }, 100);
+  }
+
   const alreadyPosted = data.payrollRuns.some((r) => r.period === period);
 
   return (
@@ -5236,6 +5253,13 @@ function PayrollPanel({ data, mutate, setPrintContent }) {
               >
                 {run.period}
               </span>
+              <Button
+                variant="ghost"
+                icon={Printer}
+                onClick={() => printAllPayslips(run)}
+              >
+                Print all payslips
+              </Button>
             </div>
 
             <TableScroll>
