@@ -35,14 +35,17 @@ export interface Account {
   normal?: 'Debit' | 'Credit' | null;
 }
 
-export interface Project {
+export interface ProjectStats {
   id: string;
   name: string;
   status?: string | null;
-  projectType?: string | null;
-  recognitionMethod?: string | null;
-  contractValue?: number | null;
-  estimatedCost?: number | null;
+  contractValue: number;
+  revenueBilled: number;
+  actualCost: number;
+  estimatedCost: number;
+  remainingCost: number;
+  projectedMargin: number;
+  wipMargin: number;
 }
 
 export interface Employee {
