@@ -822,7 +822,7 @@ function getDashboardMetrics(data) {
     e.lines.forEach(l => {
       const acc = data.accounts.find(a => a.code === l.account);
       if (!acc) return;
-      if (acc.type === "Revenue") monthlyData[month].revenue += (l.credit - l.debit);
+      if (acc.type === "Revenue" || acc.type === "Income") monthlyData[month].revenue += (l.credit - l.debit);
       if (acc.type === "Expense") monthlyData[month].expense += (l.debit - l.credit);
     });
   });
@@ -1318,7 +1318,7 @@ function AccountsPanel({ data, mutate }) {
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value })}
             >
-              {["Asset", "Liability", "Equity", "Revenue", "Expense"].map(
+              {["Asset", "Liability", "Equity", "Income", "Expense"].map(
                 (t) => (
                   <option key={t}>{t}</option>
                 )
@@ -5318,7 +5318,7 @@ function NewInvoiceForm({ data, mutate, onDone }) {
     },
   ]);
 
-  const revenueOptions = data.accounts.filter((a) => a.type === "Revenue");
+  const revenueOptions = data.accounts.filter((a) => a.type === "Revenue" || a.type === "Income");
   const totals = useMemo(
     () =>
       computeInvoiceTotals(
