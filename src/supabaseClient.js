@@ -1,8 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase client
-const supabaseUrl = "https://shcqywteckisqddmxvei.supabase.co"; // Replace with your URL
-const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoY3F5d3RlY2tpc3FkZG14dmVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMzE5NDQsImV4cCI6MjA4NzcwNzk0NH0.GgYGGx_e6KpnHrhRHzvF5nDv8D6x335LGl-9i_i7Pdg"; // Replace with your Anon Key
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error(
+    "Missing Supabase environment variables. Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your .env file."
+  );
+}
+
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ---------------------------------------------------------------------------
@@ -18,7 +24,7 @@ function accountFromRow(r) {
     name: r.name,
     type: r.type,
     reportingGroup: r.reporting_group,
-    normal: r.normal, // new field, additive - safe for App.jsx to ignore
+    normal: r.normal,
   };
 }
 function accountToRow(a) {
@@ -181,9 +187,7 @@ function payrollLineToRow(l, runId) {
 }
 
 // ---------------------------------------------------------------------------
-// Auth: email/password sign-in. Once a user is logged in, Supabase attaches
-// their JWT to every request, so RLS treats them as "authenticated" instead
-// of "anon" and the authenticated-role policies from Ticket 1 apply.
+// Auth: email/password sign-in
 // ---------------------------------------------------------------------------
 
 export async function signIn(email, password) {
@@ -204,7 +208,7 @@ export async function getSession() {
 }
 
 // ---------------------------------------------------------------------------
-// New: Fetch pre-calculated financial views / RPC (Stage 1 frontend handoff)
+// Financial views / RPC
 // ---------------------------------------------------------------------------
 export async function getTrialBalance() {
   const { data, error } = await supabase.from("vw_trial_balance").select("*");
@@ -237,11 +241,7 @@ export async function getProfitAndLoss(startDate, endDate) {
 }
 
 // ---------------------------------------------------------------------------
-// Payroll automation: the run_payroll() Postgres function does all the tax
-// math server-side (respecting exempt_paye / exempt_ssnit) and posts the
-// journal entry. This helper triggers it, then fetches and formats the
-// resulting run so it matches the shape App.jsx already uses for
-// data.payrollRuns entries (id, period, entryNumber, postedAt, rows[]).
+// Payroll automation
 // ---------------------------------------------------------------------------
 
 export async function runPayrollAndFetch(period) {
@@ -251,7 +251,6 @@ export async function runPayrollAndFetch(period) {
     throw rpcError;
   }
 
-  // run_payroll() names the journal entry deterministically as JE-PAY-<period>
   const entryId = `JE-PAY-${period}`;
 
   const [runResult, entryResult] = await Promise.all([
@@ -331,8 +330,6 @@ export async function savePayeBrackets(brackets) {
   return mergeAppSettings({ brackets });
 }
 
-// Call once (e.g. in App.jsx) to react to login/logout events.
-// Returns an unsubscribe function - call it on unmount.
 export function onAuthStateChange(callback) {
   const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
     callback(session);
@@ -341,7 +338,7 @@ export function onAuthStateChange(callback) {
 }
 
 // ---------------------------------------------------------------------------
-// Load: fetch all 11 tables and assemble the nested structure App.jsx expects
+// Load: fetch all tables and assemble nested structure
 // ---------------------------------------------------------------------------
 
 export async function loadLedgerState() {
@@ -417,8 +414,7 @@ export async function loadLedgerState() {
 }
 
 // ---------------------------------------------------------------------------
-// Save: company settings / rates / counters (everything that isn't one of
-// the 6 array collections above)
+// Save: company settings / rates / counters
 // ---------------------------------------------------------------------------
 
 export async function saveSettings(settingsData) {
@@ -459,7 +455,6 @@ export const db = {
   saveProjects: (projects) => upsertTable("projects", (projects || []).map(projectToRow)),
   saveEmployees: (employees) => upsertTable("employees", (employees || []).map(employeeToRow)),
 
-  // Journal entries are upserted; lines are fully replaced
   saveJournalEntry: async (entry) => {
     await upsertTable("journal_entries", [
       {
@@ -477,7 +472,6 @@ export const db = {
     }
   },
 
-  // Invoices are upserted; items and payments are fully replaced
   saveInvoice: async (invoice) => {
     const row = invoiceToRow(invoice);
     console.log("[saveInvoice] Upserting invoice row:", JSON.stringify(row, null, 2));
@@ -519,7 +513,6 @@ export const db = {
     }
   },
 
-  // Payroll runs are upserted; lines are fully replaced
   savePayrollRun: async (run) => {
     await upsertTable("payroll_runs", [
       { id: run.id, period: run.period, entry_number: run.entryNumber ?? null, posted_at: run.postedAt ?? new Date().toISOString() },
