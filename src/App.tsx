@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode, type CSSProperties, type ComponentType } from 'react';
 import * as XLSX from 'xlsx';
 import {
+  import {
   LayoutDashboard,
   PenLine,
   Scale,
@@ -24,6 +25,12 @@ import {
   Sun,
   Menu,
   LogOut,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  FileText,
+  Settings2,
+  Check,
 } from 'lucide-react';
 import './App.css';
 import {
@@ -69,46 +76,19 @@ import type {
 /*  Pure helpers (no business data)                                     */
 /* ------------------------------------------------------------------ */
 
-const FONT_MONO = "'SF Mono', Monaco, monospace";
+const GREEN = "#2F5233";
+const GREEN_DEEP = "#1E3A21";
+const GOLD = "#A8761A";
+const ALERT = "#A63D40";
+const INK = "#1F2A24";
+const MUTED = "#6B6255";
+const PAPER = "#F7F4EE";
+const PAPER_RAISED = "#FFFFFF";
+const RULE = "#DCD5C4";
+const FONT_BODY = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const FONT_DISPLAY = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const LOGO_SRC = "https://z-cdn-media.chatglm.cn/files/c4df6667-2cb5-44bd-9e8c-084ed2a10aef.png?auth_key=1885240175-d071a696811b4023895eec2f8f72bcdc-0-f1149165f857bcfa6db14fa029bb57fd";
 
-function fmt(n: number): string {
-  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function projectName(projects: Project[], id?: string | null): string {
-  if (!id) return '—';
-  const p = projects.find((x) => x.id === id);
-  return p ? p.name : id;
-}
-
-function projectStats(data: AppData): ProjectStats[] {
-  return data.projects.map((p) => {
-    const revenueBilled = data.invoices
-      .filter((inv) => inv.project === p.id)
-      .reduce((s, inv) => s + (inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal), 0);
-    const actualCost = data.journal
-      .filter((je) => je.project === p.id)
-      .flatMap((je) => je.lines)
-      .filter((l) => {
-        const acc = data.accounts.find((a) => a.code === l.account);
-        return acc && acc.type === 'Expense';
-      })
-      .reduce((s, l) => s + l.debit, 0);
-    const estimatedCost = p.estimatedCost ?? 0;
-    const remainingCost = Math.max(estimatedCost - actualCost, 0);
-    const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
-    return {
-      name: p.name,
-      status: p.status,
-      contractValue: p.contractValue ?? 0,
-      revenueBilled,
-      actualCost,
-      estimatedCost,
-      remainingCost,
-      projectedMargin,
-    };
-  });
-}
 /* ------------------------------------------------------------------ */
 /*  Pure helpers (no business data)                                     */
 /* ------------------------------------------------------------------ */
@@ -141,7 +121,9 @@ function projectStats(data: AppData): ProjectStats[] {
     const estimatedCost = p.estimatedCost ?? 0;
     const remainingCost = Math.max(estimatedCost - actualCost, 0);
     const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
+    const wipMargin = revenueBilled - actualCost;
     return {
+      id: p.id,
       name: p.name,
       status: p.status,
       contractValue: p.contractValue ?? 0,
@@ -150,9 +132,28 @@ function projectStats(data: AppData): ProjectStats[] {
       estimatedCost,
       remainingCost,
       projectedMargin,
+      wipMargin,
     };
   });
 }
+
+const [data, setData] = useState<AppData>({
+  companyName: '',
+  company: { name: '', addressLine: '', cityLine: '', poBox: '', phone: '', telephone: '', email: '' },
+  accounts: [],
+  projects: [],
+  journal: [],
+  invoices: [],
+  employees: [],
+  payrollRuns: [],
+  nextEntryNum: 1,
+  nextInvoiceNum: 1,
+  ssnitEmployeeRate: 0,
+  ssnitEmployerRate: 0,
+  nhilGetfundRate: 0,
+  vatRate: 0,
+  brackets: [],
+});
 
 /* ------------------------------------------------------------------ */
 /*  Hooks                                                               */
@@ -183,62 +184,6 @@ function useGoogleFonts(): void {
 }
 
 // ---------- Letterhead ----------
-const LOGO_SRC =
-  "https://z-cdn-media.chatglm.cn/files/c4df6667-2cb5-44bd-9e8c-084ed2a10aef.png?auth_key=1885240175-d071a696811b4023895eec2f8f72bcdc-0-f1149165f857bcfa6db14fa029bb57fd";
-
-// ---------- Defaults ----------
-// Chart of Accounts is now loaded entirely from the database.
-// No hardcoded accounts - the database is the single source of truth.
-// This prevents FK violations and ensures consistency between app and DB.
-
-const DEFAULT_PROJECTS = [
-  {
-    id: "PRJ-MANET",
-    name: "Manet Estate Villa",
-    status: "Active",
-    projectType: "Construction Contract",
-    recognitionMethod: "POC",
-    contractValue: 150000,
-    estimatedCost: 120000,
-  },
-  {
-    id: "PRJ-TSEADDO",
-    name: "Tse Addo Permit",
-    status: "Active",
-    projectType: "Permit Processing",
-    recognitionMethod: "POINT_IN_TIME",
-    contractValue: 5000,
-    estimatedCost: 1000,
-  },
-  {
-    id: "PRJ-TAMALE",
-    name: "Tamale Design",
-    status: "Active",
-    projectType: "Architectural Design",
-    recognitionMethod: "POC",
-    contractValue: 25000,
-    estimatedCost: 12000,
-  },
-];
-
-const GENERAL_PROJECT = { id: "GEN", name: "General / Office" };
-
-function fmt(n: number | string | null | undefined) {
-  const v = Number(n) || 0;
-  return v.toLocaleString("en-GH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function projectName(
-  projects: Array<{ id: string; name: string }>,
-  id?: string | null
-) {
-  if (!id || id === "GEN") return GENERAL_PROJECT.name;
-  const p = projects.find((p) => p.id === id);
-  return p ? p.name : "General / Office";
-}
 
 // ---------- Small UI atoms ----------
 type NavItemProps = {
@@ -1335,45 +1280,6 @@ function AccountsPanel({ data, mutate }) {
   );
 }
 
-function projectStats(data) {
-  const list = [GENERAL_PROJECT, ...data.projects];
-  return list.map((p) => {
-    let actualCost = 0;
-    let revenueBilled = 0;
-
-    data.journal.forEach((e) => {
-      if ((e.project || "GEN") !== p.id) return;
-      e.lines.forEach((l) => {
-        const acc = data.accounts.find((a) => a.code === l.account);
-        if (acc && acc.type === "Expense") actualCost += l.debit - l.credit;
-      });
-    });
-
-    data.invoices.forEach((inv) => {
-      if ((inv.project || "GEN") !== p.id) return;
-      if (inv.status === "Void") return;
-      revenueBilled += inv.totals.grandTotalGHS;
-    });
-
-    const contractValue = parseFloat(p.contractValue) || 0;
-    const estimatedCost = parseFloat(p.estimatedCost) || 0;
-    const remainingCost = Math.max(0, estimatedCost - actualCost);
-    const projectedMargin = contractValue - estimatedCost;
-    const wipMargin = revenueBilled - actualCost;
-
-    return {
-      ...p,
-      actualCost,
-      revenueBilled,
-      contractValue,
-      estimatedCost,
-      remainingCost,
-      projectedMargin,
-      wipMargin,
-    };
-  });
-}
-
 function ProjectsPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
@@ -1769,14 +1675,15 @@ type ProjectSelectProps = {
 };
 
 function ProjectSelect({ value, onChange, projects, style }: ProjectSelectProps) {
+  const gen = projects.find((p) => p.id === 'GEN');
   return (
     <select
       style={style || inputStyle}
       value={value || "GEN"}
       onChange={(e) => onChange(e.target.value)}
     >
-      <option value="GEN">{GENERAL_PROJECT.name}</option>
-      {projects.map((p) => (
+      <option value="GEN">{gen ? gen.name : 'General / Office'}</option>
+      {projects.filter((p) => p.id !== 'GEN').map((p) => (
         <option key={p.id} value={p.id}>
           {p.name}
         </option>
@@ -2441,7 +2348,7 @@ function FinancialsPanel({ data, setPrintContent }) {
     const projectName =
       projectOptions.find((p) => p.id === view)?.name || "Company";
     const safeProjectName = projectName.replace(/\s+/g, "_");
-    const company = data.company || DEFAULT_COMPANY;
+    const company = data.company;
     const genDate = new Date().toLocaleDateString("en-GB", {
       day: "numeric",
       month: "long",
@@ -3663,7 +3570,7 @@ function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
   const t = inv.totals;
   const cur = inv.currency;
   const sym = cur === "USD" ? "$" : "GHS";
-  const company = data.company || DEFAULT_COMPANY;
+  const company = data.company;
 
   const formatDate = (value) => {
     if (!value) return "—";
@@ -6197,9 +6104,25 @@ function ExportPanel({ data, isMobile }: ExportPanelProps) {
 export default function App() {
   useGoogleFonts();
   const isMobile = useIsMobile();
-  const [data, setData] = useState<AppData>(DEFAULT_DATA)
+  const [data, setData] = useState<AppData>({
+    companyName: '',
+    company: { name: '', addressLine: '', cityLine: '', poBox: '', phone: '', telephone: '', email: '' },
+    accounts: [],
+    projects: [],
+    journal: [],
+    invoices: [],
+    employees: [],
+    payrollRuns: [],
+    nextEntryNum: 1,
+    nextInvoiceNum: 1,
+    ssnitEmployeeRate: 0,
+    ssnitEmployerRate: 0,
+    nhilGetfundRate: 0,
+    vatRate: 0,
+    brackets: [],
+  })
   const [loaded, setLoaded] = useState(false);
-  const [authSession, setAuthSession] = useState(null);
+  const [authSession, setAuthSession] = useState<import('./supabaseClient').Session | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
@@ -6278,25 +6201,18 @@ export default function App() {
       try {
         const [remote, tax] = await Promise.all([loadLedgerState(), loadTaxConfig()]);
 
-        if (remote) {
-          // Use accounts directly from database - no hardcoded fallback.
-          // The database is the single source of truth for the chart of accounts.
-          const accounts = remote.accounts || [];
-
+               if (remote) {
           setData({
-            ...DEFAULT_DATA,
             ...remote,
-            accounts,
-            company: { ...DEFAULT_COMPANY, ...(remote.company || {}) },
+            company: remote.company ?? { name: '', addressLine: '', cityLine: '', poBox: '', phone: '', telephone: '', email: '' },
             ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
             ssnitEmployerRate: tax.rates.ssnitEmployerRate,
             nhilGetfundRate: tax.rates.nhilGetfundRate,
             vatRate: tax.rates.vatRate,
             brackets: tax.brackets,
           });
-          setCompanyNameDraft(remote.companyName || DEFAULT_DATA.companyName);
+          setCompanyNameDraft(remote.companyName || '');
         } else {
-          setCompanyNameDraft(DEFAULT_DATA.companyName);
           setData((prev) => ({
             ...prev,
             ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
@@ -6305,10 +6221,11 @@ export default function App() {
             vatRate: tax.rates.vatRate,
             brackets: tax.brackets,
           }));
+          setCompanyNameDraft('');
         }
       } catch (err) {
         console.error("Failed to load ledger data:", err);
-        setCompanyNameDraft(DEFAULT_DATA.companyName);
+        setCompanyNameDraft('');
       }
       setLoaded(true);
     })();
