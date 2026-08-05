@@ -7,7 +7,7 @@ import type { ReactNode, Dispatch, SetStateAction, ComponentType } from 'react';
 
 export type Currency = 'GHS' | 'USD';
 
-export type InvoiceStatus = 'Sent' | 'Partially Paid' | 'Paid';
+export type InvoiceStatus = 'Sent' | 'Partially Paid' | 'Paid' | 'Void';
 
 export type LineType = 'item' | 'header' | 'sub-detail';
 

@@ -1347,37 +1347,30 @@ function AccountsPanel({ data, mutate }) {
   );
 }
 
-function projectStats(data) {
-  const list = [GENERAL_PROJECT, ...data.projects];
-  return list.map((p) => {
-    let actualCost = 0;
-    let revenueBilled = 0;
-
-    data.journal.forEach((e) => {
-      if ((e.project || "GEN") !== p.id) return;
-      e.lines.forEach((l) => {
+function projectStats(data: AppData): ProjectStats[] {
+  return data.projects.map((p) => {
+    const revenueBilled = data.invoices
+      .filter((inv) => inv.project === p.id && inv.status !== "Void")
+      .reduce((s, inv) => s + (inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal), 0);
+    const actualCost = data.journal
+      .filter((je) => je.project === p.id)
+      .flatMap((je) => je.lines)
+      .filter((l) => {
         const acc = data.accounts.find((a) => a.code === l.account);
-        if (acc && acc.type === "Expense") actualCost += l.debit - l.credit;
-      });
-    });
-
-    data.invoices.forEach((inv) => {
-      if ((inv.project || "GEN") !== p.id) return;
-      if (inv.status === "Void") return;
-      revenueBilled += inv.totals.grandTotalGHS;
-    });
-
-    const contractValue = parseFloat(p.contractValue) || 0;
-    const estimatedCost = parseFloat(p.estimatedCost) || 0;
-    const remainingCost = Math.max(0, estimatedCost - actualCost);
-    const projectedMargin = contractValue - estimatedCost;
+        return acc && acc.type === "Expense";
+      })
+      .reduce((s, l) => s + l.debit, 0);
+    const estimatedCost = p.estimatedCost ?? 0;
+    const remainingCost = Math.max(estimatedCost - actualCost, 0);
+    const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
     const wipMargin = revenueBilled - actualCost;
-
     return {
-      ...p,
-      actualCost,
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      contractValue: p.contractValue ?? 0,
       revenueBilled,
-      contractValue,
+      actualCost,
       estimatedCost,
       remainingCost,
       projectedMargin,
@@ -5931,6 +5924,48 @@ function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) 
   const [showNew, setShowNew] = useState(false);
   const [payingInv, setPayingInv] = useState<Invoice | null>(null);
   const [cloneSource, setCloneSource] = useState<Invoice | null>(null);
+  const [showVoided, setShowVoided] = useState(false);
+
+  async function voidInvoice(inv: Invoice) {
+    if (!confirm(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`)) return;
+
+    const entryNumber = `JE-VOID-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const reversalEntry = {
+      id: entryNumber,
+      entryNumber,
+      date: new Date().toISOString().slice(0, 10),
+      description: `Void of invoice ${inv.invoiceNumber} — ${inv.billTo}`,
+      period: new Date().toISOString().slice(0, 7),
+      project: inv.project,
+      lines: [
+        { account: "1100", debit: 0, credit: inv.totals.grandTotalGHS ?? inv.totals.grandTotal },
+        { account: inv.revenueAccount || "4100", debit: inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal, credit: 0 },
+        ...(inv.totals.chargeNhil ? [{ account: "2400", debit: inv.totals.nhilGetfundGHS ?? inv.totals.nhilGetfund, credit: 0 }] : []),
+        ...(inv.totals.chargeVat ? [{ account: "2300", debit: inv.totals.vatGHS ?? inv.totals.vat, credit: 0 }] : []),
+      ],
+    };
+
+    const updatedInv = { ...inv, status: "Void" as InvoiceStatus };
+
+    mutate((d) => ({
+      ...d,
+      invoices: d.invoices.map((i) => (i.id === inv.id ? updatedInv : i)),
+      journal: [reversalEntry, ...d.journal],
+      nextEntryNum: d.nextEntryNum + 1,
+    }));
+
+    try {
+      await db.saveInvoice(updatedInv);
+      await db.saveJournalEntry(reversalEntry);
+    } catch (err) {
+      console.error("Failed to void invoice:", err);
+      alert("Failed to void invoice on server. Check console for details.");
+    }
+  }
+
+  const visibleInvoices = showVoided
+    ? data.invoices
+    : data.invoices.filter((inv) => inv.status !== "Void");
 
   function doPrint(target) {
     const inv = data.invoices.find((i) => i.id === target.invId);
@@ -5981,6 +6016,17 @@ function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) 
         Invoicing
       </SectionTitle>
       <Card>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: INK, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showVoided}
+              onChange={(e) => setShowVoided(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            Show voided invoices
+          </label>
+        </div>
         <TableScroll>
           <table
             className="table-card"
@@ -5999,7 +6045,7 @@ function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) 
               </tr>
             </thead>
             <tbody>
-              {data.invoices.map((inv) => {
+              {visibleInvoices.map((inv) => {
                 const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
                 const balance = inv.totals.grandTotalGHS - paid;
                 return (
@@ -6053,7 +6099,16 @@ function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) 
                         >
                           Clone
                         </Button>
-                        {balance > 0.01 && (
+                        {inv.status !== "Void" && (
+                          <Button
+                            variant="ghost"
+                            icon={Trash2}
+                            onClick={() => voidInvoice(inv)}
+                          >
+                            Void
+                          </Button>
+                        )}
+                        {balance > 0.01 && inv.status !== "Void" && (
                           <Button
                             variant="ghost"
                             icon={Banknote}
