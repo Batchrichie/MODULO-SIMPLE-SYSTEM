@@ -1,78 +1,184 @@
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-} from "react";
-import type { CSSProperties, ComponentType, ReactNode } from "react";
-import * as XLSX from "xlsx";
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import * as XLSX from 'xlsx';
 import {
-  BookOpen,
+  LayoutDashboard,
   PenLine,
   Scale,
-  Users,
-  Banknote,
-  FileSpreadsheet,
-  Plus,
-  Trash2,
-  Printer,
-  Check,
-  AlertTriangle,
-  Settings2,
+  TrendingUp,
   Briefcase,
   Receipt,
-  TrendingUp,
+  Users,
+  Banknote,
+  BookOpen,
+  FileSpreadsheet,
   X,
-  Sun,
+  Plus,
+  AlertCircle,
+  CheckCircle2,
+  Printer,
+  Trash2,
+  Pencil,
+  ChevronDown,
+  ChevronRight,
   Moon,
-  LayoutDashboard,
-  ArrowUpRight,
-  ArrowDownRight,
-  FileText,
-} from "lucide-react";
-import Login from "./Login.jsx";
-import { loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates, savePayeBrackets, db, getTrialBalance, getBalanceSheet, getProfitAndLoss, getSession, onAuthStateChange, signOut, runPayrollAndFetch } from "./supabaseClient";
+  Sun,
+  Menu,
+  LogOut,
+  type LucideIcon,
+} from 'lucide-react';
+import './App.css';
+import {
+  supabase,
+  signOut,
+  getSession,
+  onAuthStateChange,
+  loadLedgerState,
+  loadTaxConfig,
+  saveSettings,
+  saveTaxRates,
+  savePayeBrackets,
+  runPayrollAndFetch,
+  db,
+} from './supabaseClient';
+import Login from './Login';
+import type {
+  AppData,
+  MutateFn,
+  Account,
+  Project,
+  Employee,
+  JournalEntry,
+  Invoice,
+  InvoiceItem,
+  Payment,
+  PayrollRun,
+  PayrollLine,
+  Company,
+  Currency,
+  InvoiceStatus,
+  LineType,
+  PanelProps,
+  InvoicingPanelProps,
+  PayrollPanelProps,
+  EmployeesPanelProps,
+  ExportPanelProps,
+  NewInvoiceFormProps,
+  RecordPaymentFormProps,
+  InvoiceDocumentProps,
+  ReceiptDocumentProps,
+  PayslipProps,
+  ProjectStats,
+  NavItem,
+  PayeBracket,
+} from './types';
 
-// ---------- Design Tokens (CSS Variables for Theming) ----------
-const INK = "var(--ink)";
-const PAPER = "var(--paper)";
-const PAPER_RAISED = "var(--paper-raised)";
-const RULE = "var(--rule)";
-const GREEN = "var(--green)";
-const GREEN_DEEP = "var(--green-deep)";
-const GOLD = "var(--gold)";
-const ALERT = "var(--alert)";
-const MUTED = "var(--muted)";
+/* ------------------------------------------------------------------ */
+/*  Constants & helpers                                                 */
+/* ------------------------------------------------------------------ */
 
-const FONT_DISPLAY = "'Roboto Slab', serif";
-const FONT_BODY = "'Inter', sans-serif";
-const FONT_MONO = "'IBM Plex Mono', monospace";
+const FONT_MONO = "'SF Mono', Monaco, monospace";
 
-function useGoogleFonts() {
-  useEffect(() => {
-    const id = "ledger-app-fonts";
-    if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
-    document.head.appendChild(link);
-  }, []);
+const DEFAULT_COMPANY: Company = {
+  name: 'Modulo',
+  addressLine: '123 Design Avenue',
+  cityLine: 'Accra, Ghana',
+  poBox: 'P.O. Box 1234',
+  phone: '+233 20 123 4567',
+  telephone: '+233 302 123 456',
+  email: 'hello@modulo.design',
+};
+
+const DEFAULT_DATA: AppData = {
+  companyName: 'Modulo',
+  company: DEFAULT_COMPANY,
+  accounts: [],
+  projects: [],
+  journal: [],
+  invoices: [],
+  employees: [],
+  payrollRuns: [],
+  nextEntryNum: 1,
+  nextInvoiceNum: 1,
+  ssnitEmployeeRate: 0.055,
+  ssnitEmployerRate: 0.13,
+  nhilGetfundRate: 0.06,
+  vatRate: 0.15,
+  brackets: [
+    { upto: 490, rate: 0 },
+    { upto: 600, rate: 0.05 },
+    { upto: 730, rate: 0.1 },
+    { upto: 3896.67, rate: 0.175 },
+    { upto: 19466.67, rate: 0.25 },
+    { upto: 50633.33, rate: 0.3 },
+    { upto: Infinity, rate: 0.35 },
+  ],
+};
+
+function fmt(n: number): string {
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== "undefined" ? window.innerWidth < 860 : false
-  );
+function projectName(projects: Project[], id?: string | null): string {
+  if (!id) return '—';
+  const p = projects.find((x) => x.id === id);
+  return p ? p.name : id;
+}
+
+function projectStats(data: AppData): ProjectStats[] {
+  return data.projects.map((p) => {
+    const revenueBilled = data.invoices
+      .filter((inv) => inv.project === p.id)
+      .reduce((s, inv) => s + (inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal), 0);
+    const actualCost = data.journal
+      .filter((je) => je.project === p.id)
+      .flatMap((je) => je.lines)
+      .filter((l) => {
+        const acc = data.accounts.find((a) => a.code === l.account);
+        return acc && acc.type === 'Expense';
+      })
+      .reduce((s, l) => s + l.debit, 0);
+    const estimatedCost = p.estimatedCost ?? 0;
+    const remainingCost = Math.max(estimatedCost - actualCost, 0);
+    const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
+    return {
+      name: p.name,
+      status: p.status,
+      contractValue: p.contractValue ?? 0,
+      revenueBilled,
+      actualCost,
+      estimatedCost,
+      remainingCost,
+      projectedMargin,
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Hooks                                                               */
+/* ------------------------------------------------------------------ */
+
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    function onResize() {
-      setIsMobile(window.innerWidth < 860);
-    }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const mq = window.matchMedia('(max-width: 768px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
   return isMobile;
+}
+
+function useGoogleFonts(): void {
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+    return () => {
+      document.head.removeChild(link);
+    };
+  }, []);
 }
 
 // ---------- Letterhead ----------
