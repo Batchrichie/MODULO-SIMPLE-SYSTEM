@@ -164,22 +164,19 @@ export interface TaxConfig {
 /*  App-level state                                                     */
 /* ------------------------------------------------------------------ */
 
-export interface AppData {
-  companyName: string;
-  company: Company;
-  accounts: Account[];
-  projects: Project[];
-  journal: JournalEntry[];
-  invoices: Invoice[];
-  employees: Employee[];
-  payrollRuns: PayrollRun[];
-  nextEntryNum: number;
-  nextInvoiceNum: number;
-  ssnitEmployeeRate: number;
-  ssnitEmployerRate: number;
-  nhilGetfundRate: number;
-  vatRate: number;
-  brackets: PayeBracket[];
+export interface Company {
+  name: string;
+  addressLine: string;
+  cityLine: string;
+  poBox: string;
+  phone: string;
+  telephone: string;
+  email: string;
+  website?: string | null;
+  preparedByName?: string | null;
+  preparedByTitle?: string | null;
+  authorisedByName?: string | null;
+  authorisedByTitle?: string | null;
 }
 
 export type MutateFn = (fn: (prev: AppData) => AppData) => void;
