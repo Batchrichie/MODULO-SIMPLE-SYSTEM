@@ -109,6 +109,50 @@ function projectStats(data: AppData): ProjectStats[] {
     };
   });
 }
+/* ------------------------------------------------------------------ */
+/*  Pure helpers (no business data)                                     */
+/* ------------------------------------------------------------------ */
+
+const FONT_MONO = "'SF Mono', Monaco, monospace";
+
+function fmt(n: number): string {
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function projectName(projects: Project[], id?: string | null): string {
+  if (!id) return '—';
+  const p = projects.find((x) => x.id === id);
+  return p ? p.name : id;
+}
+
+function projectStats(data: AppData): ProjectStats[] {
+  return data.projects.map((p) => {
+    const revenueBilled = data.invoices
+      .filter((inv) => inv.project === p.id)
+      .reduce((s, inv) => s + (inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal), 0);
+    const actualCost = data.journal
+      .filter((je) => je.project === p.id)
+      .flatMap((je) => je.lines)
+      .filter((l) => {
+        const acc = data.accounts.find((a) => a.code === l.account);
+        return acc && acc.type === 'Expense';
+      })
+      .reduce((s, l) => s + l.debit, 0);
+    const estimatedCost = p.estimatedCost ?? 0;
+    const remainingCost = Math.max(estimatedCost - actualCost, 0);
+    const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
+    return {
+      name: p.name,
+      status: p.status,
+      contractValue: p.contractValue ?? 0,
+      revenueBilled,
+      actualCost,
+      estimatedCost,
+      remainingCost,
+      projectedMargin,
+    };
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /*  Hooks                                                               */
