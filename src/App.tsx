@@ -1887,16 +1887,17 @@ function JournalEntryForm({ data, mutate, onDone }) {
         credit: parseFloat(l.credit) || 0,
       })),
     };
-    mutate((d) => ({
-      ...d,
-      journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
-    }));
     try {
       await db.saveJournalEntry(entry);
+      mutate((d) => ({
+        ...d,
+        journal: [entry, ...d.journal],
+        nextEntryNum: d.nextEntryNum + 1,
+      }));
     } catch (err) {
       console.error("Failed to save journal entry:", err);
       alert("Failed to save journal entry to server. Check console for details.");
+      return;
     }
     onDone && onDone();
   }
@@ -5424,19 +5425,20 @@ function NewInvoiceForm({ data, mutate, onDone }) {
           : []),
       ],
     };
-    mutate((d) => ({
-      ...d,
-      invoices: [inv, ...d.invoices],
-      journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
-      nextInvoiceNum: d.nextInvoiceNum + 1,
-    }));
     try {
       await db.saveInvoice(inv);
       await db.saveJournalEntry(entry);
+      mutate((d) => ({
+        ...d,
+        invoices: [inv, ...d.invoices],
+        journal: [entry, ...d.journal],
+        nextEntryNum: d.nextEntryNum + 1,
+        nextInvoiceNum: d.nextInvoiceNum + 1,
+      }));
     } catch (err) {
       console.error("Failed to persist invoice or journal entry:", err);
       alert("Failed to save invoice to server. Check console for details.");
+      return;
     }
     onDone && onDone();
   }
@@ -5813,20 +5815,21 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
         inv.payments.length +
         1
     ).padStart(3, "0")}`;
-    mutate((d) => ({
-      ...d,
-      invoices: d.invoices.map((i) =>
-        i.id === inv.id ? updatedInvoice : i
-      ),
-      journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
-    }));
     try {
       await db.saveInvoice(updatedInvoice);
       await db.saveJournalEntry(entry);
+      mutate((d) => ({
+        ...d,
+        invoices: d.invoices.map((i) =>
+          i.id === inv.id ? updatedInvoice : i
+        ),
+        journal: [entry, ...d.journal],
+        nextEntryNum: d.nextEntryNum + 1,
+      }));
     } catch (err) {
       console.error("Failed to persist payment or journal entry:", err);
       alert("Failed to record payment to server. Check console for details.");
+      return;
     }
     document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
     setPrintContent(
