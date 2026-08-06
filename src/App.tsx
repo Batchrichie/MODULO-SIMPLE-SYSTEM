@@ -743,8 +743,8 @@ function getDashboardMetrics(data) {
     return debit - credit; 
   };
   
-  const cash = balanceFor("1000");
-  const ar = balanceFor("1100");
+  const cash = balanceFor("1000") + balanceFor("1110");
+  const ar = balanceFor("1130");
   const ap = Math.abs(balanceFor("2000"));
   
   // Derive P&L totals directly from journal entries (server-backed views are used in FinancialsPanel)
@@ -1404,7 +1404,10 @@ function AccountsPanel({ data, mutate }) {
     name: "",
     type: "Asset",
     normal: "Debit",
+    isPaymentAccount: false,
   });
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", type: "", normal: "", isPaymentAccount: false });
   const usedCodes = new Set(data.accounts.map((a) => a.code));
 
   function addAccount() {
@@ -1422,10 +1425,37 @@ function AccountsPanel({ data, mutate }) {
       console.error("Failed to save account:", err);
       alert("Failed to persist account to server. Check console for details.");
     });
-    setForm({ code: "", name: "", type: "Asset", normal: "Debit" });
+    setForm({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false });
   }
 
-  function removeAccount(code) {
+  function startEdit(code: string) {
+    const acc = data.accounts.find((a) => a.code === code);
+    if (!acc) return;
+    setEditingCode(code);
+    setEditForm({ name: acc.name, type: acc.type, normal: acc.normal || "Debit", isPaymentAccount: acc.isPaymentAccount || false });
+  }
+
+  function saveEdit() {
+    if (!editingCode) return;
+    if (!editForm.name.trim()) { alert("Account name is required."); return; }
+    const updated = data.accounts.map((a) =>
+      a.code === editingCode
+        ? { ...a, name: editForm.name.trim(), type: editForm.type, normal: editForm.normal as "Debit" | "Credit", isPaymentAccount: editForm.isPaymentAccount }
+        : a
+    );
+    mutate((d) => ({ ...d, accounts: updated }));
+    db.saveAccounts(updated).catch((err) => {
+      console.error("Failed to update account:", err);
+      alert("Failed to persist account update. Check console for details.");
+    });
+    setEditingCode(null);
+  }
+
+  function cancelEdit() {
+    setEditingCode(null);
+  }
+
+  function removeAccount(code: string) {
     const inUse = data.journal.some((e) =>
       e.lines.some((l) => l.account === code)
     );
@@ -1500,11 +1530,68 @@ function AccountsPanel({ data, mutate }) {
               <option>Credit</option>
             </select>
           </div>
+          {form.type === "Asset" && (
+            <div style={{ flex: "1 1 200px", display: "flex", alignItems: "end", paddingBottom: 2 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: FONT_BODY, fontSize: 13, color: INK }}>
+                <input
+                  type="checkbox"
+                  checked={form.isPaymentAccount}
+                  onChange={(e) => setForm({ ...form, isPaymentAccount: e.target.checked })}
+                  style={{ width: 16, height: 16, accentColor: "var(--green, #4CAF50)" }}
+                />
+                Payment account (receives client payments)
+              </label>
+            </div>
+          )}
           <Button onClick={addAccount} icon={Plus}>
             Add
           </Button>
         </div>
       </Card>
+      {editingCode && (
+        <Modal title={`Edit Account ${editingCode}`} onClose={cancelEdit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <label style={labelStyle}>Code</label>
+              <input style={{ ...inputStyle, background: "var(--nav-hover)", opacity: 0.6 }} value={editingCode} readOnly />
+            </div>
+            <div>
+              <label style={labelStyle}>Name</label>
+              <input style={inputStyle} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+            </div>
+            <div>
+              <label style={labelStyle}>Type</label>
+              <select style={inputStyle} value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
+                {["Asset", "Liability", "Equity", "Income", "Expense"].map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Normal Balance</label>
+              <select style={inputStyle} value={editForm.normal} onChange={(e) => setEditForm({ ...editForm, normal: e.target.value })}>
+                <option>Debit</option>
+                <option>Credit</option>
+              </select>
+            </div>
+            {editForm.type === "Asset" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: FONT_BODY, fontSize: 13, color: INK }}>
+                <input
+                  type="checkbox"
+                  checked={editForm.isPaymentAccount}
+                  onChange={(e) => setEditForm({ ...editForm, isPaymentAccount: e.target.checked })}
+                  style={{ width: 16, height: 16, accentColor: "var(--green, #4CAF50)" }}
+                />
+                Payment account (receives client payments)
+              </label>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <Button variant="ghost" onClick={cancelEdit}>Cancel</Button>
+              <Button onClick={saveEdit} icon={Check}>Save</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <Card>
         <TableScroll>
           <table
@@ -1517,6 +1604,7 @@ function AccountsPanel({ data, mutate }) {
                 <Th>Name</Th>
                 <Th>Type</Th>
                 <Th>Normal Balance</Th>
+                <Th>Payment</Th>
                 <Th right>&nbsp;</Th>
               </tr>
             </thead>
@@ -1529,9 +1617,24 @@ function AccountsPanel({ data, mutate }) {
                   <Td label="Name">{a.name}</Td>
                   <Td label="Type">{a.type}</Td>
                   <Td label="Normal Balance">{a.normal}</Td>
-                  <Td right label="Action">
+                  <Td label="Payment">
+                    {a.isPaymentAccount ? (
+                      <span style={{ background: "rgba(76,175,80,0.12)", color: "var(--green-deep, #2E7D32)", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600 }}>Yes</span>
+                    ) : (
+                      <span style={{ color: MUTED, fontSize: 12 }}>—</span>
+                    )}
+                  </Td>
+                  <Td right label="Actions" style={{ whiteSpace: "nowrap" }}>
+                    <button
+                      onClick={() => startEdit(a.code)}
+                      title="Edit account"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, marginRight: 8 }}
+                    >
+                      <PenLine size={14} />
+                    </button>
                     <button
                       onClick={() => removeAccount(a.code)}
+                      title="Delete account"
                       style={{
                         background: "none",
                         border: "none",
@@ -1564,7 +1667,7 @@ function projectStats(data: AppData): ProjectStats[] {
         const acc = data.accounts.find((a) => a.code === l.account);
         return acc && acc.type === "Expense";
       })
-      .reduce((s, l) => s + l.debit, 0);
+      .reduce((s, l) => s + (l.debit - l.credit), 0);
     const estimatedCost = p.estimatedCost ?? 0;
     const remainingCost = Math.max(estimatedCost - actualCost, 0);
     const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
@@ -2497,10 +2600,10 @@ function computeCashFlow(data) {
   let running = 0;
   const sorted = [...data.journal].sort((a, b) => (a.date > b.date ? 1 : -1));
   sorted.forEach((e) => {
-    const net = e.lines.reduce(
-      (s, l) => s + (l.account === "1000" ? l.debit - l.credit : 0),
-      0
-    );
+      const net = e.lines.reduce(
+        (s, l) => s + (["1000", "1110"].includes(l.account) ? l.debit - l.credit : 0),
+        0
+      );
     if (net !== 0) {
       running += net;
       rows.push({
@@ -5997,9 +6100,12 @@ function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormPro
 }
 
 function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
+  const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("Bank");
+  const [selectedAccount, setSelectedAccount] = useState(
+    () => paymentAccounts[0]?.code || ""
+  );
   const [reference, setReference] = useState("");
 
   async function record() {
@@ -6009,8 +6115,13 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       alert(err);
       return;
     }
+    if (!selectedAccount) {
+      alert("Please select a payment account. Mark an Asset account as a payment account in Chart of Accounts first.");
+      return;
+    }
+    const paymentAccountName = data.accounts.find((a) => a.code === selectedAccount)?.name || selectedAccount;
     const paymentId = "PYT-" + Date.now();
-    const payment = { id: paymentId, date, amountGHS: amt, method, reference };
+    const payment = { id: paymentId, date, amountGHS: amt, method: paymentAccountName, reference };
     const paidSoFar = inv.payments.reduce((s, p) => s + p.amountGHS, 0) + amt;
     const newStatus =
       paidSoFar >= inv.totals.grandTotalGHS - 0.01 ? "Paid" : "Partially Paid";
@@ -6023,7 +6134,7 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
       period: date.slice(0, 7),
       project: inv.project,
       lines: [
-        { account: "1110", debit: amt, credit: 0 },
+        { account: selectedAccount, debit: amt, credit: 0 },
         { account: "1130", debit: 0, credit: amt },
       ],
     };
@@ -6096,18 +6207,23 @@ function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }) {
             placeholder={fmt(balance)}
           />
         </div>
-        <div style={{ flex: "1 1 150px" }}>
+        <div style={{ flex: "1 1 200px" }}>
           <label style={labelStyle}>Payment by</label>
-          <select
-            style={inputStyle}
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-          >
-            <option>Bank</option>
-            <option>Cash</option>
-            <option>Mobile Money</option>
-            <option>Cheque</option>
-          </select>
+          {paymentAccounts.length > 0 ? (
+            <select
+              style={inputStyle}
+              value={selectedAccount}
+              onChange={(e) => setSelectedAccount(e.target.value)}
+            >
+              {paymentAccounts.map((a) => (
+                <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ ...inputStyle, color: ALERT, fontSize: 12, display: "flex", alignItems: "center" }}>
+              No payment accounts configured. Go to Chart of Accounts and mark Asset accounts as payment accounts.
+            </div>
+          )}
         </div>
         <div style={{ flex: "1 1 150px" }}>
           <label style={labelStyle}>Reference No.</label>
@@ -6143,10 +6259,10 @@ function InvoicingPanel({ data, mutate, setPrintContent }: InvoicingPanelProps) 
       period: new Date().toISOString().slice(0, 7),
       project: inv.project,
       lines: [
-        { account: "1100", debit: 0, credit: inv.totals.grandTotalGHS ?? inv.totals.grandTotal },
+        { account: "1130", debit: 0, credit: inv.totals.grandTotalGHS ?? inv.totals.grandTotal },
         { account: inv.revenueAccount || "4100", debit: inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal, credit: 0 },
-        ...(inv.totals.chargeNhil ? [{ account: "2400", debit: inv.totals.nhilGetfundGHS ?? inv.totals.nhilGetfund, credit: 0 }] : []),
-        ...(inv.totals.chargeVat ? [{ account: "2300", debit: inv.totals.vatGHS ?? inv.totals.vat, credit: 0 }] : []),
+        ...(inv.totals.chargeNhil ? [{ account: "2205", debit: inv.totals.nhilGetfundGHS ?? inv.totals.nhilGetfund, credit: 0 }] : []),
+        ...(inv.totals.chargeVat ? [{ account: "2220", debit: inv.totals.vatGHS ?? inv.totals.vat, credit: 0 }] : []),
       ],
     };
 
@@ -6758,188 +6874,7 @@ function ReportsPanel({ data }: { data: AppData }) {
         </TableScroll>
       </Card>
     </div>
-  );
-}
-
-function ExpensesPanel({ data, mutate }: PanelProps) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [vendor, setVendor] = useState("");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("Bank");
-  const [account, setAccount] = useState("");
-  const [project, setProject] = useState("GEN");
-  const [showHistory, setShowHistory] = useState(true);
-
-  const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
-  const cashAccount = "1000";
-  const bankAccount = "1000"; // You can split this later if you open a separate Bank account
-
-  async function postExpense() {
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) {
-      alert("Please enter a valid amount.");
-      return;
-    }
-    if (!account) {
-      alert("Please select an expense account.");
-      return;
-    }
-    if (!description.trim()) {
-      alert("Please enter a description.");
-      return;
-    }
-
-    const entryNumber = `JE-EXP-${String(data.nextEntryNum).padStart(4, "0")}`;
-    const period = date.slice(0, 7);
-
-    const entry: JournalEntry = {
-      id: entryNumber,
-      entryNumber,
-      date,
-      description: `${description.trim()} — ${vendor.trim() || "Cash expense"}`,
-      period,
-      project: project === "GEN" ? null : project,
-      lines: [
-        { account, debit: amt, credit: 0 },
-        { account: method === "Cash" ? cashAccount : bankAccount, debit: 0, credit: amt },
-      ],
-    };
-
-    mutate((d) => ({
-      ...d,
-      journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
-    }));
-
-    try {
-      await db.saveJournalEntry(entry);
-    } catch (err) {
-      console.error("Failed to save expense:", err);
-      alert("Failed to post expense. Check console for details.");
-      return;
-    }
-
-    // Reset form
-    setAmount("");
-    setDescription("");
-    setVendor("");
-    setAccount("");
-  }
-
-  // Identify auto-generated expense entries
-  const recentExpenses = data.journal
-    .filter((e) => e.entryNumber?.startsWith("JE-EXP-"))
-    .slice(0, 20);
-
-  return (
-    <div>
-      <SectionTitle sub="Record day-to-day costs without touching the double-entry journal.">
-        Quick Expenses
-      </SectionTitle>
-
-      <Card style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
-          <div style={{ flex: "1 1 120px" }}>
-            <label style={labelStyle}>Date</label>
-            <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <div style={{ flex: "2 1 200px" }}>
-            <label style={labelStyle}>Description</label>
-            <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Fuel for site visit" />
-          </div>
-          <div style={{ flex: "1 1 150px" }}>
-            <label style={labelStyle}>Vendor / Payee</label>
-            <input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" />
-          </div>
-          <div style={{ flex: "1 1 120px" }}>
-            <label style={labelStyle}>Amount (GHS)</label>
-            <input
-              style={inputStyle}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-              placeholder="0.00"
-            />
-          </div>
-          <div style={{ flex: "1 1 120px" }}>
-            <label style={labelStyle}>Paid via</label>
-            <select style={inputStyle} value={method} onChange={(e) => setMethod(e.target.value)}>
-              <option>Bank</option>
-              <option>Cash</option>
-              <option>Mobile Money</option>
-            </select>
-          </div>
-          <div style={{ flex: "1 1 150px" }}>
-            <label style={labelStyle}>Expense account</label>
-            <select style={inputStyle} value={account} onChange={(e) => setAccount(e.target.value)}>
-              <option value="">Select account…</option>
-              {expenseAccounts.map((a) => (
-                <option key={a.code} value={a.code}>
-                  {a.code} — {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div style={{ flex: "1 1 150px" }}>
-            <label style={labelStyle}>Project</label>
-            <ProjectSelect value={project} onChange={setProject} projects={data.projects} />
-          </div>
-          <Button onClick={postExpense} icon={Plus}>
-            Post expense
-          </Button>
-        </div>
-      </Card>
-
-      <SectionTitle
-        sub="Recently posted through this quick-entry panel."
-        action={
-          <Button variant="ghost" onClick={() => setShowHistory((s) => !s)}>
-            {showHistory ? "Hide" : "Show"} history
-          </Button>
-        }
-      >
-        Expense History
-      </SectionTitle>
-
-      {showHistory && (
-        <Card>
-          <TableScroll>
-            <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <Th>Entry</Th>
-                  <Th>Date</Th>
-                  <Th>Description</Th>
-                  <Th>Project</Th>
-                  <Th right>Amount</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentExpenses.map((e) => (
-                  <tr key={e.id} className="row-hover">
-                    <Td mono label="Entry">{e.entryNumber}</Td>
-                    <Td label="Date">{e.date}</Td>
-                    <Td label="Description">{e.description}</Td>
-                    <Td label="Project">{projectName(data.projects, e.project)}</Td>
-                    <Td right mono label="Amount">
-                      GHS {fmt(e.lines.find((l) => l.debit > 0)?.debit || 0)}
-                    </Td>
-                  </tr>
-                ))}
-                {recentExpenses.length === 0 && (
-                  <tr>
-                    <td colSpan={5} style={{ color: MUTED, padding: 10 }}>
-                      No quick expenses posted yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </TableScroll>
-        </Card>
-      )}
-    </div>
-  );
+  );  
 }
 function BillsPanel({ data, mutate }: PanelProps) {
   const [showNew, setShowNew] = useState(false);
@@ -6951,8 +6886,18 @@ function BillsPanel({ data, mutate }: PanelProps) {
   const [dueDate, setDueDate] = useState("");
   const [project, setProject] = useState("GEN");
   const [expenseAccount, setExpenseAccount] = useState("");
+  const [payableAccount, setPayableAccount] = useState(() => {
+    const liab = data.accounts.find((a) => a.type === "Liability");
+    return liab ? liab.code : "";
+  });
+  const [paymentBankAccount, setPaymentBankAccount] = useState(() => {
+    const asset = data.accounts.find((a) => a.type === "Asset");
+    return asset ? asset.code : "";
+  });
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+  const liabilityAccounts = data.accounts.filter((a) => a.type === "Liability");
+  const assetAccounts = data.accounts.filter((a) => a.type === "Asset");
 
   async function createBill() {
     const amt = parseFloat(amount);
@@ -6966,6 +6911,10 @@ function BillsPanel({ data, mutate }: PanelProps) {
     }
     if (!expenseAccount) {
       alert("Please select an expense account.");
+      return;
+    }
+    if (!payableAccount) {
+      alert("Please select a payable account.");
       return;
     }
 
@@ -6993,7 +6942,7 @@ function BillsPanel({ data, mutate }: PanelProps) {
       project: project === "GEN" ? null : project,
       lines: [
         { account: expenseAccount, debit: amt, credit: 0 },
-        { account: "2000", debit: 0, credit: amt },
+        { account: payableAccount, debit: 0, credit: amt },
       ],
     };
 
@@ -7018,6 +6967,10 @@ function BillsPanel({ data, mutate }: PanelProps) {
     setAmount("");
     setDueDate("");
     setExpenseAccount("");
+    setPayableAccount(() => {
+      const liab = data.accounts.find((a) => a.type === "Liability");
+      return liab ? liab.code : "";
+    });
     setShowNew(false);
   }
 
@@ -7026,6 +6979,14 @@ function BillsPanel({ data, mutate }: PanelProps) {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) {
       alert("Please enter a valid payment amount.");
+      return;
+    }
+    if (!payableAccount) {
+      alert("Please select a payable account.");
+      return;
+    }
+    if (!paymentBankAccount) {
+      alert("Please select a bank/cash account.");
       return;
     }
 
@@ -7053,8 +7014,8 @@ function BillsPanel({ data, mutate }: PanelProps) {
       period: date.slice(0, 7),
       project: bill.project,
       lines: [
-        { account: "2000", debit: amt, credit: 0 },
-        { account: "1000", debit: 0, credit: amt },
+        { account: payableAccount, debit: amt, credit: 0 },
+        { account: paymentBankAccount, debit: 0, credit: amt },
       ],
     };
 
@@ -7076,6 +7037,10 @@ function BillsPanel({ data, mutate }: PanelProps) {
 
     setPayingBill(null);
     setAmount("");
+    setPaymentBankAccount(() => {
+      const asset = data.accounts.find((a) => a.type === "Asset");
+      return asset ? asset.code : "";
+    });
   }
 
   return (
@@ -7167,10 +7132,19 @@ function BillsPanel({ data, mutate }: PanelProps) {
               <input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
             <div style={{ flex: "1 1 150px" }}>
-              <label style={labelStyle}>Expense Account</label>
+              <label style={labelStyle}>Expense Account (DR)</label>
               <select style={inputStyle} value={expenseAccount} onChange={(e) => setExpenseAccount(e.target.value)}>
                 <option value="">Select…</option>
                 {expenseAccounts.map((a) => (
+                  <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: "1 1 150px" }}>
+              <label style={labelStyle}>Payable Account (CR)</label>
+              <select style={inputStyle} value={payableAccount} onChange={(e) => setPayableAccount(e.target.value)}>
+                <option value="">Select…</option>
+                {liabilityAccounts.map((a) => (
                   <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
                 ))}
               </select>
@@ -7198,6 +7172,24 @@ function BillsPanel({ data, mutate }: PanelProps) {
               <div style={{ flex: "1 1 150px" }}>
                 <label style={labelStyle}>Amount (GHS)</label>
                 <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
+              </div>
+              <div style={{ flex: "1 1 150px" }}>
+                <label style={labelStyle}>Payable Account (DR)</label>
+                <select style={inputStyle} value={payableAccount} onChange={(e) => setPayableAccount(e.target.value)}>
+                  <option value="">Select…</option>
+                  {liabilityAccounts.map((a) => (
+                    <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: "1 1 150px" }}>
+                <label style={labelStyle}>Bank/Cash Account (CR)</label>
+                <select style={inputStyle} value={paymentBankAccount} onChange={(e) => setPaymentBankAccount(e.target.value)}>
+                  <option value="">Select…</option>
+                  {assetAccounts.map((a) => (
+                    <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth>Record payment</Button>
@@ -7881,7 +7873,6 @@ export default function App() {
       "invoicing",
       "employees",
       "payroll",
-      "expenses",
       "reports",
       "bills",
       "aged-payables",
@@ -7905,7 +7896,7 @@ export default function App() {
       return "light";
     }
   });
-  const [showMore, setShowMore] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [printContent, setPrintContent] = useState<ReactNode>(null);
   useEffect(() => {
     const root = document.documentElement;
@@ -7954,6 +7945,7 @@ export default function App() {
           // The database is the single source of truth for the chart of accounts.
           const accounts = remote.accounts || [];
 
+          setCompanyNameDraft(remote.companyName || "");
           setData({
             ...DEFAULT_DATA,
             ...remote,
@@ -7967,7 +7959,6 @@ export default function App() {
             vatRate: tax.rates.vatRate,
             brackets: tax.brackets,
           });
-          // companyNameDraft already set above
         } else {
           setCompanyNameDraft("");
           setData((prev) => ({
@@ -8034,29 +8025,6 @@ export default function App() {
     }
   }, []);
 
-  const LogoutPanel = () => (
-    <div>
-      <SectionTitle sub="End your session securely.">Logout</SectionTitle>
-      <Card style={{ marginBottom: 16, maxWidth: 560 }}>
-        <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, marginBottom: 18 }}>
-          When you log out, your Supabase session will be cleared and you will return to the login screen.
-        </p>
-        {logoutError && (
-          <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 14, borderRadius: 8, marginBottom: 18 }}>
-            {logoutError}
-          </div>
-        )}
-        <Button
-          onClick={handleLogout}
-          icon={X}
-          variant="danger"
-          disabled={loggingOut}
-        >
-          {loggingOut ? "Signing out…" : "Sign out"}
-        </Button>
-      </Card>
-    </div>
-  );
 
   function saveCompanyName() {
     mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
@@ -8085,7 +8053,6 @@ export default function App() {
   const nav = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { key: "journal", label: "Journal", icon: PenLine },
-    { key: "expenses", label: "Expenses", icon: Receipt },
     { key: "ledger", label: "Trial Balance", icon: Scale },
     { key: "financials", label: "Financials", icon: TrendingUp },
     { key: "projects", label: "Projects", icon: Briefcase },
@@ -8280,6 +8247,10 @@ export default function App() {
         ::-webkit-scrollbar-track { background: var(--paper); }
         ::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+        @keyframes modMenuIn {
+          from { opacity: 0; transform: translateY(12px) scale(0.96); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
       `}</style>
 
       <div className="no-print" style={{ display: "contents" }}>
@@ -8379,7 +8350,7 @@ export default function App() {
             <main
             style={{
             flex: 1,
-            padding: isMobile ? "20px 16px 88px" : "32px 40px",
+            padding: isMobile ? "20px 16px 20px" : "32px 40px",
             maxWidth: isMobile ? "100%" : 1200,
             width: "100%",
             margin: 0,
@@ -8393,7 +8364,6 @@ export default function App() {
           )}
           {tab === "accounts" && <AccountsPanel data={data} mutate={mutate} />}
           {tab === "journal" && <JournalPanel data={data} mutate={mutate} />}
-          {tab === "expenses" && <ExpensesPanel data={data} mutate={mutate} />}
           {tab === "ledger" && <LedgerPanel data={data} />}
           {tab === "financials" && (
             <FinancialsPanel data={data} setPrintContent={setPrintContent} />
@@ -8421,226 +8391,276 @@ export default function App() {
 {tab === "bank-reconciliation" && <BankReconciliationPanel data={data} mutate={mutate} />}
           {tab === "reports" && <ReportsPanel data={data} />}
           {tab === "export" && <ExportPanel data={data} isMobile={isMobile} />}
-          {tab === "logout" && <LogoutPanel />}
+          {tab === "logout" && (
+            <div>
+              <SectionTitle sub="End your session securely.">Logout</SectionTitle>
+              <Card style={{ marginBottom: 16, maxWidth: 560 }}>
+                <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, marginBottom: 18 }}>
+                  When you log out, your Supabase session will be cleared and you will return to the login screen.
+                </p>
+                {logoutError && (
+                  <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 14, borderRadius: 8, marginBottom: 18 }}>
+                    {logoutError}
+                  </div>
+                )}
+                <Button
+                  onClick={handleLogout}
+                  icon={X}
+                  variant="danger"
+                  disabled={loggingOut}
+                >
+                  {loggingOut ? "Signing out…" : "Sign out"}
+                </Button>
+              </Card>
+            </div>
+          )}
 
-          {/* Mobile nav breathing room */}
-          {isMobile && <div style={{ height: 80 }} />}
+          {/* Mobile nav breathing room is inside the mobile fragment below */}
           </main>
 
         {isMobile && (
-  <>
-            {/* Primary 5 + More — Floating Dark Pill */}
-    <div
-      style={{
-        position: "fixed",
-        bottom: 16,
-        left: 16,
-        right: 16,
-        height: 64,
-        background: "#1F2937",
-        borderRadius: 32,
-        display: "flex",
-        justifyContent: "space-around",
-        alignItems: "center",
-        padding: "0 8px",
-        zIndex: 50,
-        boxShadow: "0 8px 32px rgba(31,41,55,0.35), 0 2px 8px rgba(0,0,0,0.15)",
-      }}
-    >
-      {[
-        nav.find((n) => n.key === "dashboard"),
-        nav.find((n) => n.key === "invoicing"),
-        nav.find((n) => n.key === "expenses"),
-        nav.find((n) => n.key === "projects"),
-        nav.find((n) => n.key === "reports"),
-      ]
-        .filter(Boolean)
-        .map((n) => {
-          const Icon = n!.icon;
-          const active = tab === n!.key;
-          return (
-            <button
-              key={n!.key}
-              onClick={() => { setTab(n!.key); setShowMore(false); }}
+          <>
+            {/* Mobile nav breathing room */}
+            <div style={{ height: 90 }} />
+
+            {/* ── Animated More Popup ── */}
+            {showMenu && (
+              <div
+                onClick={() => setShowMenu(false)}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 55,
+                }}
+              >
+                {/* Popup card */}
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    bottom: 96,
+                    right: 16,
+                    left: 16,
+                    maxWidth: 360,
+                    marginLeft: "auto",
+                    background: "rgba(31,41,55,0.92)",
+                    backdropFilter: "blur(24px) saturate(1.4)",
+                    WebkitBackdropFilter: "blur(24px) saturate(1.4)",
+                    borderRadius: 20,
+                    boxShadow: "0 -4px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.06)",
+                    padding: "8px 0",
+                    maxHeight: "60vh",
+                    overflowY: "auto",
+                    animation: "modMenuIn 0.28s cubic-bezier(0.16,1,0.3,1) forwards",
+                  }}
+                >
+                  {navGroups.map((group, gi) => {
+                    const items = group.keys
+                      .map((k) => nav.find((x) => x.key === k))
+                      .filter((n) => n && !["dashboard", "invoicing", "payroll"].includes(n.key));
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={group.label}>
+                        {gi > 0 && <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "6px 16px" }} />}
+                        <div style={{
+                          fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                          letterSpacing: 1.4, color: "rgba(255,255,255,0.3)", padding: "10px 20px 6px",
+                        }}>
+                          {group.label}
+                        </div>
+                        {items.map((n) => {
+                          if (!n) return null;
+                          const NavIcon = n.icon;
+                          const active = tab === n.key;
+                          return (
+                            <button
+                              key={n.key}
+                              onClick={() => { setTab(n.key); setShowMenu(false); }}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 14,
+                                width: "100%", padding: "11px 20px",
+                                border: "none", cursor: "pointer", textAlign: "left",
+                                background: active ? "rgba(212,175,55,0.1)" : "transparent",
+                                color: active ? "#D4AF37" : "rgba(255,255,255,0.75)",
+                                fontFamily: FONT_BODY, fontSize: 14,
+                                fontWeight: active ? 600 : 400,
+                                transition: "background 0.15s ease, color 0.15s ease",
+                              }}
+                            >
+                              <NavIcon size={17} style={{ flexShrink: 0, opacity: active ? 1 : 0.7 }} />
+                              <span>{n.label}</span>
+                              {active && (
+                                <span style={{
+                                  marginLeft: "auto", width: 6, height: 6,
+                                  borderRadius: "50%", background: "#D4AF37",
+                                }} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Bottom Navigation Pill ── */}
+            <div
               style={{
+                position: "fixed",
+                bottom: 16,
+                left: 16,
+                right: 16,
+                height: 68,
+                background: "rgba(31,41,55,0.78)",
+                backdropFilter: "blur(20px) saturate(1.3)",
+                WebkitBackdropFilter: "blur(20px) saturate(1.3)",
+                borderRadius: 34,
                 display: "flex",
-                flexDirection: "column",
                 alignItems: "center",
-                gap: 3,
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "6px 4px",
-                borderRadius: 16,
-                position: "relative",
+                justifyContent: "space-around",
+                zIndex: 50,
+                boxShadow: "0 8px 32px rgba(31,41,55,0.4), 0 0 0 1px rgba(255,255,255,0.05)",
+                padding: "0 6px",
               }}
             >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: active ? "1.5px solid #D4AF37" : "1.5px solid transparent",
-                  background: active ? "rgba(212,175,55,0.12)" : "transparent",
-                  transition: "all 0.3s ease",
-                }}
-              >
-                <Icon
-                  size={18}
-                  style={{ color: active ? "#D4AF37" : "#6B7280", transition: "color 0.3s ease" }}
-                />
-              </div>
-              <span
-                style={{
-                  fontSize: 8.5,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? "#D4AF37" : "#6B7280",
-                  transition: "color 0.3s ease",
-                  lineHeight: 1,
-                }}
-              >
-                {n!.label}
-              </span>
-            </button>
-          );
-        })}
-      <button
-        onClick={() => setShowMore((s) => !s)}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 3,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: "6px 4px",
-          borderRadius: 16,
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: showMore ? "1.5px solid #D4AF37" : "1.5px solid transparent",
-            background: showMore ? "rgba(212,175,55,0.12)" : "transparent",
-            transition: "all 0.3s ease",
-          }}
-        >
-          <MoreHorizontal
-            size={18}
-            style={{ color: showMore ? "#D4AF37" : "#6B7280", transition: "color 0.3s ease" }}
-          />
-        </div>
-        <span
-          style={{
-            fontSize: 8.5,
-            fontWeight: showMore ? 600 : 500,
-            color: showMore ? "#D4AF37" : "#6B7280",
-            transition: "color 0.3s ease",
-            lineHeight: 1,
-          }}
-        >
-          More
-        </span>
-      </button>
-    </div>
-
-    {/* More popup — adjusted for floating nav */}
-    {showMore && (
-      <div
-        onClick={() => setShowMore(false)}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.35)",
-          zIndex: 60,
-          backdropFilter: "blur(2px)",
-        }}
-      >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            bottom: 92,
-            left: 16,
-            right: 16,
-            background: "#1F2937",
-            borderRadius: 20,
-            boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
-            padding: "20px 16px",
-            maxHeight: "55vh",
-            overflowY: "auto",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "8pt",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "1.2px",
-              color: "#D4AF37",
-              marginBottom: 14,
-              paddingLeft: 4,
-            }}
-          >
-            All Pages
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 8,
-            }}
-          >
-            {nav
-              .filter(
-                (n) =>
-                  !["dashboard", "invoicing", "expenses", "projects", "reports"].includes(n.key)
-              )
-              .map((n) => {
-                const NavIcon = n.icon;
-                const active = tab === n.key;
+              {/* Left: Invoice */}
+              {(() => {
+                const n = nav.find((x) => x.key === "invoicing");
+                if (!n) return null;
+                const Icon = n.icon;
+                const active = tab === "invoicing";
                 return (
                   <button
-                    key={n.key}
-                    onClick={() => {
-                      setTab(n.key);
-                      setShowMore(false);
-                    }}
+                    onClick={() => setTab("invoicing")}
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 6,
-                      background: active ? "rgba(212,175,55,0.12)" : "transparent",
-                      border: active ? "1px solid rgba(212,175,55,0.3)" : "1px solid transparent",
-                      borderRadius: 12,
-                      color: active ? "#D4AF37" : "rgba(255,255,255,0.55)",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      padding: "12px 4px",
-                      transition: "all 0.2s ease",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: "6px 12px", borderRadius: 20, transition: "all 0.25s ease",
                     }}
                   >
-                    <NavIcon size={20} />
-                    <span style={{ fontWeight: 500 }}>{n.label}</span>
+                    <div style={{
+                      width: 38, height: 38, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      border: active ? "2px solid #D4AF37" : "2px solid transparent",
+                      background: active ? "rgba(212,175,55,0.12)" : "transparent",
+                      transition: "all 0.25s ease",
+                    }}>
+                      <Icon size={19} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                    </div>
+                    <span style={{
+                      fontSize: 9, fontWeight: active ? 600 : 500, lineHeight: 1,
+                      color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
+                    }}>
+                      {n.label}
+                    </span>
                   </button>
                 );
-              })}
-          </div>
-        </div>
-      </div>
-    )}
-  </>
-)}
+              })()}
+
+              {/* Left: Payroll */}
+              {(() => {
+                const n = nav.find((x) => x.key === "payroll");
+                if (!n) return null;
+                const Icon = n.icon;
+                const active = tab === "payroll";
+                return (
+                  <button
+                    onClick={() => setTab("payroll")}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: "6px 12px", borderRadius: 20, transition: "all 0.25s ease",
+                    }}
+                  >
+                    <div style={{
+                      width: 38, height: 38, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      border: active ? "2px solid #D4AF37" : "2px solid transparent",
+                      background: active ? "rgba(212,175,55,0.12)" : "transparent",
+                      transition: "all 0.25s ease",
+                    }}>
+                      <Icon size={19} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                    </div>
+                    <span style={{
+                      fontSize: 9, fontWeight: active ? 600 : 500, lineHeight: 1,
+                      color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
+                    }}>
+                      {n.label}
+                    </span>
+                  </button>
+                );
+              })()}
+
+              {/* Center: Dashboard — INVERTED */}
+              {(() => {
+                const n = nav.find((x) => x.key === "dashboard");
+                if (!n) return null;
+                const Icon = n.icon;
+                const active = tab === "dashboard";
+                return (
+                  <button
+                    onClick={() => setTab("dashboard")}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: "0 4px", transition: "all 0.25s ease",
+                    }}
+                  >
+                    <div style={{
+                      width: 48, height: 48, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: active
+                        ? "linear-gradient(135deg, #D4AF37, #B8962E)"
+                        : "linear-gradient(135deg, rgba(212,175,55,0.25), rgba(184,150,46,0.15))",
+                      boxShadow: active
+                        ? "0 4px 20px rgba(212,175,55,0.45), 0 0 0 3px rgba(212,175,55,0.2)"
+                        : "0 2px 8px rgba(0,0,0,0.15)",
+                      transition: "all 0.3s cubic-bezier(0.16,1,0.3,1)",
+                      marginTop: -8,
+                    }}>
+                      <Icon size={22} style={{ color: active ? "#1F2937" : "#D4AF37", transition: "color 0.25s ease" }} />
+                    </div>
+                    <span style={{
+                      fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1,
+                      color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
+                      marginTop: 1,
+                    }}>
+                      {n.label}
+                    </span>
+                  </button>
+                );
+              })()}
+
+              {/* Right: More */}
+              <button
+                onClick={() => setShowMenu((s) => !s)}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  background: "none", border: "none", cursor: "pointer",
+                  padding: "6px 12px", borderRadius: 20, transition: "all 0.25s ease",
+                }}
+              >
+                <div style={{
+                  width: 38, height: 38, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: showMenu ? "2px solid #D4AF37" : "2px solid transparent",
+                  background: showMenu ? "rgba(212,175,55,0.12)" : "transparent",
+                  transition: "all 0.25s ease",
+                }}>
+                  <MoreHorizontal size={19} style={{ color: showMenu ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                </div>
+                <span style={{
+                  fontSize: 9, fontWeight: showMenu ? 600 : 500, lineHeight: 1,
+                  color: showMenu ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
+                }}>
+                  More
+                </span>
+              </button>
+            </div>
+          </>
+        )}
 
       </div>
 

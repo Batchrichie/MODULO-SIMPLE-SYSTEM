@@ -43,6 +43,7 @@ interface AccountRow {
   type: string;
   reporting_group?: string | null;
   normal?: string | null;
+  is_payment_account?: boolean | null;
 }
 
 function accountFromRow(r: AccountRow): Account {
@@ -52,6 +53,7 @@ function accountFromRow(r: AccountRow): Account {
     type: r.type,
     reportingGroup: r.reporting_group,
     normal: r.normal,
+    isPaymentAccount: r.is_payment_account ?? false,
   };
 }
 
@@ -62,6 +64,7 @@ function accountToRow(a: Account): AccountRow {
     type: a.type,
     reporting_group: a.reportingGroup ?? null,
     normal: a.normal ?? null,
+    is_payment_account: a.isPaymentAccount ?? false,
   };
 }
 

@@ -38,6 +38,7 @@ export interface Account {
   type: string;
   reportingGroup?: string | null;
   normal?: 'Debit' | 'Credit' | null;
+  isPaymentAccount?: boolean;
 }
 
 export interface Project {
