@@ -743,8 +743,8 @@ function getDashboardMetrics(data) {
     return debit - credit; 
   };
   
-  const cash = balanceFor("1000") + balanceFor("1110");
-  const ar = balanceFor("1130");
+  const cash = balanceFor("1000");
+  const ar = balanceFor("1100");
   const ap = Math.abs(balanceFor("2000"));
   
   // Derive P&L totals directly from journal entries (server-backed views are used in FinancialsPanel)
@@ -2600,10 +2600,10 @@ function computeCashFlow(data) {
   let running = 0;
   const sorted = [...data.journal].sort((a, b) => (a.date > b.date ? 1 : -1));
   sorted.forEach((e) => {
-      const net = e.lines.reduce(
-        (s, l) => s + (["1000", "1110"].includes(l.account) ? l.debit - l.credit : 0),
-        0
-      );
+    const net = e.lines.reduce(
+      (s, l) => s + (l.account === "1000" ? l.debit - l.credit : 0),
+      0
+    );
     if (net !== 0) {
       running += net;
       rows.push({
@@ -8457,7 +8457,7 @@ export default function App() {
                   {navGroups.map((group, gi) => {
                     const items = group.keys
                       .map((k) => nav.find((x) => x.key === k))
-                      .filter((n) => n && !["dashboard", "invoicing", "payroll"].includes(n.key));
+                      .filter((n) => n && !["dashboard", "invoicing", "payroll", "journal"].includes(n.key));
                     if (items.length === 0) return null;
                     return (
                       <div key={group.label}>
@@ -8522,7 +8522,7 @@ export default function App() {
                 justifyContent: "space-around",
                 zIndex: 50,
                 boxShadow: "0 8px 32px rgba(31,41,55,0.4), 0 0 0 1px rgba(255,255,255,0.05)",
-                padding: "0 6px",
+                padding: "0 2px",
               }}
             >
               {/* Left: Invoice */}
@@ -8535,22 +8535,21 @@ export default function App() {
                   <button
                     onClick={() => setTab("invoicing")}
                     style={{
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                       background: "none", border: "none", cursor: "pointer",
-                      padding: "6px 12px", borderRadius: 20, transition: "all 0.25s ease",
+                      padding: "4px 6px", borderRadius: 20, transition: "all 0.25s ease",
                     }}
                   >
                     <div style={{
-                      width: 38, height: 38, borderRadius: "50%",
+                      width: 36, height: 36, borderRadius: "50%",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       border: active ? "2px solid #D4AF37" : "2px solid transparent",
-                      background: active ? "rgba(212,175,55,0.12)" : "transparent",
                       transition: "all 0.25s ease",
                     }}>
-                      <Icon size={19} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                      <Icon size={18} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
                     </div>
                     <span style={{
-                      fontSize: 9, fontWeight: active ? 600 : 500, lineHeight: 1,
+                      fontSize: 8.5, fontWeight: active ? 600 : 500, lineHeight: 1,
                       color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
                     }}>
                       {n.label}
@@ -8559,32 +8558,31 @@ export default function App() {
                 );
               })()}
 
-              {/* Left: Payroll */}
+              {/* Left: Journal */}
               {(() => {
-                const n = nav.find((x) => x.key === "payroll");
+                const n = nav.find((x) => x.key === "journal");
                 if (!n) return null;
                 const Icon = n.icon;
-                const active = tab === "payroll";
+                const active = tab === "journal";
                 return (
                   <button
-                    onClick={() => setTab("payroll")}
+                    onClick={() => setTab("journal")}
                     style={{
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                       background: "none", border: "none", cursor: "pointer",
-                      padding: "6px 12px", borderRadius: 20, transition: "all 0.25s ease",
+                      padding: "4px 6px", borderRadius: 20, transition: "all 0.25s ease",
                     }}
                   >
                     <div style={{
-                      width: 38, height: 38, borderRadius: "50%",
+                      width: 36, height: 36, borderRadius: "50%",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       border: active ? "2px solid #D4AF37" : "2px solid transparent",
-                      background: active ? "rgba(212,175,55,0.12)" : "transparent",
                       transition: "all 0.25s ease",
                     }}>
-                      <Icon size={19} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                      <Icon size={18} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
                     </div>
                     <span style={{
-                      fontSize: 9, fontWeight: active ? 600 : 500, lineHeight: 1,
+                      fontSize: 8.5, fontWeight: active ? 600 : 500, lineHeight: 1,
                       color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
                     }}>
                       {n.label}
@@ -8605,11 +8603,11 @@ export default function App() {
                     style={{
                       display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                       background: "none", border: "none", cursor: "pointer",
-                      padding: "0 4px", transition: "all 0.25s ease",
+                      padding: "0 2px", transition: "all 0.25s ease",
                     }}
                   >
                     <div style={{
-                      width: 48, height: 48, borderRadius: "50%",
+                      width: 46, height: 46, borderRadius: "50%",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       background: active
                         ? "linear-gradient(135deg, #D4AF37, #B8962E)"
@@ -8620,12 +8618,45 @@ export default function App() {
                       transition: "all 0.3s cubic-bezier(0.16,1,0.3,1)",
                       marginTop: -8,
                     }}>
-                      <Icon size={22} style={{ color: active ? "#1F2937" : "#D4AF37", transition: "color 0.25s ease" }} />
+                      <Icon size={21} style={{ color: active ? "#1F2937" : "#D4AF37", transition: "color 0.25s ease" }} />
                     </div>
                     <span style={{
-                      fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1,
+                      fontSize: 8.5, fontWeight: active ? 700 : 500, lineHeight: 1,
                       color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
                       marginTop: 1,
+                    }}>
+                      {n.label}
+                    </span>
+                  </button>
+                );
+              })()}
+
+              {/* Right: Payroll */}
+              {(() => {
+                const n = nav.find((x) => x.key === "payroll");
+                if (!n) return null;
+                const Icon = n.icon;
+                const active = tab === "payroll";
+                return (
+                  <button
+                    onClick={() => setTab("payroll")}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: "4px 6px", borderRadius: 20, transition: "all 0.25s ease",
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      border: active ? "2px solid #D4AF37" : "2px solid transparent",
+                      transition: "all 0.25s ease",
+                    }}>
+                      <Icon size={18} style={{ color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                    </div>
+                    <span style={{
+                      fontSize: 8.5, fontWeight: active ? 600 : 500, lineHeight: 1,
+                      color: active ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
                     }}>
                       {n.label}
                     </span>
@@ -8637,22 +8668,21 @@ export default function App() {
               <button
                 onClick={() => setShowMenu((s) => !s)}
                 style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                   background: "none", border: "none", cursor: "pointer",
-                  padding: "6px 12px", borderRadius: 20, transition: "all 0.25s ease",
+                  padding: "4px 6px", borderRadius: 20, transition: "all 0.25s ease",
                 }}
               >
                 <div style={{
-                  width: 38, height: 38, borderRadius: "50%",
+                  width: 36, height: 36, borderRadius: "50%",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   border: showMenu ? "2px solid #D4AF37" : "2px solid transparent",
-                  background: showMenu ? "rgba(212,175,55,0.12)" : "transparent",
                   transition: "all 0.25s ease",
                 }}>
-                  <MoreHorizontal size={19} style={{ color: showMenu ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
+                  <MoreHorizontal size={18} style={{ color: showMenu ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease" }} />
                 </div>
                 <span style={{
-                  fontSize: 9, fontWeight: showMenu ? 600 : 500, lineHeight: 1,
+                  fontSize: 8.5, fontWeight: showMenu ? 600 : 500, lineHeight: 1,
                   color: showMenu ? "#D4AF37" : "#9CA3AF", transition: "color 0.25s ease",
                 }}>
                   More
