@@ -601,22 +601,66 @@ function Modal({ title, sub, onClose, children, wide = false }: ModalProps) {
 }
 
 // ---------- Dashboard Panel ----------
-function KpiCard({ title, value, icon: Icon, accent, sub }) {
+function KpiCard({ title, value, icon: Icon, accent, sub, detail }) {
+  const [hovered, setHovered] = useState(false);
   return (
-    <Card style={{ flex: 1, minWidth: 220, borderTop: `3px solid ${accent}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: MUTED, fontWeight: 600, textTransform: "uppercase" }}>
-          {title}
-        </span>
-        <span style={{ color: accent, display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 6, background: "var(--nav-hover)" }}>
-          <Icon size={16} />
-        </span>
-      </div>
-      <h3 style={{ fontFamily: FONT_MONO, fontSize: 24, color: INK, margin: 0 }}>
-        GHS {fmt(value)}
-      </h3>
-      {sub && <p style={{ fontSize: 11, color: MUTED, margin: "4px 0 0 0" }}>{sub}</p>}
-    </Card>
+    <div
+      style={{ position: "relative", flex: 1, minWidth: 220 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Card style={{ borderTop: `3px solid ${accent}`, cursor: "default" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: MUTED, fontWeight: 600, textTransform: "uppercase" }}>
+            {title}
+          </span>
+          <span style={{ color: accent, display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 6, background: "var(--nav-hover)" }}>
+            <Icon size={16} />
+          </span>
+        </div>
+        <h3 style={{ fontFamily: FONT_MONO, fontSize: 24, color: INK, margin: 0 }}>
+          GHS {fmt(value)}
+        </h3>
+        {sub && <p style={{ fontSize: 11, color: MUTED, margin: "4px 0 0 0" }}>{sub}</p>}
+      </Card>
+
+      {hovered && detail && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 10px)",
+            left: 0,
+            right: 0,
+            background: "#1F2937",
+            color: "#F1F5F9",
+            borderRadius: 10,
+            padding: "14px 16px",
+            fontSize: 12,
+            lineHeight: 1.6,
+            zIndex: 100,
+            boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              bottom: -6,
+              left: 24,
+              width: 12,
+              height: 12,
+              background: "#1F2937",
+              transform: "rotate(45deg)",
+              borderRadius: 2,
+            }}
+          />
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: accent === GREEN ? "#4ADE80" : accent === GOLD ? "#D4AF37" : accent === ALERT ? "#F87171" : "#94A3B8" }}>
+            {title}
+          </div>
+          {detail}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1016,22 +1060,180 @@ function DashboardPanel({ data, setTab }) {
 
       {/* 1. Core Financial KPIs */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
-        <KpiCard title="Cash Balance" value={metrics.cash} icon={Banknote} accent={GREEN} sub={`Net Income: GHS ${fmt(metrics.netIncome)}`} />
-        <KpiCard title="Receivables" value={metrics.ar} icon={ArrowDownRight} accent={GOLD} sub="Owed by clients" />
-        <KpiCard title="Payables" value={metrics.ap} icon={ArrowUpRight} accent={ALERT} sub="Owed to vendors" />
+        <KpiCard
+          title="Cash Balance"
+          value={metrics.cash}
+          icon={Banknote}
+          accent={GREEN}
+          sub={`Net Income: GHS ${fmt(metrics.netIncome)}`}
+          detail={
+            <>
+              <p style={{ margin: "0 0 8px 0" }}>
+                Real-time cash position from your bank account ledger (Account 1000).
+              </p>
+              <div style={{ display: "flex", gap: 20 }}>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Revenue YTD</div>
+                  <div style={{ fontWeight: 600, color: "#4ADE80" }}>GHS {fmt(metrics.totalRevenue)}</div>
+                </div>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Expenses YTD</div>
+                  <div style={{ fontWeight: 600, color: "#F87171" }}>GHS {fmt(metrics.totalExpenses)}</div>
+                </div>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Net Income</div>
+                  <div style={{ fontWeight: 600, color: metrics.netIncome >= 0 ? "#4ADE80" : "#F87171" }}>GHS {fmt(metrics.netIncome)}</div>
+                </div>
+              </div>
+            </>
+          }
+        />
+        <KpiCard
+          title="Receivables"
+          value={metrics.ar}
+          icon={ArrowDownRight}
+          accent={GOLD}
+          sub="Owed by clients"
+          detail={
+            <>
+              <p style={{ margin: "0 0 6px 0" }}>
+                Total unpaid invoices from clients (Account 1100). Money expected to flow in.
+              </p>
+              <div style={{ fontSize: 11, color: "#94A3B8" }}>
+                {outstandingInvoices.length > 0 ? (
+                  <>
+                    <strong style={{ color: "#F87171" }}>{outstandingInvoices.filter(i => i.isOverdue).length} overdue</strong> · {outstandingInvoices.length} outstanding invoices
+                  </>
+                ) : (
+                  "No outstanding invoices — all paid up!"
+                )}
+              </div>
+            </>
+          }
+        />
+        <KpiCard
+          title="Payables"
+          value={metrics.ap}
+          icon={ArrowUpRight}
+          accent={ALERT}
+          sub="Owed to vendors"
+          detail={
+            <p style={{ margin: 0 }}>
+              Total unpaid bills to vendors and suppliers (Account 2000). Money you owe.
+            </p>
+          }
+        />
       </div>
 
       {/* 2. Operational Drivers (The Real Engine) */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
-        <KpiCard title="Active Contracts" value={metrics.totalContractValue} icon={Briefcase} accent={GREEN} sub={`${prioritizedProjects.length} ongoing projects`} />
-        <KpiCard title="Est. Cost (Portfolio)" value={metrics.totalEstimatedCost} icon={Briefcase} accent={INK} sub="Total budgeted" />
-        <KpiCard title="Actual Cost to Date" value={metrics.totalActualCost} icon={TrendingUp} accent={GOLD} sub={`${metrics.totalEstimatedCost > 0 ? ((metrics.totalActualCost / metrics.totalEstimatedCost) * 100).toFixed(0) : 0}% of budget used`} />
-        <KpiCard 
-          title="Projected Margin" 
-          value={metrics.projectedGrossMargin} 
-          icon={Scale} 
-          accent={metrics.projectedGrossMargin >= 0 ? GREEN : ALERT} 
-          sub={`${metrics.projectedMarginPct.toFixed(1)}% gross margin`} 
+        <KpiCard
+          title="Active Contracts"
+          value={metrics.totalContractValue}
+          icon={Briefcase}
+          accent={GREEN}
+          sub={`${prioritizedProjects.length} ongoing projects`}
+          detail={
+            <>
+              <p style={{ margin: "0 0 8px 0" }}>
+                Combined contract value across all {prioritizedProjects.length} active projects.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {prioritizedProjects.slice(0, 3).map(p => (
+                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "#CBD5E1" }}>{p.name}</span>
+                    <span style={{ fontWeight: 600 }}>GHS {fmt(parseFloat(p.contractValue) || 0)}</span>
+                  </div>
+                ))}
+                {prioritizedProjects.length > 3 && (
+                  <div style={{ fontSize: 10, color: "#64748B", textAlign: "center" }}>
+                    +{prioritizedProjects.length - 3} more projects
+                  </div>
+                )}
+              </div>
+            </>
+          }
+        />
+        <KpiCard
+          title="Est. Cost (Portfolio)"
+          value={metrics.totalEstimatedCost}
+          icon={Briefcase}
+          accent={INK}
+          sub="Total budgeted"
+          detail={
+            <p style={{ margin: 0 }}>
+              Sum of estimated costs for all active projects. This is your planned/budgeted spend.
+            </p>
+          }
+        />
+        <KpiCard
+          title="Actual Cost to Date"
+          value={metrics.totalActualCost}
+          icon={TrendingUp}
+          accent={GOLD}
+          sub={`${metrics.totalEstimatedCost > 0 ? ((metrics.totalActualCost / metrics.totalEstimatedCost) * 100).toFixed(0) : 0}% of budget used`}
+          detail={
+            <>
+              <p style={{ margin: "0 0 8px 0" }}>
+                Real expenses posted to journal for active projects. Tracks how much budget has been consumed.
+              </p>
+              <div style={{ display: "flex", gap: 16 }}>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase" }}>Budgeted</div>
+                  <div style={{ fontWeight: 600 }}>GHS {fmt(metrics.totalEstimatedCost)}</div>
+                </div>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase" }}>Actual</div>
+                  <div style={{ fontWeight: 600, color: metrics.totalActualCost > metrics.totalEstimatedCost ? "#F87171" : "#4ADE80" }}>
+                    GHS {fmt(metrics.totalActualCost)}
+                  </div>
+                </div>
+              </div>
+              {metrics.totalEstimatedCost > 0 && (
+                <div style={{ marginTop: 8, height: 4, background: "#374151", borderRadius: 2 }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${Math.min((metrics.totalActualCost / metrics.totalEstimatedCost) * 100, 100)}%`,
+                      background: metrics.totalActualCost / metrics.totalEstimatedCost > 0.9 ? "#F87171" : metrics.totalActualCost / metrics.totalEstimatedCost > 0.75 ? "#D4AF37" : "#4ADE80",
+                      borderRadius: 2,
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          }
+        />
+        <KpiCard
+          title="Projected Margin"
+          value={metrics.projectedGrossMargin}
+          icon={Scale}
+          accent={metrics.projectedGrossMargin >= 0 ? GREEN : ALERT}
+          sub={`${metrics.projectedMarginPct.toFixed(1)}% gross margin`}
+          detail={
+            <>
+              <p style={{ margin: "0 0 8px 0" }}>
+                Estimated profit after all project costs. Contract value minus estimated cost.
+              </p>
+              <div style={{ display: "flex", gap: 16 }}>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase" }}>Contracts</div>
+                  <div style={{ fontWeight: 600 }}>GHS {fmt(metrics.totalContractValue)}</div>
+                </div>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase" }}>Est. Costs</div>
+                  <div style={{ fontWeight: 600 }}>GHS {fmt(metrics.totalEstimatedCost)}</div>
+                </div>
+                <div>
+                  <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase" }}>Margin</div>
+                  <div style={{ fontWeight: 700, color: metrics.projectedGrossMargin >= 0 ? "#4ADE80" : "#F87171" }}>
+                    {metrics.projectedMarginPct.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            </>
+          }
         />
       </div>
 
@@ -7704,7 +7906,7 @@ export default function App() {
     }
   });
   const [showMore, setShowMore] = useState(false);
-
+  const [printContent, setPrintContent] = useState<ReactNode>(null);
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") root.classList.add("dark");
@@ -8174,13 +8376,13 @@ export default function App() {
           </aside>
         )}
 
-        <main
-          style={{
+            <main
+            style={{
             flex: 1,
             padding: isMobile ? "20px 16px 88px" : "32px 40px",
-            maxWidth: isMobile ? "100%" : 1100,
+            maxWidth: isMobile ? "100%" : 1200,
             width: "100%",
-            margin: "0 auto",
+            margin: 0,
             minHeight: "100vh",
             boxSizing: "border-box",
             position: "relative",
@@ -8227,21 +8429,22 @@ export default function App() {
 
         {isMobile && (
   <>
-      {/* Primary 5 + More */}
+            {/* Primary 5 + More — Floating Dark Pill */}
     <div
       style={{
         position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: "#fff",
-        borderTop: "1px solid #E8E4DC",
+        bottom: 16,
+        left: 16,
+        right: 16,
+        height: 64,
+        background: "#1F2937",
+        borderRadius: 32,
         display: "flex",
         justifyContent: "space-around",
         alignItems: "center",
-        padding: "4px 0 8px",
+        padding: "0 8px",
         zIndex: 50,
-        height: 64,
+        boxShadow: "0 8px 32px rgba(31,41,55,0.35), 0 2px 8px rgba(0,0,0,0.15)",
       }}
     >
       {[
@@ -8252,50 +8455,105 @@ export default function App() {
         nav.find((n) => n.key === "reports"),
       ]
         .filter(Boolean)
-        .map((n) => (
-          <button
-            key={n!.key}
-            onClick={() => { setTab(n!.key); setShowMore(false); }}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 2,
-              background: "none",
-              border: "none",
-              color: tab === n!.key ? NAVY : MUTED,
-              fontSize: 10,
-              cursor: "pointer",
-              padding: "4px 0",
-            }}
-          >
-            <n!.icon size={22} />
-            <span style={{ fontWeight: 500 }}>{n!.label}</span>
-          </button>
-        ))}
+        .map((n) => {
+          const Icon = n!.icon;
+          const active = tab === n!.key;
+          return (
+            <button
+              key={n!.key}
+              onClick={() => { setTab(n!.key); setShowMore(false); }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 3,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "6px 4px",
+                borderRadius: 16,
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: active ? "1.5px solid #D4AF37" : "1.5px solid transparent",
+                  background: active ? "rgba(212,175,55,0.12)" : "transparent",
+                  transition: "all 0.3s ease",
+                }}
+              >
+                <Icon
+                  size={18}
+                  style={{ color: active ? "#D4AF37" : "#6B7280", transition: "color 0.3s ease" }}
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: 8.5,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? "#D4AF37" : "#6B7280",
+                  transition: "color 0.3s ease",
+                  lineHeight: 1,
+                }}
+              >
+                {n!.label}
+              </span>
+            </button>
+          );
+        })}
       <button
         onClick={() => setShowMore((s) => !s)}
         style={{
-          flex: 1,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 2,
+          gap: 3,
           background: "none",
           border: "none",
-          color: showMore ? NAVY : MUTED,
-          fontSize: 10,
           cursor: "pointer",
-          padding: "4px 0",
+          padding: "6px 4px",
+          borderRadius: 16,
         }}
       >
-        <MoreHorizontal size={22} />
-        <span style={{ fontWeight: 500 }}>More</span>
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: showMore ? "1.5px solid #D4AF37" : "1.5px solid transparent",
+            background: showMore ? "rgba(212,175,55,0.12)" : "transparent",
+            transition: "all 0.3s ease",
+          }}
+        >
+          <MoreHorizontal
+            size={18}
+            style={{ color: showMore ? "#D4AF37" : "#6B7280", transition: "color 0.3s ease" }}
+          />
+        </div>
+        <span
+          style={{
+            fontSize: 8.5,
+            fontWeight: showMore ? 600 : 500,
+            color: showMore ? "#D4AF37" : "#6B7280",
+            transition: "color 0.3s ease",
+            lineHeight: 1,
+          }}
+        >
+          More
+        </span>
       </button>
     </div>
 
-    {/* More popup */}
+    {/* More popup — adjusted for floating nav */}
     {showMore && (
       <div
         onClick={() => setShowMore(false)}
@@ -8311,13 +8569,13 @@ export default function App() {
           onClick={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
-            bottom: 76,
-            left: 12,
-            right: 12,
-            background: "#fff",
-            borderRadius: 16,
-            boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
-            padding: "16px 12px",
+            bottom: 92,
+            left: 16,
+            right: 16,
+            background: "#1F2937",
+            borderRadius: 20,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
+            padding: "20px 16px",
             maxHeight: "55vh",
             overflowY: "auto",
           }}
@@ -8328,8 +8586,8 @@ export default function App() {
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "1.2px",
-              color: "#C9A84C",
-              marginBottom: 12,
+              color: "#D4AF37",
+              marginBottom: 14,
               paddingLeft: 4,
             }}
           >
@@ -8347,37 +8605,43 @@ export default function App() {
                 (n) =>
                   !["dashboard", "invoicing", "expenses", "projects", "reports"].includes(n.key)
               )
-              .map((n) => (
-                <button
-                  key={n.key}
-                  onClick={() => {
-                    setTab(n.key);
-                    setShowMore(false);
-                  }}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    background: tab === n.key ? "#F5F0E6" : "transparent",
-                    border: "1px solid transparent",
-                    borderRadius: 10,
-                    color: tab === n.key ? NAVY : MUTED,
-                    fontSize: 11,
-                    cursor: "pointer",
-                    padding: "12px 4px",
-                  }}
-                >
-                  <n.icon size={20} />
-                  <span style={{ fontWeight: 500 }}>{n.label}</span>
-                </button>
-              ))}
+              .map((n) => {
+                const NavIcon = n.icon;
+                const active = tab === n.key;
+                return (
+                  <button
+                    key={n.key}
+                    onClick={() => {
+                      setTab(n.key);
+                      setShowMore(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 6,
+                      background: active ? "rgba(212,175,55,0.12)" : "transparent",
+                      border: active ? "1px solid rgba(212,175,55,0.3)" : "1px solid transparent",
+                      borderRadius: 12,
+                      color: active ? "#D4AF37" : "rgba(255,255,255,0.55)",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      padding: "12px 4px",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <NavIcon size={20} />
+                    <span style={{ fontWeight: 500 }}>{n.label}</span>
+                  </button>
+                );
+              })}
           </div>
         </div>
       </div>
     )}
   </>
 )}
+
       </div>
 
       <div className="print-only">{printContent}</div>
