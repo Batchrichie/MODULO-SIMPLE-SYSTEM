@@ -743,8 +743,8 @@ function getDashboardMetrics(data) {
     return debit - credit; 
   };
   
-  const cash = balanceFor("1000");
-  const ar = balanceFor("1100");
+  const cash = balanceFor("1000") + balanceFor("1110");
+  const ar = balanceFor("1130");
   const ap = Math.abs(balanceFor("2000"));
   
   // Derive P&L totals directly from journal entries (server-backed views are used in FinancialsPanel)
@@ -2601,8 +2601,8 @@ function computeCashFlow(data) {
   const sorted = [...data.journal].sort((a, b) => (a.date > b.date ? 1 : -1));
   sorted.forEach((e) => {
     const net = e.lines.reduce(
-      (s, l) => s + (l.account === "1000" ? l.debit - l.credit : 0),
-      0
+      (s, l) => s + (["1000", "1110"].includes(l.account) ? l.debit - l.credit : 0),
+       0
     );
     if (net !== 0) {
       running += net;
