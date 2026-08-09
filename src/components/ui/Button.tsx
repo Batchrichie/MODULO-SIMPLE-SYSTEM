@@ -9,6 +9,7 @@ type ButtonProps = {
   icon?: ComponentType<{ size?: number; strokeWidth?: number; color?: string }>;
   type?: "button" | "submit" | "reset";
   fullWidth?: boolean;
+  size?: "sm" | "md";
   style?: CSSProperties;
 };
 
@@ -20,17 +21,19 @@ export default function Button({
   icon: Icon,
   type,
   fullWidth = false,
+  size = "md",
   style,
 }: ButtonProps) {
+  const isSmall = size === "sm";
   const base: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    padding: "9px 16px",
-    borderRadius: 8,
+    gap: isSmall ? 5 : 7,
+    padding: isSmall ? "5px 10px" : "9px 16px",
+    borderRadius: isSmall ? 6 : 8,
     fontFamily: FONT_BODY,
-    fontSize: 13.5,
+    fontSize: isSmall ? 12 : 13.5,
     fontWeight: 600,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.45 : 1,
@@ -76,7 +79,7 @@ export default function Button({
         }
       }}
     >
-      {Icon && <Icon size={14} />}
+      {Icon && <Icon size={isSmall ? 12 : 14} />}
       {children}
     </button>
   );

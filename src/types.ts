@@ -61,6 +61,8 @@ export interface Employee {
   designation?: string | null;
   exemptPaye: boolean;
   exemptSsnit: boolean;
+  positionId?: string | null;
+  portalAccess?: boolean;
 }
 
 export interface JournalLine {
@@ -189,7 +191,7 @@ export interface TaxConfig {
 
 /* ------------------------------------------------------------------ */
 /*  App-level state                                                     */
-/export interface BankReconciliationItem {
+export interface BankReconciliationItem {
   id: string;
   reconciliationId: string;
   journalEntryId: string;

@@ -1,13 +1,6 @@
-import React, { useState, useMemo, useCallback } from "react";
-import * as XLSX from "xlsx";
-import {
-  BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
-  Plus, Trash2, Printer, Check, AlertTriangle, Settings2, Briefcase,
-  Receipt, TrendingUp, X, Sun, Moon, LayoutDashboard,
-  ArrowUpRight, ArrowDownRight, FileText, MoreHorizontal, Landmark,
-} from "lucide-react";
-import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
-         FONT_DISPLAY, FONT_BODY, FONT_MONO, LOGO_SRC } from "../theme/tokens";
+import React, { useState, useEffect } from "react";
+import { Plus, Trash2, PenLine, Check, Shield } from "lucide-react";
+import { INK, PAPER, RULE, GREEN, ALERT, MUTED, FONT_BODY, GREEN_DEEP } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
 import TableScroll from "../components/ui/TableScroll";
@@ -16,41 +9,31 @@ import Td from "../components/ui/Td";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
-import MiniTable from "../components/ui/MiniTable";
-import ProjectSelect from "../components/ui/ProjectSelect";
-import KpiCard from "../components/charts/KpiCard";
-import LineChart from "../components/charts/LineChart";
-import BarChart from "../components/charts/BarChart";
-import DonutChart from "../components/charts/DonutChart";
-import { fmt, projectName } from "../utils/format";
-import { amountInWords } from "../utils/numberToWords";
-import { computeInvoiceTotals, NAVY, INVOICE_GOLD, invTdLabel, invTdVal } from "../utils/invoiceUtils";
-import { COMPANY_TEMPLATE, GENERAL_PROJECT } from "../constants/defaults";
-import {
-  assertJournalEntry, assertInvoice, assertAccount, assertEmployee,
-  assertProject, assertPayment
-} from "../validation";
-import {
-  db, loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates,
-  savePayeBrackets, getTrialBalance, getBalanceSheet, getProfitAndLoss,
-  getSession, onAuthStateChange, signOut, runPayrollAndFetch
-} from "../supabaseClient";
-import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelProps,
-             NewInvoiceFormProps, RecordPaymentFormProps, InvoiceDocumentProps,
-             ReceiptDocumentProps, PayslipProps, ProjectStats } from "../types";
+import { fmt } from "../utils/format";
+import { db } from "../supabaseClient";
+import { assertEmployee } from "../validation";
+import { loadPositions, type PositionOption } from "../supabase/profile";
 
 export default function EmployeesPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
+  const [positions, setPositions] = useState<PositionOption[]>([]);
+
   const [form, setForm] = useState({
     name: "",
     baseSalary: "",
     ssnitNo: "",
     niaCard: "",
     designation: "",
+    positionId: "",
+    portalAccess: false,
     exemptPaye: false,
     exemptSsnit: false,
   });
+
+  useEffect(() => {
+    loadPositions().then(setPositions);
+  }, []);
 
   function resetForm() {
     setForm({
@@ -59,6 +42,8 @@ export default function EmployeesPanel({ data, mutate }) {
       ssnitNo: "",
       niaCard: "",
       designation: "",
+      positionId: "",
+      portalAccess: false,
       exemptPaye: false,
       exemptSsnit: false,
     });
@@ -78,6 +63,8 @@ export default function EmployeesPanel({ data, mutate }) {
       ssnitNo: employee.ssnitNo || "",
       niaCard: employee.niaCard || "",
       designation: employee.designation || "",
+      positionId: employee.positionId || "",
+      portalAccess: employee.portalAccess || false,
       exemptPaye: employee.exemptPaye || false,
       exemptSsnit: employee.exemptSsnit || false,
     });
@@ -104,6 +91,8 @@ export default function EmployeesPanel({ data, mutate }) {
       ssnitNo: form.ssnitNo.trim(),
       niaCard: form.niaCard.trim(),
       designation: form.designation.trim(),
+      positionId: form.positionId || null,
+      portalAccess: form.portalAccess,
       exemptPaye: form.exemptPaye,
       exemptSsnit: form.exemptSsnit,
     };
@@ -116,30 +105,22 @@ export default function EmployeesPanel({ data, mutate }) {
           e.id === editingEmployeeId ? employeePayload : e
         ),
       }));
-      (async () => {
-        try {
-          await db.saveEmployees([employeePayload]);
-        } catch (err) {
-          console.error("Failed to save employee:", err);
-          alert("Failed to persist employee to server. Changes reverted.");
-          mutate((d) => ({ ...d, employees: prevEmployees }));
-        }
-      })();
     } else {
       mutate((d) => ({
         ...d,
         employees: [...d.employees, employeePayload],
       }));
-      (async () => {
-        try {
-          await db.saveEmployees([employeePayload]);
-        } catch (err) {
-          console.error("Failed to save employee:", err);
-          alert("Failed to persist employee to server. Changes reverted.");
-          mutate((d) => ({ ...d, employees: prevEmployees }));
-        }
-      })();
     }
+
+    (async () => {
+      try {
+        await db.saveEmployees([employeePayload]);
+      } catch (err) {
+        console.error("Failed to save employee:", err);
+        alert("Failed to persist employee to server. Changes reverted.");
+        mutate((d) => ({ ...d, employees: prevEmployees }));
+      }
+    })();
 
     resetForm();
     setEditingEmployeeId(null);
@@ -183,7 +164,7 @@ export default function EmployeesPanel({ data, mutate }) {
   return (
     <div>
       <SectionTitle
-        sub="Base monthly salary before deductions. Exempt employees from PAYE or SSNIT as needed."
+        sub="Assign positions to control portal access and permissions."
         action={
           <Button onClick={openAddModal} icon={Plus}>
             Add employee
@@ -201,9 +182,10 @@ export default function EmployeesPanel({ data, mutate }) {
             <thead>
               <tr>
                 <Th>Name</Th>
+                <Th>Position</Th>
                 <Th>Designation</Th>
-                <Th>SSNIT No.</Th>
                 <Th right>Base Salary</Th>
+                <Th>Portal</Th>
                 <Th>Exemptions</Th>
                 <Th>Status</Th>
                 <Th right>&nbsp;</Th>
@@ -213,42 +195,39 @@ export default function EmployeesPanel({ data, mutate }) {
               {(data.employees || []).map((e) => (
                 <tr key={e.id} className="row-hover">
                   <Td label="Name">{e.name}</Td>
+                  <Td label="Position">
+                    {e.positionId ? (
+                      <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>
+                        {positions.find((p) => p.id === e.positionId)?.title || e.positionId}
+                      </span>
+                    ) : (
+                      <span style={{ color: MUTED, fontSize: 12 }}>—</span>
+                    )}
+                  </Td>
                   <Td label="Designation">
                     {e.designation || <span style={{ color: MUTED }}>—</span>}
-                  </Td>
-                  <Td mono label="SSNIT No.">
-                    {e.ssnitNo || <span style={{ color: MUTED }}>—</span>}
                   </Td>
                   <Td right mono label="Base Salary">
                     GHS {fmt(e.baseSalary)}
                   </Td>
+                  <Td label="Portal">
+                    {e.portalAccess ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: GREEN_DEEP, background: "var(--success-bg)", padding: "2px 8px", borderRadius: 6 }}>
+                        <Shield size={11} /> Active
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 12, color: MUTED }}>—</span>
+                    )}
+                  </Td>
                   <Td label="Exemptions">
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {e.exemptPaye && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: ALERT,
-                            background: "var(--alert-bg)",
-                            padding: "2px 6px",
-                            borderRadius: 3,
-                            fontWeight: 700,
-                          }}
-                        >
+                        <span style={{ fontSize: 10, color: ALERT, background: "var(--alert-bg)", padding: "2px 6px", borderRadius: 3, fontWeight: 700 }}>
                           PAYE
                         </span>
                       )}
                       {e.exemptSsnit && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: ALERT,
-                            background: "var(--alert-bg)",
-                            padding: "2px 6px",
-                            borderRadius: 3,
-                            fontWeight: 700,
-                          }}
-                        >
+                        <span style={{ fontSize: 10, color: ALERT, background: "var(--alert-bg)", padding: "2px 6px", borderRadius: 3, fontWeight: 700 }}>
                           SSNIT
                         </span>
                       )}
@@ -276,24 +255,14 @@ export default function EmployeesPanel({ data, mutate }) {
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                       <button
                         onClick={() => openEditModal(e)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: MUTED,
-                        }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: MUTED }}
                         title="Edit employee"
                       >
                         <PenLine size={14} />
                       </button>
                       <button
                         onClick={() => removeEmployee(e.id)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: MUTED,
-                        }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: MUTED }}
                         title="Remove employee"
                       >
                         <Trash2 size={14} />
@@ -304,7 +273,7 @@ export default function EmployeesPanel({ data, mutate }) {
               ))}
               {(data.employees || []).length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ color: MUTED, padding: 10 }}>
+                  <td colSpan={8} style={{ color: MUTED, padding: 10 }}>
                     No employees added yet.
                   </td>
                 </tr>
@@ -334,13 +303,26 @@ export default function EmployeesPanel({ data, mutate }) {
               />
             </div>
             <div style={{ flex: "1 1 200px" }}>
+              <label style={labelStyle}>Position</label>
+              <select
+                style={inputStyle}
+                value={form.positionId}
+                onChange={(e) => setForm({ ...form, positionId: e.target.value })}
+              >
+                <option value="">No position assigned</option>
+                {positions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: "1 1 200px" }}>
               <label style={labelStyle}>Designation</label>
               <input
                 style={inputStyle}
                 value={form.designation}
-                onChange={(e) =>
-                  setForm({ ...form, designation: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, designation: e.target.value })}
                 placeholder="Site Engineer"
               />
             </div>
@@ -350,10 +332,7 @@ export default function EmployeesPanel({ data, mutate }) {
                 style={inputStyle}
                 value={form.baseSalary}
                 onChange={(e) =>
-                  setForm({
-                    ...form,
-                    baseSalary: e.target.value.replace(/[^0-9.]/g, ""),
-                  })
+                  setForm({ ...form, baseSalary: e.target.value.replace(/[^0-9.]/g, "") })
                 }
                 placeholder="3500"
               />
@@ -385,8 +364,29 @@ export default function EmployeesPanel({ data, mutate }) {
                 padding: "8px 0",
                 borderTop: `1px solid ${RULE}`,
                 marginTop: 8,
+                flexWrap: "wrap",
               }}
             >
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontFamily: FONT_BODY,
+                  fontSize: 13,
+                  color: INK,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.portalAccess}
+                  onChange={(e) => setForm({ ...form, portalAccess: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                Portal Access
+                <span style={{ fontSize: 11, color: MUTED }}>(can log into employee portal)</span>
+              </label>
               <label
                 style={{
                   display: "flex",
@@ -404,7 +404,7 @@ export default function EmployeesPanel({ data, mutate }) {
                   onChange={(e) => setForm({ ...form, exemptPaye: e.target.checked })}
                   style={{ width: 16, height: 16, cursor: "pointer" }}
                 />
-                Exempt from PAYE (e.g. Second Job)
+                Exempt from PAYE
               </label>
               <label
                 style={{
@@ -423,7 +423,7 @@ export default function EmployeesPanel({ data, mutate }) {
                   onChange={(e) => setForm({ ...form, exemptSsnit: e.target.checked })}
                   style={{ width: 16, height: 16, cursor: "pointer" }}
                 />
-                Exempt from SSNIT (e.g. Not Registered)
+                Exempt from SSNIT
               </label>
             </div>
 
@@ -438,4 +438,3 @@ export default function EmployeesPanel({ data, mutate }) {
     </div>
   );
 }
-

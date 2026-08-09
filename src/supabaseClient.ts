@@ -112,6 +112,8 @@ interface EmployeeRow {
   designation?: string | null;
   exempt_paye?: boolean | null;
   exempt_ssnit?: boolean | null;
+  position_id?: string | null;
+  portal_access?: boolean | null;
 }
 
 function employeeFromRow(r: EmployeeRow): Employee {
@@ -125,6 +127,8 @@ function employeeFromRow(r: EmployeeRow): Employee {
     designation: r.designation,
     exemptPaye: r.exempt_paye ?? false,
     exemptSsnit: r.exempt_ssnit ?? false,
+    positionId: r.position_id ?? null,
+    portalAccess: r.portal_access ?? false,
   };
 }
 
@@ -137,6 +141,8 @@ function employeeToRow(e: Employee): EmployeeRow {
     ssnit_no: e.ssnitNo ?? null,
     nia_card: e.niaCard ?? null,
     designation: e.designation ?? null,
+    position_id: e.positionId ?? null,
+    portal_access: e.portalAccess ?? false,
     exempt_paye: e.exemptPaye ?? false,
     exempt_ssnit: e.exemptSsnit ?? false,
   };
