@@ -1,20 +1,33 @@
 import React from "react";
+import { COMPANY_TEMPLATE } from "../constants/defaults";
 import { LOGO_SRC } from "../theme/tokens";
+import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
+import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
-import { FONT_DISPLAY, FONT_MONO } from "../theme/tokens";
-import type { AppData, PayrollRun } from "../types";
+import { FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme/tokens";
+import type { AppData, PayrollRun, PayrollLine } from "../types";
 
 /* ─── A4-Optimized Professional Payslip ─── */
 
-export default function Payslip({ data, run, r }) {
-  const emp = data.employees.find((e) => e.id === r.employeeId) || {};
+interface PayslipProps {
+  data: AppData;
+  run: PayrollRun;
+  r: PayrollLine;
+}
+
+export default function Payslip({ data, run, r }: PayslipProps) {
+  const company = data.company || COMPANY_TEMPLATE;
+  const emp = data.employees.find((e) => e.id === r.employeeId) || ({} as any);
   const [year, month] = run.period.split("-");
   const monthName = new Date(Number(year), Number(month) - 1, 1)
     .toLocaleString("en-US", { month: "long" })
     .toUpperCase();
 
-  const payDate = new Date(Number(year), Number(month), 5)
-    .toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const payDate = new Date(Number(year), Number(month), 5).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   const totalDeductions = r.paye + r.ssnitEmployee;
   const ytdGross = r.gross * Number(month);
@@ -28,7 +41,7 @@ export default function Payslip({ data, run, r }) {
         .payslip-root {
           background: #fff;
           color: #1a1a1a;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-family: ${FONT_BODY}, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           font-size: 10pt;
           line-height: 1.45;
           width: 210mm;
@@ -38,12 +51,9 @@ export default function Payslip({ data, run, r }) {
           padding: 0;
           position: relative;
         }
-        .ps-gold-bar {
-          height: 4pt;
-          background: #B8860B;
-        }
+        .ps-gold-bar { height: 4pt; background: #B8860B; }
         .ps-header {
-          background: #1B2A4A;
+          background: ${NAVY};
           color: #fff;
           padding: 18pt 24pt;
           display: flex;
@@ -51,20 +61,12 @@ export default function Payslip({ data, run, r }) {
           align-items: center;
           gap: 16pt;
         }
-        .ps-header-left {
-          display: flex;
-          align-items: center;
-          gap: 12pt;
-        }
-        .ps-logo {
-          height: 42pt;
-          width: auto;
-          object-fit: contain;
-        }
+        .ps-header-left { display: flex; align-items: center; gap: 12pt; }
+        .ps-logo { height: 42pt; width: auto; object-fit: contain; }
         .ps-company-name {
-          font-family: 'Roboto Slab', serif;
+          font-family: ${FONT_DISPLAY};
           font-size: 14pt;
-          font-weight: 800;
+          font-weight: 700;
           letter-spacing: -0.3px;
           line-height: 1.2;
         }
@@ -75,23 +77,17 @@ export default function Payslip({ data, run, r }) {
           letter-spacing: 1.4pt;
           font-weight: 600;
         }
-        .ps-header-right {
-          text-align: right;
-        }
+        .ps-header-right { text-align: right; }
         .ps-title {
-          font-family: 'Roboto Slab', serif;
-          font-size: 20pt;
-          font-weight: 800;
+          font-family: ${FONT_DISPLAY};
+          font-size: 18pt;
+          font-weight: 700;
           color: #B8860B;
-          letter-spacing: 2pt;
+          letter-spacing: 3pt;
+          text-transform: uppercase;
           line-height: 1;
         }
-        .ps-period {
-          font-size: 8pt;
-          color: #8A9BB8;
-          margin-top: 4pt;
-          font-family: 'IBM Plex Mono', monospace;
-        }
+        .ps-period { font-size: 8pt; color: #8A9BB8; margin-top: 4pt; font-family: ${FONT_MONO}; }
         .ps-meta-banner {
           background: #F7F4EE;
           border-bottom: 1px solid #D5CEBD;
@@ -100,23 +96,12 @@ export default function Payslip({ data, run, r }) {
           justify-content: space-between;
           align-items: center;
         }
-        .ps-meta-group {
-          display: flex;
-          gap: 24pt;
-        }
+        .ps-meta-group { display: flex; gap: 24pt; }
         .ps-meta-item-label {
-          font-size: 7pt;
-          color: #6B6B6B;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.8pt;
+          font-size: 7pt; color: #6B6B6B; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.8pt;
         }
-        .ps-meta-item-value {
-          font-size: 10pt;
-          font-weight: 700;
-          color: #1a1a1a;
-          margin-top: 1pt;
-        }
+        .ps-meta-item-value { font-size: 10pt; font-weight: 700; color: #1a1a1a; margin-top: 1pt; }
         .ps-employee-section {
           padding: 14pt 24pt;
           display: grid;
@@ -125,18 +110,10 @@ export default function Payslip({ data, run, r }) {
           border-bottom: 1px solid #E8E2D6;
         }
         .ps-emp-field-label {
-          font-size: 7pt;
-          color: #6B6B6B;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.8pt;
+          font-size: 7pt; color: #6B6B6B; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.8pt;
         }
-        .ps-emp-field-value {
-          font-size: 10pt;
-          font-weight: 600;
-          color: #1a1a1a;
-          margin-top: 1pt;
-        }
+        .ps-emp-field-value { font-size: 10pt; font-weight: 600; color: #1a1a1a; margin-top: 1pt; }
         .ps-tables-section {
           padding: 14pt 24pt;
           display: grid;
@@ -146,55 +123,21 @@ export default function Payslip({ data, run, r }) {
           page-break-inside: avoid;
         }
         .ps-table-header {
-          font-size: 7.5pt;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 1.2pt;
-          padding-bottom: 6pt;
-          margin-bottom: 8pt;
-          border-bottom: 2px solid;
+          font-size: 7.5pt; font-weight: 800; text-transform: uppercase;
+          letter-spacing: 1.2pt; padding-bottom: 6pt; margin-bottom: 8pt; border-bottom: 2px solid;
         }
-        .ps-table-header.earnings {
-          color: #B8860B;
-          border-color: #B8860B;
-        }
-        .ps-table-header.deductions {
-          color: #A63D40;
-          border-color: #A63D40;
-        }
-        .ps-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 9.5pt;
-        }
-        .ps-table td {
-          padding: 5pt 0;
-          vertical-align: top;
-        }
-        .ps-table td:last-child {
-          text-align: right;
-          font-family: 'IBM Plex Mono', monospace;
-          font-weight: 600;
-        }
-        .ps-table tr.total td {
-          font-weight: 800;
-          padding-top: 6pt;
-          border-top: 1.5px solid;
-        }
-        .ps-table tr.total.earnings-total td {
-          color: #1B2A4A;
-          border-color: #1B2A4A;
-          background: #F7F4EE;
-        }
-        .ps-table tr.total.deductions-total td {
-          color: #A63D40;
-          border-color: #A63D40;
-          background: #FDF5F5;
-        }
+        .ps-table-header.earnings { color: #B8860B; border-color: #B8860B; }
+        .ps-table-header.deductions { color: #A63D40; border-color: #A63D40; }
+        .ps-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+        .ps-table td { padding: 5pt 0; vertical-align: top; }
+        .ps-table td:last-child { text-align: right; font-family: ${FONT_MONO}; font-weight: 600; }
+        .ps-table tr.total td { font-weight: 800; padding-top: 6pt; border-top: 1.5px solid; }
+        .ps-table tr.total.earnings-total td { color: ${NAVY}; border-color: ${NAVY}; background: #F7F4EE; }
+        .ps-table tr.total.deductions-total td { color: #A63D40; border-color: #A63D40; background: #FDF5F5; }
         .ps-net-section {
-          margin: 14pt 24pt;
-          background: #1B2A4A;
-          border-radius: 5pt;
+          margin: 14pt 24pt 0;
+          background: ${NAVY};
+          border-radius: 5pt 5pt 0 0;
           padding: 16pt 20pt;
           display: flex;
           justify-content: space-between;
@@ -203,52 +146,46 @@ export default function Payslip({ data, run, r }) {
           page-break-inside: avoid;
         }
         .ps-net-label {
-          font-size: 7.5pt;
-          font-weight: 700;
-          color: #D4A843;
-          text-transform: uppercase;
-          letter-spacing: 1.5pt;
-          margin-bottom: 4pt;
+          font-size: 7.5pt; font-weight: 700; color: #D4A843;
+          text-transform: uppercase; letter-spacing: 1.5pt; margin-bottom: 4pt;
         }
         .ps-net-amount {
-          font-size: 22pt;
-          font-weight: 800;
-          color: #fff;
-          font-family: 'IBM Plex Mono', monospace;
-          letter-spacing: -0.5px;
+          font-size: 22pt; font-weight: 800; color: #fff;
+          font-family: ${FONT_MONO}; letter-spacing: -0.5px;
         }
-        .ps-net-words {
-          font-size: 8pt;
-          color: #8A9BB8;
-          margin-top: 3pt;
-          font-style: italic;
-        }
+        .ps-net-words { font-size: 8pt; color: #8A9BB8; margin-top: 3pt; font-style: italic; }
         .ps-net-breakdown {
           background: rgba(255,255,255,0.07);
           border-radius: 4pt;
           padding: 10pt 14pt;
           min-width: 140pt;
         }
-        .ps-net-breakdown-row {
+        .ps-net-breakdown-row { display: flex; justify-content: space-between; margin-bottom: 3pt; }
+        .ps-net-breakdown-row:last-child {
+          margin-bottom: 0; padding-top: 4pt; border-top: 1px solid rgba(255,255,255,0.15);
+        }
+        .ps-net-breakdown-label { font-size: 8pt; color: #8A9BB8; }
+        .ps-net-breakdown-value { font-size: 8pt; color: #fff; font-family: ${FONT_MONO}; font-weight: 600; }
+
+        /* Counterfoil — a payslip's own signature: a tear-off stub, like a
+           real cheque/payroll counterfoil, reinforcing this is the
+           employee's personal record to keep. */
+        .ps-counterfoil {
+          margin: 0 24pt 14pt;
+          border: 1px dashed #B9AE93;
+          border-top: none;
+          border-radius: 0 0 5pt 5pt;
+          background: #FFFDF8;
+          padding: 8pt 20pt 10pt;
           display: flex;
           justify-content: space-between;
-          margin-bottom: 3pt;
+          align-items: center;
+          font-size: 7.5pt;
+          color: #8A8478;
+          letter-spacing: 0.6pt;
+          text-transform: uppercase;
         }
-        .ps-net-breakdown-row:last-child {
-          margin-bottom: 0;
-          padding-top: 4pt;
-          border-top: 1px solid rgba(255,255,255,0.15);
-        }
-        .ps-net-breakdown-label {
-          font-size: 8pt;
-          color: #8A9BB8;
-        }
-        .ps-net-breakdown-value {
-          font-size: 8pt;
-          color: #fff;
-          font-family: 'IBM Plex Mono', monospace;
-          font-weight: 600;
-        }
+
         .ps-employer-section {
           margin: 0 24pt 10pt;
           padding: 10pt 14pt;
@@ -258,27 +195,14 @@ export default function Payslip({ data, run, r }) {
           page-break-inside: avoid;
         }
         .ps-section-title {
-          font-size: 7.5pt;
-          font-weight: 700;
-          color: #B8860B;
-          text-transform: uppercase;
-          letter-spacing: 1pt;
-          margin-bottom: 6pt;
+          font-size: 7.5pt; font-weight: 700; color: #B8860B;
+          text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 6pt;
         }
-        .ps-employer-grid {
-          display: flex;
-          gap: 32pt;
-        }
-        .ps-employer-item-label {
-          font-size: 8.5pt;
-          color: #6B6B6B;
-        }
+        .ps-employer-grid { display: flex; gap: 32pt; }
+        .ps-employer-item-label { font-size: 8.5pt; color: #6B6B6B; }
         .ps-employer-item-value {
-          font-size: 11pt;
-          font-weight: 700;
-          font-family: 'IBM Plex Mono', monospace;
-          color: #1a1a1a;
-          margin-top: 1pt;
+          font-size: 11pt; font-weight: 700; font-family: ${FONT_MONO};
+          color: #1a1a1a; margin-top: 1pt;
         }
         .ps-ytd-section {
           margin: 0 24pt 12pt;
@@ -288,89 +212,50 @@ export default function Payslip({ data, run, r }) {
           border-radius: 4pt;
           page-break-inside: avoid;
         }
-        .ps-ytd-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 12pt;
-        }
-        .ps-ytd-item-label {
-          font-size: 7.5pt;
-          color: #6B6B6B;
-        }
+        .ps-ytd-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12pt; }
+        .ps-ytd-item-label { font-size: 7.5pt; color: #6B6B6B; }
         .ps-ytd-item-value {
-          font-size: 10pt;
-          font-weight: 700;
-          font-family: 'IBM Plex Mono', monospace;
-          color: #1a1a1a;
-          margin-top: 1pt;
+          font-size: 10pt; font-weight: 700; font-family: ${FONT_MONO};
+          color: #1a1a1a; margin-top: 1pt;
         }
         .ps-footer {
           padding: 12pt 24pt 16pt;
           border-top: 1px solid #E8E2D6;
           text-align: center;
           position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
+          bottom: 0; left: 0; right: 0;
         }
         .ps-footer-disclaimer {
-          font-size: 7.5pt;
-          color: #6B6B6B;
-          text-transform: uppercase;
-          letter-spacing: 0.6pt;
-          line-height: 1.6;
+          font-size: 7.5pt; color: #6B6B6B;
+          text-transform: uppercase; letter-spacing: 0.6pt; line-height: 1.6;
         }
-        .ps-footer-contact {
-          font-size: 8pt;
-          color: #6B6B6B;
-          margin-top: 6pt;
-          line-height: 1.5;
-        }
+        .ps-footer-contact { font-size: 8pt; color: #6B6B6B; margin-top: 6pt; line-height: 1.5; }
 
         @media print {
-          .payslip-root {
-            width: 210mm;
-            min-height: auto;
-            margin: 0;
-            box-shadow: none;
-            border: none;
-          }
-          body {
-            margin: 0;
-            padding: 0;
-            background: #fff;
-          }
+          .payslip-root { width: 210mm; min-height: auto; margin: 0; box-shadow: none; border: none; }
+          body { margin: 0; padding: 0; background: #fff; }
         }
-
         @media screen {
-          .payslip-root {
-            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-            border: 1px solid #D5CEBD;
-            margin: 20px auto;
-          }
+          .payslip-root { box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #D5CEBD; margin: 20px auto; }
         }
       `}</style>
 
       <div className="ps-gold-bar" />
 
-      {/* ── Header ── */}
       <div className="ps-header">
         <div className="ps-header-left">
-          <img src={LOGO_SRC} alt="logo" className="ps-logo" />
+          <img src={LOGO_SRC} alt={`${company.name} logo`} className="ps-logo" />
           <div>
-            <div className="ps-company-name">
-              {data.company.name || "MODULO DEVELOPMENT"}
-            </div>
+            <div className="ps-company-name">{company.name || "MODULO DEVELOPMENT"}</div>
             <div className="ps-tagline">Design · Build · Deliver</div>
           </div>
         </div>
         <div className="ps-header-right">
-          <div className="ps-title">PAYSLIP</div>
+          <div className="ps-title">Payslip</div>
           <div className="ps-period">{monthName} {year}</div>
         </div>
       </div>
 
-      {/* ── Meta Banner ── */}
       <div className="ps-meta-banner">
         <div className="ps-meta-group">
           <div>
@@ -390,7 +275,6 @@ export default function Payslip({ data, run, r }) {
         </div>
       </div>
 
-      {/* ── Employee Details ── */}
       <div className="ps-employee-section">
         <div>
           <div className="ps-emp-field-label">Employee Name</div>
@@ -400,9 +284,7 @@ export default function Payslip({ data, run, r }) {
         </div>
         <div>
           <div className="ps-emp-field-label">Designation</div>
-          <div className="ps-emp-field-value">
-            {(emp.designation || "—").toUpperCase()}
-          </div>
+          <div className="ps-emp-field-value">{(emp.designation || "—").toUpperCase()}</div>
         </div>
         <div>
           <div className="ps-emp-field-label">SSNIT Number</div>
@@ -428,9 +310,7 @@ export default function Payslip({ data, run, r }) {
         </div>
       </div>
 
-      {/* ── Earnings & Deductions ── */}
       <div className="ps-tables-section">
-        {/* Earnings */}
         <div>
           <div className="ps-table-header earnings">Earnings</div>
           <table className="ps-table">
@@ -455,7 +335,6 @@ export default function Payslip({ data, run, r }) {
           </table>
         </div>
 
-        {/* Deductions */}
         <div>
           <div className="ps-table-header deductions">Deductions</div>
           <table className="ps-table">
@@ -481,7 +360,7 @@ export default function Payslip({ data, run, r }) {
         </div>
       </div>
 
-      {/* ── Net Pay ── */}
+      {/* Net Pay + counterfoil — the hero, and its tear-off record */}
       <div className="ps-net-section">
         <div>
           <div className="ps-net-label">Net Pay</div>
@@ -501,14 +380,15 @@ export default function Payslip({ data, run, r }) {
           </div>
           <div className="ps-net-breakdown-row">
             <span className="ps-net-breakdown-label" style={{ color: "#D4A843", fontWeight: 700 }}>Net</span>
-            <span className="ps-net-breakdown-value" style={{ fontWeight: 700 }}>
-              GH₵ {fmt(r.net)}
-            </span>
+            <span className="ps-net-breakdown-value" style={{ fontWeight: 700 }}>GH₵ {fmt(r.net)}</span>
           </div>
         </div>
       </div>
+      <div className="ps-counterfoil">
+        <span>✂ Retain this slip for your records</span>
+        <span style={{ fontFamily: FONT_MONO }}>PS-{run.period}-{r.employeeId.slice(-4)}</span>
+      </div>
 
-      {/* ── Employer Contributions ── */}
       <div className="ps-employer-section">
         <div className="ps-section-title">Employer Contributions</div>
         <div className="ps-employer-grid">
@@ -525,7 +405,6 @@ export default function Payslip({ data, run, r }) {
         </div>
       </div>
 
-      {/* ── YTD Summary ── */}
       <div className="ps-ytd-section">
         <div className="ps-section-title">Year-to-Date Summary (Jan – {monthName} {year})</div>
         <div className="ps-ytd-grid">
@@ -548,56 +427,16 @@ export default function Payslip({ data, run, r }) {
         </div>
       </div>
 
-      {/* ── Footer ── */}
       <div className="ps-footer">
         <div className="ps-footer-disclaimer">
           This is a computer-generated payslip and does not require a physical signature.
         </div>
         <div className="ps-footer-contact">
-          {data.company.name} · {data.company.addressLine} · {data.company.cityLine} · {data.company.poBox}
+          {company.name} · {company.addressLine} · {company.cityLine} · {company.poBox}
           <br />
-          Phone: {data.company.phone} · Email: {data.company.email}
+          Phone: {company.phone} · Email: {company.email}
         </div>
       </div>
     </div>
   );
-}
-
-/* ─── Amount in words helpers ─── */
-const ONES = [
-  "","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten",
-  "Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen",
-];
-const TENS = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
-
-function threeDigitsToWords(n: number): string {
-  let s = "";
-  if (n >= 100) { s += ONES[Math.floor(n / 100)] + " Hundred "; n %= 100; }
-  if (n >= 20) { s += TENS[Math.floor(n / 10)] + " "; n %= 10; }
-  if (n > 0) s += ONES[n] + " ";
-  return s.trim();
-}
-
-function numberToWords(num: number): string {
-  num = Math.round(num);
-  if (num === 0) return "Zero";
-  const units = ["","Thousand","Million","Billion"];
-  const groups: number[] = [];
-  let n = num;
-  while (n > 0) { groups.push(n % 1000); n = Math.floor(n / 1000); }
-  const parts: string[] = [];
-  for (let i = groups.length - 1; i >= 0; i--) {
-    if (groups[i] > 0)
-      parts.push(threeDigitsToWords(groups[i]) + (units[i] ? " " + units[i] : ""));
-  }
-  return parts.join(" ").replace(/\s+/g, " ").trim();
-}
-
-function amountInWords(amount: number, currency: string): string {
-  const whole = Math.floor(amount);
-  const cents = Math.round((amount - whole) * 100);
-  const currencyName = currency === "USD" ? "US Dollars" : "Ghana Cedis";
-  let words = numberToWords(whole) + " " + currencyName;
-  if (cents > 0) words += " and " + numberToWords(cents) + " Pesewas";
-  return words + " Only";
 }
