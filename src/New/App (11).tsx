@@ -268,7 +268,7 @@ export default function App() {
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: isMobile ? "auto" : "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
+    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
       <style>{`
         :root {
           --ink: #1F2A24; --paper: #F7F4EE; --paper-raised: #FFFFFF; --rule: #DCD5C4;
