@@ -10,10 +10,6 @@ interface ProjectOption {
   name: string;
 }
 
-/**
- * Standalone Media Library wrapper — loads the user's assigned projects,
- * lets them pick one, then renders the MediaLibraryPanel for that project.
- */
 export default function MediaLibraryWrapper() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -22,14 +18,12 @@ export default function MediaLibraryWrapper() {
   useEffect(() => {
     (async () => {
       try {
-        // Load user's assigned projects
         const assignments = await loadMyAssignments();
         if (assignments.length === 0) {
           setLoading(false);
           return;
         }
 
-        // Fetch project names for assigned project IDs
         const ids = [...new Set(assignments.map((a: AssignmentRow) => a.project_id))];
         const { data, error } = await supabase
           .from('projects')
@@ -51,7 +45,7 @@ export default function MediaLibraryWrapper() {
   if (loading) {
     return (
       <div style={{ padding: 40, color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>
-        Loading your projects…
+        Loading your projects...
       </div>
     );
   }

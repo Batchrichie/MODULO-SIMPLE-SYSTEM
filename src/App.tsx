@@ -10,7 +10,7 @@ import {
   getSession, onAuthStateChange, signOut
 } from "./supabaseClient";
 import { loadMyProfile, type UserProfile } from "./supabase/profile";
-import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, ALL } from "./lib/permissions";
+import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite } from "./lib/permissions";
 import Login from "./Login.jsx";
 
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
@@ -39,6 +39,12 @@ import AgedPayablesPanel from "./panels/AgedPayablesPanel";
 import BankReconciliationPanel from "./panels/BankReconciliationPanel";
 import ReportsPanel from "./panels/ReportsPanel";
 import ExportPanel from "./panels/ExportPanel";
+import PmDashboardPanel from "./panels/PmDashboardPanel";
+import MyPayslipsPanel from "./panels/MyPayslipsPanel";
+import MyStatementPanel from "./panels/MyStatementPanel";
+import LimitedDashboardPanel from "./panels/LimitedDashboardPanel";
+import FieldActivityFeed from "./panels/FieldActivityFeed";
+import MediaLibraryWrapper from "./panels/MediaLibraryWrapper";
 
 import type { AppData } from "./types";
 
@@ -55,7 +61,8 @@ export default function App() {
 
   // Derive permissions from profile (default to [] = no access)
   const permissions = useMemo(() => profile?.permissions ?? [], [profile]);
-  const isAdmin = useMemo(() => permissions.includes(ALL), [permissions]);
+  const adminFlag = useMemo(() => isAdmin(permissions), [permissions]);
+  const ceoFlag = useMemo(() => isCeo(permissions), [permissions]);
 
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
@@ -125,8 +132,8 @@ export default function App() {
         // 2. Load data based on permissions
         const tax = await loadTaxConfig();
 
-        if (p && p.permissions.includes(ALL)) {
-          // Admin: full data load
+        if (p && (p.permissions.includes(ALL) || p.permissions.includes("ceo:access"))) {
+          // Admin or CEO: full data load
           const remote = await loadLedgerState();
           if (remote) {
             setCompanyNameDraft(remote.companyName || "");
@@ -153,15 +160,49 @@ export default function App() {
             }));
           }
         } else {
-          // Non-admin: minimal data (projects list loaded on-demand by portal panels)
-          setCompanyNameDraft("");
-          setData((prev) => ({ ...prev,
-            ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
-            ssnitEmployerRate: tax.rates.ssnitEmployerRate,
-            nhilGetfundRate: tax.rates.nhilGetfundRate,
-            vatRate: tax.rates.vatRate,
-            brackets: tax.brackets,
-          }));
+          // Non-admin: load read-only data needed for portal panels
+          try {
+            const remote = await loadLedgerState();
+            if (remote) {
+              setCompanyNameDraft(remote.companyName || "");
+              setData({
+                ...DEFAULT_DATA,
+                companyName: remote.companyName || "",
+                company: remote.company || COMPANY_TEMPLATE,
+                accounts: remote.accounts || [],
+                projects: remote.projects || [],
+                journal: remote.journal || [],
+                employees: remote.employees || [],
+                payrollRuns: remote.payrollRuns || [],
+                invoices: remote.invoices || [],
+                bills: remote.bills || [],
+                ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
+                ssnitEmployerRate: tax.rates.ssnitEmployerRate,
+                nhilGetfundRate: tax.rates.nhilGetfundRate,
+                vatRate: tax.rates.vatRate,
+                brackets: tax.brackets,
+              });
+            } else {
+              setCompanyNameDraft("");
+              setData((prev) => ({ ...prev,
+                ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
+                ssnitEmployerRate: tax.rates.ssnitEmployerRate,
+                nhilGetfundRate: tax.rates.nhilGetfundRate,
+                vatRate: tax.rates.vatRate,
+                brackets: tax.brackets,
+              }));
+            }
+          } catch (err) {
+            console.error("Failed to load portal data:", err);
+            setCompanyNameDraft("");
+            setData((prev) => ({ ...prev,
+              ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
+              ssnitEmployerRate: tax.rates.ssnitEmployerRate,
+              nhilGetfundRate: tax.rates.nhilGetfundRate,
+              vatRate: tax.rates.vatRate,
+              brackets: tax.brackets,
+            }));
+          }
         }
       } catch (err) {
         console.error("Failed to load profile/data:", err);
@@ -176,7 +217,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!loaded || !isAdmin) return;
+    if (!loaded || !adminFlag) return;
     (async () => {
       try {
         await saveSettings({
@@ -194,7 +235,7 @@ export default function App() {
       }
     })();
   }, [
-    loaded, isAdmin, data.companyName, data.company, data.nextEntryNum, data.nextInvoiceNum,
+    loaded, adminFlag, data.companyName, data.company, data.nextEntryNum, data.nextInvoiceNum,
     data.ssnitEmployeeRate, data.ssnitEmployerRate, data.nhilGetfundRate, data.vatRate,
   ]);
 
@@ -233,10 +274,10 @@ export default function App() {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${RULE}` }}>
         <div style={{ width: 38, height: 38, borderRadius: 8, background: GREEN, color: PAPER, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{brandInitial}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          {isAdmin && (
+          {adminFlag && (
             <input style={{ ...inputStyle, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, border: "none", padding: "2px 0", background: "transparent" }} value={companyNameDraft} onChange={(e) => setCompanyNameDraft(e.target.value)} onBlur={saveCompanyName} />
           )}
-          {!isAdmin && <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15 }}>{data.companyName}</div>}
+          {!adminFlag && <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15 }}>{data.companyName}</div>}
           <div style={{ fontSize: 10.5, color: MUTED, letterSpacing: 0.6, textTransform: "uppercase" }}>
             {profile?.positionTitle || "Ledger"} · GHS
           </div>
@@ -333,54 +374,38 @@ export default function App() {
 
         <main style={{ flex: 1, padding: isMobile ? "20px 16px 96px" : "32px 40px", width: "100%", margin: 0, height: isMobile ? "100vh" : "100vh", overflowY: "auto", boxSizing: "border-box", position: "relative", WebkitOverflowScrolling: "touch" }}>
           {/* Admin panels */}
-          {effectiveTab === "dashboard" && isAdmin && <DashboardPanel data={data} setTab={setTab} />}
-          {effectiveTab === "accounts" && isAdmin && <AccountsPanel data={data} mutate={mutate} />}
-          {effectiveTab === "journal" && isAdmin && <JournalPanel data={data} mutate={mutate} />}
-          {effectiveTab === "ledger" && isAdmin && <LedgerPanel data={data} />}
-          {effectiveTab === "financials" && isAdmin && <FinancialsPanel data={data} setPrintContent={setPrintContent} />}
-          {effectiveTab === "projects" && <ProjectsPanel data={data} mutate={mutate} />}
-          {effectiveTab === "invoicing" && isAdmin && <InvoicingPanel data={data} mutate={mutate} setPrintContent={setPrintContent} />}
-          {effectiveTab === "employees" && isAdmin && <EmployeesPanel data={data} mutate={mutate} />}
-          {effectiveTab === "payroll" && isAdmin && <PayrollPanel data={data} mutate={mutate} setPrintContent={setPrintContent} />}
-          {effectiveTab === "bills" && isAdmin && <BillsPanel data={data} mutate={mutate} />}
-          {effectiveTab === "expenses" && isAdmin && <ExpensesPanel data={data} mutate={mutate} />}
-          {effectiveTab === "aged-payables" && isAdmin && <AgedPayablesPanel data={data} />}
-          {effectiveTab === "bank-reconciliation" && isAdmin && <BankReconciliationPanel data={data} mutate={mutate} />}
-          {effectiveTab === "reports" && isAdmin && <ReportsPanel data={data} />}
-          {effectiveTab === "export" && isAdmin && <ExportPanel data={data} isMobile={isMobile} />}
+          {effectiveTab === "dashboard" && (adminFlag || ceoFlag) && <DashboardPanel data={data} setTab={setTab} />}
+          {effectiveTab === "accounts" && adminFlag && <AccountsPanel data={data} mutate={mutate} />}
+          {effectiveTab === "journal" && (adminFlag || ceoFlag) && <JournalPanel data={data} mutate={adminFlag ? mutate : undefined} readOnly={ceoFlag} />}
+          {effectiveTab === "ledger" && (adminFlag || ceoFlag) && <LedgerPanel data={data} />}
+          {effectiveTab === "financials" && (adminFlag || ceoFlag) && <FinancialsPanel data={data} setPrintContent={setPrintContent} />}
+          {effectiveTab === "projects" && <ProjectsPanel data={data} mutate={adminFlag ? mutate : undefined} />}
+          {effectiveTab === "invoicing" && (adminFlag || ceoFlag) && <InvoicingPanel data={data} mutate={adminFlag ? mutate : undefined} setPrintContent={setPrintContent} />}
+          {effectiveTab === "employees" && (adminFlag || ceoFlag) && <EmployeesPanel data={data} mutate={adminFlag ? mutate : undefined} />}
+          {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={adminFlag ? mutate : undefined} setPrintContent={setPrintContent} />}
+          {effectiveTab === "bills" && (adminFlag || ceoFlag) && <BillsPanel data={data} mutate={adminFlag ? mutate : undefined} />}
+          {effectiveTab === "expenses" && adminFlag && <ExpensesPanel data={data} mutate={mutate} />}
+          {effectiveTab === "aged-payables" && (adminFlag || ceoFlag) && <AgedPayablesPanel data={data} />}
+          {effectiveTab === "bank-reconciliation" && adminFlag && <BankReconciliationPanel data={data} mutate={mutate} />}
+          {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
+          {effectiveTab === "field-activity" && <FieldActivityFeed />}
+          {effectiveTab === "export" && adminFlag && <ExportPanel data={data} isMobile={isMobile} />}
 
-          {/* Non-admin portal panels — placeholder for now, built in Phase 2-3 */}
-          {effectiveTab === "pm-dashboard" && !isAdmin && (
-            <div>
-              <SectionTitle sub="Your assigned projects and pending tasks.">My Projects</SectionTitle>
-              <Card style={{ padding: 40, textAlign: "center" }}>
-                <div style={{ fontSize: 14, color: MUTED }}>PM Dashboard — coming in Phase 2</div>
-              </Card>
-            </div>
+          {/* Media Library — admin uses projects panel, non-admin uses wrapper */}
+          {effectiveTab === "media-library" && !adminFlag && !ceoFlag && <MediaLibraryWrapper />}
+
+          {/* Non-admin portal panels */}
+          {effectiveTab === "pm-dashboard" && !adminFlag && !ceoFlag && profile && (
+            <PmDashboardPanel data={data} profile={profile} />
           )}
-          {effectiveTab === "my-payslips" && !isAdmin && (
-            <div>
-              <SectionTitle sub="View your payslip history.">My Payslips</SectionTitle>
-              <Card style={{ padding: 40, textAlign: "center" }}>
-                <div style={{ fontSize: 14, color: MUTED }}>My Payslips — coming in Phase 3</div>
-              </Card>
-            </div>
+          {effectiveTab === "my-payslips" && !adminFlag && !ceoFlag && profile && (
+            <MyPayslipsPanel data={data} profile={profile} />
           )}
-          {effectiveTab === "my-statement" && !isAdmin && (
-            <div>
-              <SectionTitle sub="Your year-to-date earnings summary.">My Statement</SectionTitle>
-              <Card style={{ padding: 40, textAlign: "center" }}>
-                <div style={{ fontSize: 14, color: MUTED }}>My Statement — coming in Phase 3</div>
-              </Card>
-            </div>
+          {effectiveTab === "my-statement" && !adminFlag && !ceoFlag && profile && (
+            <MyStatementPanel data={data} profile={profile} />
           )}
-          {effectiveTab === "dashboard" && !isAdmin && (
-            <div>
-              <SectionTitle sub="Welcome back.">Dashboard</SectionTitle>
-              <Card style={{ padding: 40, textAlign: "center" }}>
-                <div style={{ fontSize: 14, color: MUTED }}>Limited dashboard — coming in Phase 2-3</div>
-              </Card>
-            </div>
+          {effectiveTab === "dashboard" && !adminFlag && !ceoFlag && profile && (
+            <LimitedDashboardPanel data={data} profile={profile} setTab={setTab} />
           )}
 
           {effectiveTab === "logout" && (

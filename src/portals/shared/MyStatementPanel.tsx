@@ -1,203 +1,373 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, Loader2, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
-import { INK, MUTED, GREEN, ALERT, GOLD, FONT_DISPLAY, FONT_BODY, FONT_MONO, RULE, PAPER } from '../../theme/tokens';
-import Card from '../../components/ui/Card';
-import { loadMyProfile } from '../../supabase/profile';
-import { supabase } from '../../supabaseClient';
+import React, { useMemo } from "react";
+import {
+  FileText, TrendingUp, TrendingDown, Wallet, PiggyBank,
+  ArrowUpRight, ArrowDownRight, Calendar,
+} from "lucide-react";
+import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
+         FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../../theme/tokens";
+import Card from "../../components/ui/Card";
+import SectionTitle from "../../components/ui/SectionTitle";
+import TableScroll from "../../components/ui/TableScroll";
+import Th from "../../components/ui/Th";
+import Td from "../../components/ui/Td";
+import { fmt } from "../../utils/format";
+import type { AppData, UserProfile } from "../../types";
 
-interface PayrollRow {
-  id: string;
-  period: string;
-  employee_id: string;
-  gross: number;
-  ssnit_employee: number;
-  ssnit_employer: number;
-  paye: number;
-  net: number;
+interface MyStatementPanelProps {
+  data: AppData;
+  profile: UserProfile;
 }
 
-export default function MyStatementPanel() {
-  const [rows, setRows] = useState<PayrollRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [employeeName, setEmployeeName] = useState('');
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+export default function MyStatementPanel({ data, profile }: MyStatementPanelProps) {
+  const currentYear = new Date().getFullYear();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const profile = await loadMyProfile();
-        if (!profile) { setLoading(false); return; }
-        setEmployeeName(profile.employeeName);
-
-        const { data, error } = await supabase
-          .from('payroll_lines')
-          .select('*')
-          .eq('employee_id', profile.employeeId)
-          .order('period', { ascending: true });
-
-        if (!error && data) setRows(data as PayrollRow[]);
-      } catch (err) {
-        console.error('Failed to load statement:', err);
+  // Get this employee's payslips for the current year
+  const yearPayslips = useMemo(() => {
+    const rows: Array<{
+      period: string;
+      gross: number;
+      ssnitEmployee: number;
+      ssnitEmployer: number;
+      paye: number;
+      net: number;
+      month: number;
+    }> = [];
+    data.payrollRuns.forEach(run => {
+      // Filter by current year (period format: "YYYY-MM")
+      if (!run.period.startsWith(String(currentYear))) return;
+      const match = run.rows.find(r => r.employeeId === profile.employeeId);
+      if (match) {
+        rows.push({
+          ...match,
+          period: run.period,
+          month: parseInt(run.period.split("-")[1], 10),
+        });
       }
-      setLoading(false);
-    })();
-  }, []);
+    });
+    return rows.sort((a, b) => a.month - b.month);
+  }, [data.payrollRuns, profile.employeeId, currentYear]);
 
-  // Filter to selected year (extract year from period string like "March 2025")
-  const yearRows = rows.filter((r) => {
-    const match = r.period.match(/\d{4}/);
-    return match && parseInt(match[0]) === currentYear;
-  });
+  // All-time payslips for comparison
+  const allTimePayslips = useMemo(() => {
+    const rows: Array<{ period: string; gross: number; net: number; year: number }> = [];
+    data.payrollRuns.forEach(run => {
+      const match = run.rows.find(r => r.employeeId === profile.employeeId);
+      if (match) {
+        rows.push({
+          period: run.period,
+          gross: match.gross,
+          net: match.net,
+          year: parseInt(run.period.split("-")[0], 10),
+        });
+      }
+    });
+    return rows.sort((a, b) => a.period.localeCompare(b.period));
+  }, [data.payrollRuns, profile.employeeId]);
 
-  // Aggregations
-  const totalGross = yearRows.reduce((s, r) => s + (r.gross || 0), 0);
-  const totalNet = yearRows.reduce((s, r) => s + (r.net || 0), 0);
-  const totalSsnitEmp = yearRows.reduce((s, r) => s + (r.ssnit_employee || 0), 0);
-  const totalSsnitEr = yearRows.reduce((s, r) => s + (r.ssnit_employer || 0), 0);
-  const totalPaye = yearRows.reduce((s, r) => s + (r.paye || 0), 0);
-  const totalDeductions = totalSsnitEmp + totalPaye;
-  const avgMonthlyNet = yearRows.length > 0 ? totalNet / yearRows.length : 0;
-
-  // Available years for the filter
-  const years = [...new Set(rows.map((r) => {
-    const m = r.period.match(/\d{4}/);
-    return m ? parseInt(m[0]) : null;
-  }).filter(Boolean))].sort((a, b) => b - a) as number[];
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 40, color: MUTED, fontFamily: FONT_BODY }}>
-        <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-        Loading your statement…
-      </div>
+  // YTD Totals
+  const ytd = useMemo(() => {
+    return yearPayslips.reduce(
+      (acc, p) => ({
+        gross: acc.gross + p.gross,
+        ssnitEmployee: acc.ssnitEmployee + p.ssnitEmployee,
+        ssnitEmployer: acc.ssnitEmployer + p.ssnitEmployer,
+        paye: acc.paye + p.paye,
+        net: acc.net + p.net,
+      }),
+      { gross: 0, ssnitEmployee: 0, ssnitEmployer: 0, paye: 0, net: 0 }
     );
-  }
+  }, [yearPayslips]);
+
+  // All-time totals
+  const allTime = useMemo(() => {
+    return allTimePayslips.reduce(
+      (acc, p) => ({ gross: acc.gross + p.gross, net: acc.net + p.net }),
+      { gross: 0, net: 0 }
+    );
+  }, [allTimePayslips]);
+
+  // Effective tax rate
+  const effectiveTaxRate = ytd.gross > 0 ? ((ytd.ssnitEmployee + ytd.paye) / ytd.gross) * 100 : 0;
+
+  // Average monthly net
+  const avgMonthlyNet = yearPayslips.length > 0 ? ytd.net / yearPayslips.length : 0;
+
+  // Employer contribution total
+  const employerContributions = ytd.ssnitEmployer;
+
+  // Group all-time by year for yearly comparison
+  const yearlySummary = useMemo(() => {
+    const map: Record<number, { gross: number; net: number; count: number }> = {};
+    allTimePayslips.forEach(p => {
+      if (!map[p.year]) map[p.year] = { gross: 0, net: 0, count: 0 };
+      map[p.year].gross += p.gross;
+      map[p.year].net += p.net;
+      map[p.year].count += 1;
+    });
+    return Object.entries(map)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([year, d]) => ({ year: parseInt(year), ...d }));
+  }, [allTimePayslips]);
+
+  // Employee details
+  const employee = useMemo(
+    () => data.employees.find(e => e.id === profile.employeeId),
+    [data.employees, profile.employeeId]
+  );
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, color: INK }}>Year-to-Date Statement</div>
-          <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>{employeeName}</div>
-        </div>
-        {years.length > 1 && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            {years.map((y) => (
-              <button
-                key={y}
-                onClick={() => setCurrentYear(y)}
-                style={{
-                  padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  fontFamily: FONT_BODY, fontSize: 13, fontWeight: currentYear === y ? 700 : 500,
-                  background: currentYear === y ? 'var(--nav-active)' : 'transparent',
-                  color: currentYear === y ? GREEN : MUTED,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {y}
-              </button>
-            ))}
+      <SectionTitle sub={`Year-to-date earnings and deduction summary for ${currentYear}.`}>
+        My Statement — {currentYear}
+      </SectionTitle>
+
+      {/* Employee Info */}
+      {employee && (
+        <Card style={{ marginBottom: 24, padding: "16px 20px" }}>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
+            <div style={{ flex: "1 1 140px" }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Employee</div>
+              <div style={{ fontWeight: 600 }}>{employee.name}</div>
+            </div>
+            {employee.designation && (
+              <div style={{ flex: "1 1 140px" }}>
+                <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Designation</div>
+                <div>{employee.designation}</div>
+              </div>
+            )}
+            {employee.ssnitNo && (
+              <div style={{ flex: "1 1 140px" }}>
+                <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>SSNIT No.</div>
+                <div style={{ fontFamily: FONT_MONO }}>{employee.ssnitNo}</div>
+              </div>
+            )}
+            <div style={{ flex: "1 1 140px" }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Base Salary (Monthly)</div>
+              <div style={{ fontFamily: FONT_MONO, fontWeight: 600 }}>GHS {fmt(employee.baseSalary)}</div>
+            </div>
           </div>
-        )}
+        </Card>
+      )}
+
+      {/* YTD Summary Cards */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <Card style={{ flex: "1 1 200px", padding: "16px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--success-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <TrendingUp size={18} style={{ color: GREEN }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>YTD Gross Income</div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: INK }}>GHS {fmt(ytd.gross)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: MUTED }}>{yearPayslips.length} month{yearPayslips.length !== 1 ? "s" : ""} processed</div>
+        </Card>
+
+        <Card style={{ flex: "1 1 200px", padding: "16px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--alert-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <ArrowDownRight size={18} style={{ color: ALERT }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>YTD Deductions</div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: ALERT }}>GHS {fmt(ytd.ssnitEmployee + ytd.paye)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, fontSize: 11, color: MUTED }}>
+            <span>SSNIT: GHS {fmt(ytd.ssnitEmployee)}</span>
+            <span>PAYE: GHS {fmt(ytd.paye)}</span>
+          </div>
+        </Card>
+
+        <Card style={{ flex: "1 1 200px", padding: "16px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--success-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Wallet size={18} style={{ color: GREEN }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>YTD Net Pay</div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: GREEN }}>GHS {fmt(ytd.net)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: MUTED }}>Avg. monthly: GHS {fmt(avgMonthlyNet)}</div>
+        </Card>
+
+        <Card style={{ flex: "1 1 200px", padding: "16px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "#FFFBEB", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <PiggyBank size={18} style={{ color: GOLD }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Employer SSNIT</div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: GOLD }}>GHS {fmt(employerContributions)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: MUTED }}>Paid on your behalf to SSNIT</div>
+        </Card>
       </div>
 
-      {yearRows.length === 0 ? (
-        <Card style={{ padding: 40, textAlign: 'center' }}>
-          <FileText size={24} style={{ color: MUTED, marginBottom: 8 }} />
-          <div style={{ fontSize: 14, color: MUTED }}>No payslip data for {currentYear}.</div>
-        </Card>
-      ) : (
-        <>
-          {/* Summary cards */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-            <Card style={{ flex: '1 1 150px', padding: '14px 18px' }}>
-              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>YTD Gross</div>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 20, fontWeight: 700, color: INK }}>
-                GHS {totalGross.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+      {/* Effective Tax Rate + Take-Home Ratio */}
+      <div style={{ marginBottom: 24 }}>
+        <SectionTitle sub="Your effective tax rate and take-home percentage for {currentYear}.">
+          Tax Summary
+        </SectionTitle>
+        <Card>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 16 }}>
+            <div style={{ flex: "1 1 200px" }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Effective Deduction Rate</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                <span style={{ fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 700, color: ALERT }}>{effectiveTaxRate.toFixed(1)}</span>
+                <span style={{ fontSize: 16, color: MUTED }}>%</span>
               </div>
-            </Card>
-            <Card style={{ flex: '1 1 150px', padding: '14px 18px' }}>
-              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>YTD Net</div>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 20, fontWeight: 700, color: GREEN }}>
-                GHS {totalNet.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Of gross income goes to SSNIT + PAYE</div>
+            </div>
+            <div style={{ flex: "1 1 200px" }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Take-Home Ratio</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                <span style={{ fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 700, color: GREEN }}>{(100 - effectiveTaxRate).toFixed(1)}</span>
+                <span style={{ fontSize: 16, color: MUTED }}>%</span>
               </div>
-            </Card>
-            <Card style={{ flex: '1 1 150px', padding: '14px 18px' }}>
-              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Total Deductions</div>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 20, fontWeight: 700, color: ALERT }}>
-                GHS {totalDeductions.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
-              </div>
-            </Card>
-            <Card style={{ flex: '1 1 150px', padding: '14px 18px' }}>
-              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Avg Monthly Net</div>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 20, fontWeight: 700, color: INK }}>
-                GHS {avgMonthlyNet.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
-              </div>
-            </Card>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Of gross income reaches your pocket</div>
+            </div>
           </div>
 
-          {/* Deduction breakdown */}
-          <Card style={{ marginBottom: 20, padding: '16px 18px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: FONT_BODY, color: INK, marginBottom: 12 }}>Deduction Breakdown (YTD)</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: INK, fontFamily: FONT_BODY }}>SSNIT Employee ({((totalSsnitEmp / (totalGross || 1)) * 100).toFixed(1)}%)</span>
-                <span style={{ fontFamily: FONT_MONO, fontSize: 13, color: INK }}>GHS {totalSsnitEmp.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
+          {/* Visual bar */}
+          {ytd.gross > 0 && (
+            <div>
+              <div style={{ height: 12, borderRadius: 6, overflow: "hidden", display: "flex", border: `1px solid ${RULE}` }}>
+                <div
+                  style={{
+                    width: `${effectiveTaxRate}%`,
+                    background: `linear-gradient(90deg, ${ALERT}, ${GOLD})`,
+                    transition: "width 0.3s ease",
+                  }}
+                />
+                <div
+                  style={{
+                    flex: 1,
+                    background: GREEN,
+                    transition: "flex 0.3s ease",
+                  }}
+                />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: INK, fontFamily: FONT_BODY }}>PAYE Income Tax ({((totalPaye / (totalGross || 1)) * 100).toFixed(1)}%)</span>
-                <span style={{ fontFamily: FONT_MONO, fontSize: 13, color: INK }}>GHS {totalPaye.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: INK, fontFamily: FONT_BODY }}>Total Deductions</span>
-                <span style={{ fontFamily: FONT_MONO, fontSize: 13, fontWeight: 700, color: ALERT }}>- GHS {totalDeductions.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: INK, fontFamily: FONT_BODY }}>Take-Home (Net)</span>
-                <span style={{ fontFamily: FONT_MONO, fontSize: 14, fontWeight: 700, color: GREEN }}>GHS {totalNet.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
-                Effective tax rate: {((totalDeductions / (totalGross || 1)) * 100).toFixed(1)}% of gross
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: MUTED, marginTop: 4 }}>
+                <span>Deductions: GHS {fmt(ytd.ssnitEmployee + ytd.paye)}</span>
+                <span>Net: GHS {fmt(ytd.net)}</span>
               </div>
             </div>
-          </Card>
+          )}
+        </Card>
+      </div>
 
-          {/* Monthly table */}
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }} className='table-card'>
-              <thead>
-                <tr style={{ background: 'var(--paper)' }}>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${RULE}` }}>Period</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${RULE}` }}>Gross</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${RULE}` }}>SSNIT</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${RULE}` }}>PAYE</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, borderBottom: `1px solid ${RULE}` }}>Net</th>
-                </tr>
-              </thead>
-              <tbody>
-                {yearRows.map((r) => (
-                  <tr key={r.id} className='row-hover'>
-                    <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_BODY, color: INK, borderBottom: `1px solid ${RULE}`, fontWeight: 600 }}>{r.period}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, textAlign: 'right', borderBottom: `1px solid ${RULE}` }}>{(r.gross || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, textAlign: 'right', color: MUTED, borderBottom: `1px solid ${RULE}` }}>-{(r.ssnit_employee || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, textAlign: 'right', color: MUTED, borderBottom: `1px solid ${RULE}` }}>-{(r.paye || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, textAlign: 'right', fontWeight: 700, color: GREEN, borderBottom: `1px solid ${RULE}` }}>{(r.net || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
+      {/* Monthly Breakdown Table */}
+      <div style={{ marginBottom: 24 }}>
+        <SectionTitle sub="Month-by-month earnings and deductions for {currentYear}.">
+          Monthly Breakdown
+        </SectionTitle>
+        <Card>
+          {yearPayslips.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "24px 0", color: MUTED }}>
+              <Calendar size={32} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
+              <p style={{ margin: 0, fontSize: 14 }}>No payroll has been processed for {currentYear} yet.</p>
+            </div>
+          ) : (
+            <TableScroll>
+              <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <Th>Month</Th>
+                    <Th right>Gross Pay</Th>
+                    <Th right>SSNIT</Th>
+                    <Th right>PAYE</Th>
+                    <Th right>Total Ded.</Th>
+                    <Th right>Net Pay</Th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'var(--paper)' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, fontFamily: FONT_BODY, color: INK, borderBottom: `1px solid ${RULE}` }}>Total</td>
-                  <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, fontWeight: 700, textAlign: 'right', borderBottom: `1px solid ${RULE}` }}>{totalGross.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, textAlign: 'right', color: MUTED, borderBottom: `1px solid ${RULE}` }}>-{totalSsnitEmp.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, textAlign: 'right', color: MUTED, borderBottom: `1px solid ${RULE}` }}>-{totalPaye.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 13, fontFamily: FONT_MONO, fontWeight: 700, textAlign: 'right', color: GREEN, borderBottom: `1px solid ${RULE}` }}>{totalNet.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</td>
-                </tr>
-              </tfoot>
-            </table>
+                </thead>
+                <tbody>
+                  {yearPayslips.map((p) => {
+                    const totalDed = p.ssnitEmployee + p.paye;
+                    return (
+                      <tr key={p.period} className="row-hover">
+                        <Td label="Month" bold>{monthNames[p.month - 1]} {currentYear}</Td>
+                        <Td right mono label="Gross Pay">GHS {fmt(p.gross)}</Td>
+                        <Td right mono label="SSNIT" style={{ color: ALERT }}>- GHS {fmt(p.ssnitEmployee)}</Td>
+                        <Td right mono label="PAYE" style={{ color: ALERT }}>- GHS {fmt(p.paye)}</Td>
+                        <Td right mono label="Total Ded." bold style={{ color: ALERT }}>- GHS {fmt(totalDed)}</Td>
+                        <Td right mono label="Net Pay" bold style={{ color: GREEN }}>GHS {fmt(p.net)}</Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {yearPayslips.length > 0 && (
+                  <tfoot>
+                    <tr style={{ borderTop: `2px solid ${RULE}`, background: "var(--paper)" }}>
+                      <Td label="Total" bold>YTD Total</Td>
+                      <Td right mono label="Gross Pay" bold>GHS {fmt(ytd.gross)}</Td>
+                      <Td right mono label="SSNIT" bold style={{ color: ALERT }}>- GHS {fmt(ytd.ssnitEmployee)}</Td>
+                      <Td right mono label="PAYE" bold style={{ color: ALERT }}>- GHS {fmt(ytd.paye)}</Td>
+                      <Td right mono label="Total Ded." bold style={{ color: ALERT }}>- GHS {fmt(ytd.ssnitEmployee + ytd.paye)}</Td>
+                      <Td right mono label="Net Pay" bold style={{ color: GREEN }}>GHS {fmt(ytd.net)}</Td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </TableScroll>
+          )}
+        </Card>
+      </div>
+
+      {/* Year-over-Year Comparison */}
+      {yearlySummary.length > 1 && (
+        <div>
+          <SectionTitle sub="Compare your earnings across years.">
+            Yearly Comparison
+          </SectionTitle>
+          <Card>
+            <TableScroll>
+              <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <Th>Year</Th>
+                    <Th right>Months</Th>
+                    <Th right>Gross Income</Th>
+                    <Th right>Net Pay</Th>
+                    <Th right>Take-Home %</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {yearlySummary.map(y => {
+                    const pct = y.gross > 0 ? (y.net / y.gross) * 100 : 0;
+                    return (
+                      <tr key={y.year} className="row-hover">
+                        <Td label="Year" bold style={{ color: y.year === currentYear ? GREEN : INK }}>
+                          {y.year} {y.year === currentYear && "(current)"}
+                        </Td>
+                        <Td right label="Months">{y.count}</Td>
+                        <Td right mono label="Gross">GHS {fmt(y.gross)}</Td>
+                        <Td right mono label="Net" bold>GHS {fmt(y.net)}</Td>
+                        <Td right label="Take-Home" style={{ color: pct >= 70 ? GREEN : GOLD, fontWeight: 600 }}>{pct.toFixed(1)}%</Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: `2px solid ${RULE}`, background: "var(--paper)" }}>
+                    <Td label="Total" bold>All Time</Td>
+                    <Td right label="Months" bold>{allTimePayslips.length}</Td>
+                    <Td right mono label="Gross" bold>GHS {fmt(allTime.gross)}</Td>
+                    <Td right mono label="Net" bold style={{ color: GREEN }}>GHS {fmt(allTime.net)}</Td>
+                    <Td right label="Take-Home" bold style={{ color: allTime.gross > 0 ? GREEN : MUTED }}>
+                      {allTime.gross > 0 ? ((allTime.net / allTime.gross) * 100).toFixed(1) : 0}%
+                    </Td>
+                  </tr>
+                </tfoot>
+              </table>
+            </TableScroll>
           </Card>
-        </>
+        </div>
       )}
     </div>
   );
