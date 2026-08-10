@@ -11,12 +11,6 @@ import {
 } from "./supabaseClient";
 import { loadMyProfile, type UserProfile } from "./supabase/profile";
 import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, ALL } from "./lib/permissions";
-import PMDashboard from "./portals/pm/PMDashboard";
-import ProjectsBasicList from "./portals/shared/ProjectsBasicList";
-import MyPayslipsPanel from "./portals/shared/MyPayslipsPanel";
-import MyStatementPanel from "./portals/shared/MyStatementPanel";
-import MediaLibraryWrapper from "./portals/shared/MediaLibraryWrapper";
-import FieldActivityFeed from "./portals/ceo/FieldActivityFeed";
 import Login from "./Login.jsx";
 
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
@@ -89,13 +83,6 @@ export default function App() {
   const navGroups = useMemo(() => getNavGroups(permissions), [permissions]);
   const mobileBottomKeys = useMemo(() => getMobileBottomNav(permissions).map((n) => n.key), [permissions]);
   const mobileMoreItems = useMemo(() => getMobileMoreItems(permissions), [permissions]);
-
-  // Auto-redirect to first available tab if current tab isn't accessible
-  const accessibleKeys = useMemo(
-    () => new Set([...navGroups.flatMap((g) => g.keys), "logout"]),
-    [navGroups]
-  );
-  const effectiveTab = accessibleKeys.has(tab) ? tab : (navGroups[0]?.keys[0] || "dashboard");
 
   // Resolve icon for a nav key
   function navIcon(key: string) {
@@ -223,6 +210,16 @@ export default function App() {
     mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
   }
 
+  // Auto-redirect to first available tab if current tab isn't accessible
+  // (must be before early returns to satisfy Rules of Hooks)
+  const accessibleKeys = useMemo(
+    () => new Set([...navGroups.flatMap((g) => g.keys), "logout"]),
+    [navGroups]
+  );
+  const effectiveTab = accessibleKeys.has(tab) ? tab : (navGroups[0]?.keys[0] || "dashboard");
+
+  const brandInitial = (companyNameDraft || data.companyName || "M").trim().charAt(0).toUpperCase();
+
   if (!authChecked) {
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Checking authentication…</div>;
   }
@@ -230,8 +227,6 @@ export default function App() {
   if (!loaded) {
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Loading your ledger…</div>;
   }
-
-  const brandInitial = (companyNameDraft || data.companyName || "M").trim().charAt(0).toUpperCase();
 
   const sidebarContent = (
     <>
@@ -283,10 +278,16 @@ export default function App() {
           --nav-active: #1E2A24; --success-bg: #1E2A24; --alert-bg: #2A1C1D;
         }
         @media print {
+          @page { size: A4; margin: 14mm 12mm; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .no-print { display: none !important; }
           .print-only { display: block !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
-          body { background: white !important; }
+          body { background: white !important; margin: 0; padding: 0; }
           :root { --ink: #000; --paper: #fff; --paper-raised: #fff; --rule: #ccc; --muted: #333; }
+          .fin-page { page-break-after: always; }
+          .fin-page:last-child { page-break-after: auto; }
+          .fin-page tr { page-break-inside: avoid; }
+          .fin-page thead { display: table-header-group; }
         }
         .print-only { display: none; }
         .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
@@ -330,10 +331,9 @@ export default function App() {
           </aside>
         )}
 
-        <main style={{ flex: 1, padding: isMobile ? "20px 16px 20px" : "32px 40px", width: "100%", margin: 0, height: isMobile ? "auto" : "100vh", overflowY: isMobile ? "visible" : "auto", boxSizing: "border-box", position: "relative" }}>
+        <main style={{ flex: 1, padding: isMobile ? "20px 16px 96px" : "32px 40px", width: "100%", margin: 0, height: isMobile ? "100vh" : "100vh", overflowY: "auto", boxSizing: "border-box", position: "relative", WebkitOverflowScrolling: "touch" }}>
           {/* Admin panels */}
           {effectiveTab === "dashboard" && isAdmin && <DashboardPanel data={data} setTab={setTab} />}
-          {effectiveTab === "field-activity" && isAdmin && <FieldActivityFeed />}
           {effectiveTab === "accounts" && isAdmin && <AccountsPanel data={data} mutate={mutate} />}
           {effectiveTab === "journal" && isAdmin && <JournalPanel data={data} mutate={mutate} />}
           {effectiveTab === "ledger" && isAdmin && <LedgerPanel data={data} />}
@@ -349,16 +349,39 @@ export default function App() {
           {effectiveTab === "reports" && isAdmin && <ReportsPanel data={data} />}
           {effectiveTab === "export" && isAdmin && <ExportPanel data={data} isMobile={isMobile} />}
 
-          {/* PM Portal */}
-          {effectiveTab === "pm-dashboard" && !isAdmin && <PMDashboard />}
-
-          {/* Shared portal panels — visible to non-admin with relevant tokens */}
-          {effectiveTab === "my-payslips" && !isAdmin && <MyPayslipsPanel />}
-          {effectiveTab === "my-statement" && !isAdmin && <MyStatementPanel />}
-          {effectiveTab === "media-library" && !isAdmin && <MediaLibraryWrapper />}
-
-          {/* Non-admin limited dashboard — shows projects list */}
-          {effectiveTab === "dashboard" && !isAdmin && <ProjectsBasicList />}
+          {/* Non-admin portal panels — placeholder for now, built in Phase 2-3 */}
+          {effectiveTab === "pm-dashboard" && !isAdmin && (
+            <div>
+              <SectionTitle sub="Your assigned projects and pending tasks.">My Projects</SectionTitle>
+              <Card style={{ padding: 40, textAlign: "center" }}>
+                <div style={{ fontSize: 14, color: MUTED }}>PM Dashboard — coming in Phase 2</div>
+              </Card>
+            </div>
+          )}
+          {effectiveTab === "my-payslips" && !isAdmin && (
+            <div>
+              <SectionTitle sub="View your payslip history.">My Payslips</SectionTitle>
+              <Card style={{ padding: 40, textAlign: "center" }}>
+                <div style={{ fontSize: 14, color: MUTED }}>My Payslips — coming in Phase 3</div>
+              </Card>
+            </div>
+          )}
+          {effectiveTab === "my-statement" && !isAdmin && (
+            <div>
+              <SectionTitle sub="Your year-to-date earnings summary.">My Statement</SectionTitle>
+              <Card style={{ padding: 40, textAlign: "center" }}>
+                <div style={{ fontSize: 14, color: MUTED }}>My Statement — coming in Phase 3</div>
+              </Card>
+            </div>
+          )}
+          {effectiveTab === "dashboard" && !isAdmin && (
+            <div>
+              <SectionTitle sub="Welcome back.">Dashboard</SectionTitle>
+              <Card style={{ padding: 40, textAlign: "center" }}>
+                <div style={{ fontSize: 14, color: MUTED }}>Limited dashboard — coming in Phase 2-3</div>
+              </Card>
+            </div>
+          )}
 
           {effectiveTab === "logout" && (
             <div>
