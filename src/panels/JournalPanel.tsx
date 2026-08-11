@@ -141,4 +141,3 @@ export default function JournalPanel({ data, mutate, readOnly }: { data: any; mu
     </div>
   );
 }
-

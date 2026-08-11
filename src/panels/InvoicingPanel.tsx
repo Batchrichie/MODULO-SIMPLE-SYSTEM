@@ -105,9 +105,11 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
       <SectionTitle
         sub="Create client invoices with your letterhead, VAT/NHIL/GETFund auto-calculated, and post straight to the ledger."
         action={
-          <Button onClick={() => setShowNew(true)} icon={Plus}>
-            New invoice
-          </Button>
+          mutate ? (
+            <Button onClick={() => setShowNew(true)} icon={Plus}>
+              New invoice
+            </Button>
+          ) : undefined
         }
       >
         Invoicing
@@ -186,33 +188,37 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                         >
                           Print
                         </Button>
-                        <Button
-                          variant="ghost"
-                          icon={Plus}
-                          onClick={() => {
-                            setCloneSource(inv);
-                            setShowNew(true);
-                          }}
-                        >
-                          Clone
-                        </Button>
-                        {inv.status !== "Void" && (
-                          <Button
-                            variant="ghost"
-                            icon={Trash2}
-                            onClick={() => voidInvoice(inv)}
-                          >
-                            Void
-                          </Button>
-                        )}
-                        {balance > 0.01 && inv.status !== "Void" && (
-                          <Button
-                            variant="ghost"
-                            icon={Banknote}
-                            onClick={() => setPayingInv(inv)}
-                          >
-                            Payment
-                          </Button>
+                        {mutate && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              icon={Plus}
+                              onClick={() => {
+                                setCloneSource(inv);
+                                setShowNew(true);
+                              }}
+                            >
+                              Clone
+                            </Button>
+                            {inv.status !== "Void" && (
+                              <Button
+                                variant="ghost"
+                                icon={Trash2}
+                                onClick={() => voidInvoice(inv)}
+                              >
+                                Void
+                              </Button>
+                            )}
+                            {balance > 0.01 && inv.status !== "Void" && (
+                              <Button
+                                variant="ghost"
+                                icon={Banknote}
+                                onClick={() => setPayingInv(inv)}
+                              >
+                                Payment
+                              </Button>
+                            )}
+                          </>
                         )}
                         {inv.payments.length > 0 && (
                           <select

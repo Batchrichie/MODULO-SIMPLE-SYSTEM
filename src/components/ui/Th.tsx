@@ -18,7 +18,9 @@ export default function Th({ children, right = false }: ThProps) {
         fontWeight: 600,
         padding: "8px 10px",
         borderBottom: `2px solid ${RULE}`,
-        whiteSpace: "nowrap",
+        whiteSpace: "normal",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
       }}
     >
       {children}

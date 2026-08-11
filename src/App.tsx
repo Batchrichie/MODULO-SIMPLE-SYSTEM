@@ -120,6 +120,18 @@ export default function App() {
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (!authChecked || !authSession) return;
+    if (typeof window === "undefined") return;
+    try {
+      const loginFlow = window.localStorage.getItem("modulo_login_flow");
+      if (loginFlow === "1") {
+        setTab("dashboard");
+        window.localStorage.removeItem("modulo_login_flow");
+      }
+    } catch {}
+  }, [authChecked, authSession]);
+
   // After auth confirmed: load profile, then load data
   useEffect(() => {
     if (!authChecked || !authSession) return;
@@ -305,6 +317,8 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
+  return (
+    <div className="app-root" style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
       <style>{`
         :root {
           --ink: #1F2A24; --paper: #F7F4EE; --paper-raised: #FFFFFF; --rule: #DCD5C4;
@@ -319,17 +333,32 @@ export default function App() {
           --nav-active: #1E2A24; --success-bg: #1E2A24; --alert-bg: #2A1C1D;
         }
         @media print {
-          @page { size: A4; margin: 14mm 12mm; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .no-print { display: none !important; }
-          .print-only { display: block !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
-          body { background: white !important; margin: 0; padding: 0; }
-          :root { --ink: #000; --paper: #fff; --paper-raised: #fff; --rule: #ccc; --muted: #333; }
-          .fin-page { page-break-after: always; }
-          .fin-page:last-child { page-break-after: auto; }
-          .fin-page tr { page-break-inside: avoid; }
-          .fin-page thead { display: table-header-group; }
-        }
+  html, body, #root, .app-root {
+    height: auto !important;
+    overflow: visible !important;
+    max-width: 100% !important;
+    display: block !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-only {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    position: static !important; /* MUST BE STATIC */
+    width: 100% !important;
+  }
+  
+  body * {
+    visibility: hidden;
+  }
+  .print-only, .print-only * {
+    visibility: visible;
+  }
+}
         .print-only { display: none; }
         .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
         @media (max-width: 768px) { .grid-fin { grid-template-columns: 1fr !important; } }

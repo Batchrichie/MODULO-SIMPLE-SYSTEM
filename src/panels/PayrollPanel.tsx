@@ -119,12 +119,16 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
             <label style={labelStyle}>Period</label>
             <input type="month" style={inputStyle} value={period} onChange={(e) => { setPeriod(e.target.value); setPostError(""); }} />
           </div>
-          <Button onClick={handlePostPayroll} icon={Banknote} disabled={posting || alreadyPosted || !period}>
-            {posting ? "Posting..." : alreadyPosted ? "Already Posted" : "Run & Post Payroll"}
-          </Button>
-          <Button variant="ghost" onClick={() => setShowTaxModal(true)} icon={Settings2}>
-            Tax settings
-          </Button>
+          {mutate && (
+            <>
+              <Button onClick={handlePostPayroll} icon={Banknote} disabled={posting || alreadyPosted || !period}>
+                {posting ? "Posting..." : alreadyPosted ? "Already Posted" : "Run & Post Payroll"}
+              </Button>
+              <Button variant="ghost" onClick={() => setShowTaxModal(true)} icon={Settings2}>
+                Tax settings
+              </Button>
+            </>
+          )}
           {alreadyPosted && (
             <span style={{ color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Already posted for this period.</span>
           )}

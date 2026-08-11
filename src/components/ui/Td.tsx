@@ -21,6 +21,9 @@ export default function Td({ children, right = false, mono = false, bold = false
         fontSize: 13.5,
         color: INK,
         fontWeight: bold ? 600 : 400,
+        whiteSpace: "normal",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
         ...style,
       }}
     >

@@ -181,9 +181,11 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       <SectionTitle
         sub="Record vendor bills and track what you owe. Payments post automatically to the ledger."
         action={
-          <Button onClick={() => setShowNew(true)} icon={Plus}>
-            New bill
-          </Button>
+          mutate ? (
+            <Button onClick={() => setShowNew(true)} icon={Plus}>
+              New bill
+            </Button>
+          ) : undefined
         }
       >
         Bills & Payables
@@ -220,7 +222,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
                     </Td>
                     <Td label="Status">{bill.status}</Td>
                     <Td right label="Action">
-                      {balance > 0.01 && (
+                      {mutate && balance > 0.01 && (
                         <Button variant="ghost" icon={Banknote} onClick={() => { setPayingBill(bill); setDate(new Date().toISOString().slice(0, 10)); }}>
                           Pay
                         </Button>

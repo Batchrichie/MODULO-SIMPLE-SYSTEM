@@ -88,9 +88,11 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
       <SectionTitle
         sub="Record day-to-day costs without touching the double-entry journal."
         action={
-          <Button onClick={() => setShowNewModal(true)} icon={Plus}>
-            New Expense
-          </Button>
+          mutate ? (
+            <Button onClick={() => setShowNewModal(true)} icon={Plus}>
+              New Expense
+            </Button>
+          ) : undefined
         }
       >
         Quick Expenses

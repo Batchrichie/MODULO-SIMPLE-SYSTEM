@@ -21,9 +21,9 @@ import {
   FONT_DISPLAY,
   FONT_BODY,
   FONT_MONO,
-} from '../../theme/tokens';
-import SectionTitle from '../../components/ui/SectionTitle';
-import Card from '../../components/ui/Card';
+} from '../theme/tokens';
+import SectionTitle from '../components/ui/SectionTitle';
+import Card from '../components/ui/Card';
 import {
   loadMilestonesForProjects,
   loadSiteReports,
@@ -33,8 +33,8 @@ import {
   type SiteReportRow,
   type IssueRow,
   type MediaRow,
-} from '../../supabase/fieldOps';
-import { supabase } from '../../supabaseClient';
+} from '../supabase/fieldOps';
+import { supabase } from '../supabaseClient';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

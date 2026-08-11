@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Camera, Upload, Image as ImageIcon, FileText, Trash2, Loader2, X, Download } from 'lucide-react';
-import { INK, MUTED, GREEN, FONT_BODY, RULE, ALERT } from '../../theme/tokens';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
-import { loadMedia, uploadMedia, getPublicMediaUrl, type MediaRow } from '../../supabase/fieldOps';
-import { supabase } from '../../supabaseClient';
-import { canAccess } from '../../lib/permissions';
-import { loadMyProfile } from '../../supabase/profile';
+import { INK, MUTED, GREEN, FONT_BODY, RULE, ALERT } from '../theme/tokens';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import { loadMedia, uploadMedia, getPublicMediaUrl, type MediaRow } from '../supabase/fieldOps';
+import { supabase } from '../supabaseClient';
+import { canAccess } from '../lib/permissions';
+import { loadMyProfile } from '../supabase/profile';
 
 interface Props {
   projectId: string;
@@ -130,7 +130,7 @@ export default function MediaLibraryPanel({ projectId }: Props) {
         })}
       </div>
 
-      {/* Image preview modal */}
+      {/* Image preview modal */
       {previewUrl && (
         <div
           onClick={() => setPreviewUrl(null)}

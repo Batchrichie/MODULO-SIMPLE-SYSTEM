@@ -44,6 +44,12 @@ export default function Login(): JSX.Element {
       } else {
         await signIn(email, password);
       }
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('modulo_login_flow', '1');
+          window.localStorage.removeItem('modulo_tab');
+        } catch {}
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
