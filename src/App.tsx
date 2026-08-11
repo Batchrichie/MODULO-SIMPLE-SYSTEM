@@ -40,11 +40,11 @@ import BankReconciliationPanel from "./panels/BankReconciliationPanel";
 import ReportsPanel from "./panels/ReportsPanel";
 import ExportPanel from "./panels/ExportPanel";
 import PmDashboardPanel from "./panels/PmDashboardPanel";
-import MyPayslipsPanel from "./panels/MyPayslipsPanel";
-import MyStatementPanel from "./panels/MyStatementPanel";
+import MyPayslipsPanel from "./portals/shared/MyPayslipsPanel";
+import MyStatementPanel from "./portals/shared/MyStatementPanel";
 import LimitedDashboardPanel from "./panels/LimitedDashboardPanel";
-import FieldActivityFeed from "./panels/FieldActivityFeed";
-import MediaLibraryWrapper from "./panels/MediaLibraryWrapper";
+import FieldActivityFeed from "./portals/ceo/FieldActivityFeed";
+import MediaLibraryWrapper from "./portals/shared/MediaLibraryWrapper";
 
 import type { AppData } from "./types";
 
@@ -314,9 +314,6 @@ export default function App() {
       </div>
     </>
   );
-
-  return (
-    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
   return (
     <div className="app-root" style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
       <style>{`
