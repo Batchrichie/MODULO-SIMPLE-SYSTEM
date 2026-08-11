@@ -21,7 +21,7 @@ import {
   FONT_DISPLAY,
   FONT_BODY,
   FONT_MONO,
-} from '../theme/tokens';
+} from '../../theme/tokens';
 import SectionTitle from '../components/ui/SectionTitle';
 import Card from '../components/ui/Card';
 import {
