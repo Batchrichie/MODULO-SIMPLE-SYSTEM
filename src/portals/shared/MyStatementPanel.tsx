@@ -126,7 +126,7 @@ export default function MyStatementPanel({ data, profile }: MyStatementPanelProp
       {/* Employee Info */}
       {employee && (
         <Card style={{ marginBottom: 24, padding: "16px 20px" }}>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
             <div style={{ flex: "1 1 140px" }}>
               <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Employee</div>
               <div style={{ fontWeight: 600 }}>{employee.name}</div>
@@ -152,7 +152,7 @@ export default function MyStatementPanel({ data, profile }: MyStatementPanelProp
       )}
 
       {/* YTD Summary Cards */}
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
         <Card style={{ flex: "1 1 200px", padding: "16px 20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--success-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -215,7 +215,7 @@ export default function MyStatementPanel({ data, profile }: MyStatementPanelProp
           Tax Summary
         </SectionTitle>
         <Card>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24, flexWrap: "wrap", marginBottom: 16 }}>
             <div style={{ flex: "1 1 200px" }}>
               <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Effective Deduction Rate</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>

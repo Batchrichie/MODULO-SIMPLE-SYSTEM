@@ -135,7 +135,7 @@ export default function ReportsPanel({ data }: { data: AppData }) {
         Aged Receivables
       </SectionTitle>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         {bucketMeta.map((b) => (
           <Card key={b.key} style={{ flex: '1 1 160px', borderTop: `3px solid ${b.color}` }}>
             <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>

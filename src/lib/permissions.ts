@@ -66,28 +66,31 @@ export function isCeo(permissions: string[]): boolean {
   return permissions.includes(CEO);
 }
 
+function isPortalOnlyToken(token: string) {
+  return PORTAL_ONLY_TOKENS.has(token);
+}
+
 /**
  * Returns true if the user's permission array contains the required token.
  *
  * Access rules by role:
- *  - Admin (ALL): sees everything.
- *  - CEO (ceo:access): passes token check here; specific nav keys are
- *    filtered out in getNavGroups / getMobileMoreItems via CEO_HIDDEN_KEYS.
- *  - Non-admin (PM/WD/Employee): portal items (PORTAL_ONLY_TOKENS) are
- *    auto-visible; other items require the specific token in their permissions.
+ *  - Admin (ALL): sees all admin pages but not portal-only pages.
+ *  - CEO (ceo:access): sees CEO pages but not non-admin portal pages.
+ *  - Non-admin (PM/WD/Employee): sees portal-only pages and any token they explicitly have.
  */
 export function canAccess(
   permissions: string[],
   requiredToken: string
 ): boolean {
-  // Admin sees everything
+  if (isPortalOnlyToken(requiredToken)) {
+    return !permissions.includes(ALL) && !permissions.includes(CEO);
+  }
+
+  // Admin sees all non-portal pages.
   if (permissions.includes(ALL)) return true;
 
-  // CEO: passes for all tokens (CEO_HIDDEN_KEYS handles visibility filtering)
+  // CEO sees all non-portal pages.
   if (permissions.includes(CEO)) return true;
-
-  // Non-admin portal users: portal pages auto-visible
-  if (PORTAL_ONLY_TOKENS.has(requiredToken)) return true;
 
   return permissions.includes(requiredToken);
 }

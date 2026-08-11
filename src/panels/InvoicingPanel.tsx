@@ -115,7 +115,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
         Invoicing
       </SectionTitle>
       <Card>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: INK, cursor: "pointer" }}>
             <input
               type="checkbox"

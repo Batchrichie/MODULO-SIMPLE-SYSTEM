@@ -9,6 +9,8 @@ export default function TableScroll({ children }: TableScrollProps) {
       style={{
         width: "100%",
         overflowX: "auto",
+        overflowY: "hidden",
+        scrollbarGutter: "stable",
         WebkitOverflowScrolling: "touch",
       }}
     >
