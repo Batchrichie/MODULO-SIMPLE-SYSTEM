@@ -18,6 +18,7 @@ import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import MiniTable from "../components/ui/MiniTable";
 import ProjectSelect from "../components/ui/ProjectSelect";
+import AccountSelect from "../components/ui/AccountSelect";
 import KpiCard from "../components/charts/KpiCard";
 import LineChart from "../components/charts/LineChart";
 import BarChart from "../components/charts/BarChart";
@@ -268,12 +269,12 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
             </div>
             <div style={{ flex: "1 1 150px" }}>
               <label style={labelStyle}>Expense Account</label>
-              <select style={inputStyle} value={expenseAccount} onChange={(e) => setExpenseAccount(e.target.value)}>
-                <option value="">Select…</option>
-                {expenseAccounts.map((a) => (
-                  <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
-                ))}
-              </select>
+              <AccountSelect
+                value={expenseAccount}
+                onChange={setExpenseAccount}
+                accounts={expenseAccounts}
+                placeholder="Search expense account…"
+              />
             </div>
             <div style={{ flex: "1 1 150px" }}>
               <label style={labelStyle}>Project</label>
@@ -307,4 +308,3 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     </div>
   );
 }
-

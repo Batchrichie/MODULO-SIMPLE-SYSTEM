@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { INK, MUTED, FONT_BODY } from "../theme/tokens";
 import Button from "../components/ui/Button";
 import { inputStyle, labelStyle } from "../components/ui/styles";
+import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { db } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
@@ -93,12 +94,12 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         </div>
         <div style={{ flex: "1 1 200px" }}>
           <label style={labelStyle}>Paid into *</label>
-          <select style={inputStyle} value={paymentAccount} onChange={(e) => setPaymentAccount(e.target.value)}>
-            <option value="">Select payment account...</option>
-            {paymentAccounts.map((a) => (
-              <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
-            ))}
-          </select>
+          <AccountSelect
+            value={paymentAccount}
+            onChange={setPaymentAccount}
+            accounts={paymentAccounts}
+            placeholder="Search payment account…"
+          />
           {paymentAccounts.length === 0 && (
             <div style={{ fontSize: 11, color: "var(--alert, #A63D40)", marginTop: 4 }}>No payment accounts. Mark accounts in Chart of Accounts first.</div>
           )}

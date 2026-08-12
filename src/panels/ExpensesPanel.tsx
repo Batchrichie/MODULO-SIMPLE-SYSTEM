@@ -10,6 +10,7 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
+import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
 import { db } from '../supabaseClient';
 import type { AppData, PanelProps, JournalEntry } from '../types';
@@ -182,12 +183,12 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
               </div>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Paid via *</label>
-                <select style={inputStyle} value={paymentAccount} onChange={(e) => setPaymentAccount(e.target.value)}>
-                  <option value="">Select payment account...</option>
-                  {paymentAccounts.map((a) => (
-                    <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
-                  ))}
-                </select>
+                <AccountSelect
+                  value={paymentAccount}
+                  onChange={setPaymentAccount}
+                  accounts={paymentAccounts}
+                  placeholder="Search payment account…"
+                />
                 {paymentAccounts.length === 0 && (
                   <div style={{ fontSize: 11, color: ALERT, marginTop: 4 }}>No payment accounts found. Go to Chart of Accounts and mark accounts as "Payment Account".</div>
                 )}
@@ -196,12 +197,12 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 200px' }}>
                 <label style={labelStyle}>Expense account *</label>
-                <select style={inputStyle} value={account} onChange={(e) => setAccount(e.target.value)}>
-                  <option value="">Select account...</option>
-                  {expenseAccounts.map((a) => (
-                    <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
-                  ))}
-                </select>
+                <AccountSelect
+                  value={account}
+                  onChange={setAccount}
+                  accounts={expenseAccounts}
+                  placeholder="Search expense account…"
+                />
               </div>
               <div style={{ flex: '1 1 200px' }}>
                 <label style={labelStyle}>Project</label>

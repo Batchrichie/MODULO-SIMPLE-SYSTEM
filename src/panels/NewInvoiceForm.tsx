@@ -7,6 +7,7 @@ import Td from "../components/ui/Td";
 import Button from "../components/ui/Button";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
+import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
@@ -48,11 +49,6 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         ]
   );
 
-  // Filter revenue/income accounts (case-insensitive to match DB values like "income", "Revenue", "Income")
-  const revenueOptions = data.accounts.filter((a) => {
-    const type = (a.type || "").toLowerCase();
-    return type === "revenue" || type === "income";
-  });
   const totals = useMemo(
     () =>
       computeInvoiceTotals(
@@ -263,17 +259,16 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         )}
         <div style={{ flex: "1 1 200px" }}>
           <label style={labelStyle}>Revenue account</label>
-          <select
-            style={inputStyle}
+          <AccountSelect
             value={revenueAccount}
-            onChange={(e) => setRevenueAccount(e.target.value)}
-          >
-            {revenueOptions.map((a) => (
-              <option key={a.code} value={a.code}>
-                {a.code} — {a.name}
-              </option>
-            ))}
-          </select>
+            onChange={setRevenueAccount}
+            accounts={data.accounts}
+            filterFn={(a) => {
+              const type = (a.type || "").toLowerCase();
+              return type === "revenue" || type === "income";
+            }}
+            placeholder="Search revenue account…"
+          />
         </div>
         <div style={{ flex: "1 1 100px" }}>
           <label style={labelStyle}>Discount %</label>
@@ -513,4 +508,3 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
     </div>
   );
 }
-
