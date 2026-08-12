@@ -311,7 +311,9 @@ export default function App() {
         </div>
       ))}
       <div style={{ marginTop: "auto", paddingTop: 12, borderTop: `1px solid ${RULE}` }}>
-        <NavItem icon={X} label="Logout" active={effectiveTab === "logout"} onClick={() => setTab("logout")} />
+        {navGroups.flatMap((group) => group.keys).includes("logout") && (
+          <NavItem icon={X} label="Logout" active={effectiveTab === "logout"} onClick={() => setTab("logout")} />
+        )}
       </div>
     </>
   );

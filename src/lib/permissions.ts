@@ -66,31 +66,31 @@ export function isCeo(permissions: string[]): boolean {
   return permissions.includes(CEO);
 }
 
-function isPortalOnlyToken(token: string) {
-  return PORTAL_ONLY_TOKENS.has(token);
-}
-
 /**
  * Returns true if the user's permission array contains the required token.
  *
  * Access rules by role:
- *  - Admin (ALL): sees all admin pages but not portal-only pages.
- *  - CEO (ceo:access): sees CEO pages but not non-admin portal pages.
- *  - Non-admin (PM/WD/Employee): sees portal-only pages and any token they explicitly have.
+ *  - Admin (ALL): sees everything.
+ *  - CEO (ceo:access): passes token check here; specific nav keys are
+ *    filtered out in getNavGroups / getMobileMoreItems via CEO_HIDDEN_KEYS.
+ *  - Non-admin (PM/WD/Employee): portal items (PORTAL_ONLY_TOKENS) are
+ *    auto-visible; other items require the specific token in their permissions.
  */
 export function canAccess(
   permissions: string[],
   requiredToken: string
 ): boolean {
-  if (isPortalOnlyToken(requiredToken)) {
-    return !permissions.includes(ALL) && !permissions.includes(CEO);
-  }
+  // Empty token = always accessible (e.g. logout)
+  if (!requiredToken) return true;
 
-  // Admin sees all non-portal pages.
+  // Admin sees everything
   if (permissions.includes(ALL)) return true;
 
-  // CEO sees all non-portal pages.
+  // CEO: passes for all tokens (CEO_HIDDEN_KEYS handles visibility filtering)
   if (permissions.includes(CEO)) return true;
+
+  // Non-admin portal users: portal pages auto-visible
+  if (PORTAL_ONLY_TOKENS.has(requiredToken)) return true;
 
   return permissions.includes(requiredToken);
 }
@@ -147,14 +147,22 @@ export const NAV_CONFIG: NavItemConfig[] = [
   { key: "export",               label: "Export",            icon: FileSpreadsheet,  token: ALL,                                         group: "Setup" },
 
   // ── Portal tabs (non-admin) ──
-  { key: "pm-dashboard",         label: "My Projects",       icon: Briefcase,       token: DASHBOARD_OPS,     group: "Portal" },
-  { key: "my-payslips",          label: "My Payslips",       icon: Banknote,        token: PAYROLL_SELF,      group: "Portal" },
-  { key: "my-statement",         label: "My Statement",      icon: FileText,        token: PAYROLL_STATEMENT, group: "Portal" },
-  { key: "media-library",        label: "Media Library",     icon: Camera,          token: MEDIA_WRITE,       group: "Portal" },
+  { key: "pm-dashboard",         label: "My Projects",       icon: Briefcase,       token: DASHBOARD_OPS,     group: "Portal",         mobileOnly: true },
+  { key: "my-payslips",          label: "My Payslips",       icon: Banknote,        token: PAYROLL_SELF,      group: "My Pay",         mobileOnly: true },
+  { key: "my-statement",         label: "My Statement",      icon: FileText,        token: PAYROLL_STATEMENT, group: "My Pay",         mobileOnly: true },
+  { key: "media-library",        label: "Media Library",     icon: Camera,          token: MEDIA_WRITE,       group: "Resources",       mobileOnly: true },
 
-  // ── Logout (always available, handled separately) ──
-  { key: "logout",               label: "Logout",            icon: X,               token: "",                  group: "" },
+  // ── Account ──
+  { key: "logout",               label: "Logout",            icon: X,               token: "",                  group: "Account" },
 ];
+
+/**
+ * Nav keys hidden from admin — portal-only pages whose render guards
+ * use `!adminFlag && !ceoFlag` in App.tsx.
+ */
+const ADMIN_HIDDEN_KEYS = new Set([
+  "pm-dashboard", "my-payslips", "my-statement", "media-library",
+]);
 
 /**
  * Nav keys that are hidden from the CEO role.
@@ -170,13 +178,14 @@ const CEO_HIDDEN_KEYS = new Set([
 /**
  * Filter nav items based on the user's permissions.
  * Returns items grouped by their `group` field, preserving order.
- * CEO-hidden keys are stripped out even though canAccess passes for them.
+ * Admin-hidden and CEO-hidden keys are stripped out even though canAccess passes.
  */
 export function getNavGroups(permissions: string[]) {
+  const admin = isAdmin(permissions);
   const ceo = isCeo(permissions);
   const accessible = NAV_CONFIG.filter((n) => {
-    if (n.key === "logout") return false;
     if (!canAccess(permissions, n.token)) return false;
+    if (admin && ADMIN_HIDDEN_KEYS.has(n.key)) return false;
     if (ceo && CEO_HIDDEN_KEYS.has(n.key)) return false;
     return true;
   });
@@ -194,7 +203,11 @@ export function getNavGroups(permissions: string[]) {
 }
 
 /**
- * Get the 4 items for the mobile bottom nav bar.
+ * Get the items for the mobile bottom nav bar.
+ * Admin: invoicing, journal, dashboard, payroll
+ * CEO: invoicing, dashboard, projects, bills
+ * PM: pm-dashboard, my-payslips, projects
+ * WD/Employee: projects, media-library, my-payslips
  */
 export function getMobileBottomNav(permissions: string[]): NavItemConfig[] {
   if (isAdmin(permissions)) {
@@ -204,28 +217,36 @@ export function getMobileBottomNav(permissions: string[]): NavItemConfig[] {
   }
   if (isCeo(permissions)) {
     return NAV_CONFIG.filter((n) =>
-    ["invoicing", "dashboard", "projects", "bills"].includes(n.key)
+      ["invoicing", "dashboard", "projects", "bills"].includes(n.key)
     );
   }
-  // Non-admin: show their most relevant tabs
+  // Non-admin: show their most relevant tabs (including mobileOnly ones)
   const accessible = NAV_CONFIG.filter(
     (n) => n.key !== "logout" && canAccess(permissions, n.token)
   );
-  const primary = accessible.filter((n) => !n.mobileOnly).slice(0, 3);
-  return primary;
+  // PM gets pm-dashboard first, then payslips and projects
+  if (permissions.includes(DASHBOARD_OPS)) {
+    const keys = ["pm-dashboard", "my-payslips", "projects"];
+    return keys
+      .map((k) => accessible.find((n) => n.key === k))
+      .filter(Boolean) as NavItemConfig[];
+  }
+  // WD / Employee: projects, media-library, my-payslips
+  const keys = ["projects", "media-library", "my-payslips"];
+  return keys
+    .map((k) => accessible.find((n) => n.key === k))
+    .filter(Boolean) as NavItemConfig[];
 }
 
-/**
- * Get items for the mobile "More" popup.
- */
 export function getMobileMoreItems(permissions: string[]): NavItemConfig[] {
   const bottomKeys = new Set(getMobileBottomNav(permissions).map((n) => n.key));
+  const admin = isAdmin(permissions);
   const ceo = isCeo(permissions);
   return NAV_CONFIG.filter(
     (n) =>
-      n.key !== "logout" &&
       !bottomKeys.has(n.key) &&
       canAccess(permissions, n.token) &&
+      !(admin && ADMIN_HIDDEN_KEYS.has(n.key)) &&
       !(ceo && CEO_HIDDEN_KEYS.has(n.key))
   );
 }
