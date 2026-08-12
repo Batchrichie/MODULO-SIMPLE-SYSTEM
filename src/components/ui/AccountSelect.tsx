@@ -57,10 +57,11 @@ export default function AccountSelect({
     function updatePosition() {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
+      const minWidth = Math.max(rect.width, 420);
       setMenuPosition({
         top: rect.bottom + window.scrollY + 4,
         left: rect.left + window.scrollX,
-        width: rect.width,
+        width: minWidth,
       });
     }
 
@@ -132,7 +133,7 @@ export default function AccountSelect({
             position: "fixed",
             left: menuPosition.left,
             top: menuPosition.top,
-            width: menuPosition.width,
+            width: Math.max(menuPosition.width, 420),
             maxHeight: 220,
             overflowY: "auto",
             background: "var(--paper-raised)",
@@ -158,8 +159,8 @@ export default function AccountSelect({
               style={{ padding: "7px 12px", cursor: "pointer", fontFamily: FONT_BODY, fontSize: 12.5, display: "flex", alignItems: "center", gap: 10, background: idx === highlighted ? "var(--nav-hover)" : a.code === value ? "var(--success-bg)" : "transparent", color: a.code === value ? GREEN : INK, fontWeight: a.code === value ? 600 : 400, transition: "background 0.1s" }}
             >
               <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: MUTED, minWidth: 50, flexShrink: 0 }}>{a.code}</span>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
-              {a.type && <span style={{ marginLeft: "auto", fontSize: 10, color: MUTED, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>{a.type}</span>}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{a.name}</span>
+              {a.type && <span style={{ marginLeft: 8, fontSize: 10, color: MUTED, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>{a.type}</span>}
             </li>
           ))}
         </ul>,
