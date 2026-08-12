@@ -25,6 +25,7 @@ export default function AccountSelect({
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
 
   const pool = useMemo(
     () =>
@@ -76,7 +77,11 @@ export default function AccountSelect({
 
   useEffect(() => {
     function handle(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideContainer = containerRef.current?.contains(target);
+      const insideMenu = menuRef.current?.contains(target);
+
+      if (!insideContainer && !insideMenu) {
         setOpen(false); setQuery(""); setHighlighted(-1);
       }
     }
@@ -127,7 +132,10 @@ export default function AccountSelect({
       </div>
       {open && typeof document !== "undefined" && createPortal(
         <ul
-          ref={listRef}
+          ref={(node) => {
+            listRef.current = node;
+            menuRef.current = node;
+          }}
           role="listbox"
           style={{
             position: "fixed",
@@ -154,7 +162,10 @@ export default function AccountSelect({
               key={a.code}
               role="option"
               aria-selected={a.code === value}
-              onClick={() => pick(a.code)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pick(a.code);
+              }}
               onMouseEnter={() => setHighlighted(idx)}
               style={{ padding: "7px 12px", cursor: "pointer", fontFamily: FONT_BODY, fontSize: 12.5, display: "flex", alignItems: "center", gap: 10, background: idx === highlighted ? "var(--nav-hover)" : a.code === value ? "var(--success-bg)" : "transparent", color: a.code === value ? GREEN : INK, fontWeight: a.code === value ? 600 : 400, transition: "background 0.1s" }}
             >
@@ -169,4 +180,3 @@ export default function AccountSelect({
     </div>
   );
 }
-/* App-level overrides — layout is handled inline in App.tsx */
