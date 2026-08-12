@@ -23,6 +23,7 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
   const [savingTaxSettings, setSavingTaxSettings] = useState(false);
   const [taxSaveMessage, setTaxSaveMessage] = useState("");
   const [taxSaveError, setTaxSaveError] = useState("");
+  const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null);
 
   function updateTaxRate(field, value) {
     const percent = Number(value);
@@ -97,13 +98,11 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
     const empName = row.name.replace(/\s+/g, "_");
     document.title = `Payslip_${empName}_${run.period}`;
     setPrintContent(<div><Payslip key={row.employeeId} data={data} run={run} r={row} /></div>);
-    setTimeout(() => { window.print(); document.title = "Modulo Ledger"; }, 100);
   }
 
   function printAllPayslips(run) {
     document.title = `Payslips_${run.period}`;
     setPrintContent(<div>{run.rows.map((r) => <Payslip key={r.employeeId} data={data} run={run} r={r} />)}</div>);
-    setTimeout(() => { window.print(); document.title = "Modulo Ledger"; }, 100);
   }
 
   const alreadyPosted = data.payrollRuns.some((r) => r.period === period);
@@ -148,30 +147,94 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
             </p>
           </div>
         )}
-        {data.payrollRuns.map((run) => (
-          <div key={run.id} style={{ marginBottom: 24, paddingBottom: 24, borderBottom: `1px solid ${RULE}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-              <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, color: INK, fontSize: 16 }}>{run.period}</span>
-              <Button variant="ghost" icon={Printer} onClick={() => printAllPayslips(run)}>Print all payslips</Button>
-            </div>
-            <TableScroll>
-              <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr><Th>Employee</Th><Th right>Net Pay</Th><Th right>&nbsp;</Th></tr>
-                </thead>
-                <tbody>
-                  {run.rows.map((r) => (
-                    <tr key={r.employeeId} className="row-hover">
-                      <Td label="Employee">{r.name}</Td>
-                      <Td right mono label="Net Pay">GHS {fmt(r.net)}</Td>
-                      <Td right><Button variant="ghost" icon={Printer} onClick={() => printPayslip(run, r)}>Print</Button></Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
-          </div>
-        ))}
+        <div style={{ display: "grid", gap: 12 }}>
+          {data.payrollRuns.map((run) => {
+            const isOpen = expandedPeriod === run.period;
+            return (
+              <div
+                key={run.id}
+                style={{
+                  border: "1px solid var(--rule, #DCD5C4)",
+                  borderRadius: 12,
+                  background: "var(--paper-raised, #FFFFFF)",
+                  overflow: "hidden",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setExpandedPeriod(isOpen ? null : run.period)}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    background: isOpen ? "var(--nav-active, rgba(212,175,55,0.08))" : "transparent",
+                    padding: "16px 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    color: "var(--ink, #1F2A24)",
+                    fontFamily: FONT_BODY,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        width: 38,
+                        height: 48,
+                        borderRadius: 8,
+                        background: "linear-gradient(180deg, rgba(212,175,55,0.18), rgba(212,175,55,0.08))",
+                        border: "1px solid var(--gold, #A8761A)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--ink, #1F2A24)",
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        fontSize: 12,
+                      }}
+                    >
+                      PDF
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, lineHeight: 1.2, color: "var(--ink, #1F2A24)" }}>{run.period}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted, #6B6255)", marginTop: 4 }}>{run.rows.length} payslip{run.rows.length === 1 ? "" : "s"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <Button variant="ghost" icon={Printer} onClick={(e) => { e.stopPropagation(); printAllPayslips(run); }}>
+                      Print all
+                    </Button>
+                    <span style={{ fontSize: 18, color: "var(--muted, #6B6255)", lineHeight: 1 }}>{isOpen ? "▾" : "▸"}</span>
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div style={{ padding: "0 16px 16px" }}>
+                    <TableScroll>
+                      <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr><Th>Employee</Th><Th right>Net Pay</Th><Th right>&nbsp;</Th></tr>
+                        </thead>
+                        <tbody>
+                          {run.rows.map((r) => (
+                            <tr key={r.employeeId} className="row-hover">
+                              <Td label="Employee">{r.name}</Td>
+                              <Td right mono label="Net Pay">GHS {fmt(r.net)}</Td>
+                              <Td right><Button variant="ghost" icon={Printer} onClick={() => printPayslip(run, r)}>Print</Button></Td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </TableScroll>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </Card>
 
       {/* Tax Settings Modal */}

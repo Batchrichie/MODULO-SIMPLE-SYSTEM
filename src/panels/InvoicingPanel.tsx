@@ -94,10 +94,6 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
 
     document.title = title;
     setPrintContent(content);
-    setTimeout(() => {
-      window.print();
-      document.title = "Modulo Ledger";
-    }, 100);
   }
 
   return (

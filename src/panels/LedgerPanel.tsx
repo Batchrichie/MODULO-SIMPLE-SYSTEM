@@ -52,8 +52,13 @@ export default function LedgerPanel({ data }) {
           }
         })
       );
-      const balance = a.normal === "Debit" ? debit - credit : credit - debit;
-      return { ...a, debit, credit, balance };
+      const rawBalance = a.normal === "Debit" ? debit - credit : credit - debit;
+      const signedBalance = Math.abs(rawBalance);
+      const isPaymentAbnormal = Boolean(a.isPaymentAccount) && rawBalance < 0;
+      const balanceSide = rawBalance >= 0
+        ? (a.normal === "Debit" ? "Dr" : "Cr")
+        : (a.normal === "Debit" ? "Cr" : "Dr");
+      return { ...a, debit, credit, rawBalance, balance: signedBalance, balanceSide, isPaymentAbnormal };
     });
   }, [data]);
 
@@ -96,8 +101,8 @@ export default function LedgerPanel({ data }) {
                     <Td right mono label="Total Credit">
                       {fmt(r.credit)}
                     </Td>
-                    <Td right mono bold label="Balance">
-                      {fmt(r.balance)}
+                    <Td right mono bold label="Balance" style={{ color: r.isPaymentAbnormal ? ALERT : r.rawBalance >= 0 ? INK : ALERT }}>
+                      {r.balance > 0 ? `${r.balanceSide} ${fmt(r.balance)}` : "—"}
                     </Td>
                   </tr>
                 ))}

@@ -83,13 +83,19 @@ export default function ExportPanel({ data, isMobile }) {
             }
           })
         );
-        const balance = a.normal === "Debit" ? debit - credit : credit - debit;
+        const rawBalance = a.normal === "Debit" ? debit - credit : credit - debit;
+        const isPaymentAbnormal = Boolean(a.isPaymentAccount) && rawBalance < 0;
+        const balanceSide = rawBalance >= 0
+          ? (a.normal === "Debit" ? "Dr" : "Cr")
+          : (a.normal === "Debit" ? "Cr" : "Dr");
         return {
           Code: a.code,
           Account: a.name,
           "Total Debit": debit,
           "Total Credit": credit,
-          Balance: balance,
+          Balance: Math.abs(rawBalance),
+          "Balance Side": balanceSide,
+          "Abnormal": isPaymentAbnormal ? "Yes" : "No",
         };
       })
       .filter((r) => r["Total Debit"] || r["Total Credit"]);

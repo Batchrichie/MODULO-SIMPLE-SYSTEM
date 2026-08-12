@@ -86,6 +86,24 @@ export default function App() {
   });
   const [showMenu, setShowMenu] = useState(false);
   const [printContent, setPrintContent] = useState<ReactNode>(null);
+  const [printRequest, setPrintRequest] = useState(0);
+
+  const queuePrint = useCallback((content: ReactNode) => {
+    setPrintContent(content);
+    setPrintRequest((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!printRequest) return;
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        window.print();
+      } finally {
+        document.title = "Modulo Ledger";
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [printRequest]);
 
   // Dynamic nav derived from permissions
   const navGroups = useMemo(() => getNavGroups(permissions), [permissions]);
@@ -317,8 +335,20 @@ export default function App() {
         @media print {
           @page { size: A4; margin: 14mm 12mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          html, body, #root { overflow: visible !important; height: auto !important; max-height: none !important; }
           .no-print { display: none !important; }
-          .print-only { display: block !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
+          .print-only {
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+            position: static !important;
+            height: auto !important;
+            max-height: none !important;
+          }
           body { background: white !important; margin: 0; padding: 0; }
           :root { --ink: #000; --paper: #fff; --paper-raised: #fff; --rule: #ccc; --muted: #333; }
           .fin-page { page-break-after: always; page-break-inside: avoid; display: block; width: 100%; }
@@ -326,7 +356,6 @@ export default function App() {
           .fin-page + .fin-page { page-break-before: always; }
           .fin-page tr { page-break-inside: avoid; }
           .fin-page thead { display: table-header-group; }
-          .print-only { overflow: visible !important; position: static !important; height: auto !important; max-height: none !important; }
         }
         .print-only { display: none; }
         .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
@@ -376,11 +405,11 @@ export default function App() {
           {effectiveTab === "accounts" && canEdit && <AccountsPanel data={data} mutate={mutate} />}
           {effectiveTab === "journal" && (adminFlag || ceoFlag) && <JournalPanel data={data} mutate={canEdit ? mutate : undefined} readOnly={ceoFlag} />}
           {effectiveTab === "ledger" && (adminFlag || ceoFlag) && <LedgerPanel data={data} />}
-          {effectiveTab === "financials" && (adminFlag || ceoFlag) && <FinancialsPanel data={data} setPrintContent={setPrintContent} />}
+          {effectiveTab === "financials" && (adminFlag || ceoFlag) && <FinancialsPanel data={data} setPrintContent={queuePrint} />}
           {effectiveTab === "projects" && <ProjectsPanel data={data} mutate={canEdit ? mutate : undefined} />}
-          {effectiveTab === "invoicing" && (adminFlag || ceoFlag) && <InvoicingPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={setPrintContent} />}
+          {effectiveTab === "invoicing" && (adminFlag || ceoFlag) && <InvoicingPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
           {effectiveTab === "employees" && (adminFlag || ceoFlag) && <EmployeesPanel data={data} mutate={canEdit ? mutate : undefined} />}
-          {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={setPrintContent} />}
+          {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
           {effectiveTab === "bills" && (adminFlag || ceoFlag) && <BillsPanel data={data} mutate={canEdit ? mutate : undefined} />}
           {effectiveTab === "expenses" && canEdit && <ExpensesPanel data={data} mutate={mutate} />}
           {effectiveTab === "aged-payables" && (adminFlag || ceoFlag) && <AgedPayablesPanel data={data} />}

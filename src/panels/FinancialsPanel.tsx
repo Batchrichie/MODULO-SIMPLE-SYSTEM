@@ -140,7 +140,6 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
       </>
     );
 
-    setTimeout(() => { window.print(); document.title = "Modulo Ledger"; }, 500);
   }
 
 

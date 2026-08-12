@@ -72,10 +72,6 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
     setPrintContent(
       <ReceiptDocument data={data} inv={inv} payment={payment} receiptNo={receiptNo} />
     );
-    setTimeout(() => {
-      window.print();
-      document.title = "Modulo Ledger";
-    }, 100);
     onDone && onDone();
   }
 
