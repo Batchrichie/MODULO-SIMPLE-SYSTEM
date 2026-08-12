@@ -1,52 +1,38 @@
-import type { ReactNode } from "react";
-import { INK, MUTED, FONT_BODY, FONT_DISPLAY } from "../../theme/tokens";
+import React from 'react';
+import { INK, MUTED, RULE, FONT_DISPLAY, FONT_BODY } from '../../theme/tokens';
 
-type SectionTitleProps = {
-  children: ReactNode;
+interface Props {
+  children: React.ReactNode;
   sub?: string;
-  action?: ReactNode;
-};
+}
 
-export default function SectionTitle({ children, sub, action }: SectionTitleProps) {
+export default function SectionTitle({ children, sub }: Props) {
   return (
-    <div
-      style={{
-        marginBottom: 20,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        flexWrap: "wrap",
-        gap: 10,
-      }}
-    >
-      <div>
-        <h2
+    <div style={{ marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${RULE}` }}>
+      <h2
+        style={{
+          margin: 0,
+          fontFamily: FONT_DISPLAY,
+          fontSize: 22,
+          fontWeight: 700,
+          color: INK,
+          letterSpacing: -0.2,
+        }}
+      >
+        {children}
+      </h2>
+      {sub && (
+        <div
           style={{
-            fontFamily: FONT_DISPLAY,
-            fontSize: 22,
-            fontWeight: 700,
-            color: INK,
-            margin: 0,
-            letterSpacing: "-0.3px",
+            marginTop: 4,
+            fontFamily: FONT_BODY,
+            fontSize: 13,
+            color: MUTED,
           }}
         >
-          {children}
-        </h2>
-        {sub && (
-          <p
-            style={{
-              fontFamily: FONT_BODY,
-              fontSize: 13,
-              color: MUTED,
-              margin: "5px 0 0",
-              lineHeight: 1.5,
-            }}
-          >
-            {sub}
-          </p>
-        )}
-      </div>
-      {action}
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

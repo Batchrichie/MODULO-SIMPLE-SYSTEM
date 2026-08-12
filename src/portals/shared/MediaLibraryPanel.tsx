@@ -130,6 +130,7 @@ export default function MediaLibraryPanel({ projectId }: Props) {
         })}
       </div>
 
+      {/* Image preview modal */}
       {previewUrl && (
         <div
           onClick={() => setPreviewUrl(null)}
