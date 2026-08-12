@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { INK, MUTED, RULE, FONT_BODY, FONT_MONO, GREEN } from "../../theme/tokens";
 import { inputStyle } from "./styles";
 import type { Account } from "../../types";
@@ -21,6 +22,7 @@ export default function AccountSelect({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -48,6 +50,28 @@ export default function AccountSelect({
     : query;
 
   useEffect(() => { if (!open) setQuery(""); }, [value, open, pool]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+
+    function updatePosition() {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPosition({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -100,8 +124,27 @@ export default function AccountSelect({
       <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: MUTED, fontSize: 10, lineHeight: 1 }}>
         {open ? "\u25B2" : "\u25BC"}
       </div>
-      {open && (
-        <ul ref={listRef} role="listbox" style={{ position: "absolute", left: 0, right: 0, top: "100%", marginTop: 2, maxHeight: 220, overflowY: "auto", background: "var(--paper-raised)", border: "1px solid " + RULE, borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", listStyle: "none", margin: 0, padding: "4px 0", zIndex: 100 }}>
+      {open && typeof document !== "undefined" && createPortal(
+        <ul
+          ref={listRef}
+          role="listbox"
+          style={{
+            position: "fixed",
+            left: menuPosition.left,
+            top: menuPosition.top,
+            width: menuPosition.width,
+            maxHeight: 220,
+            overflowY: "auto",
+            background: "var(--paper-raised)",
+            border: "1px solid " + RULE,
+            borderRadius: 6,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+            listStyle: "none",
+            margin: 0,
+            padding: "4px 0",
+            zIndex: 2000,
+          }}
+        >
           {matches.length === 0 && (
             <li style={{ padding: "8px 12px", fontSize: 12.5, color: MUTED, fontStyle: "italic" }}>No accounts match "{query}"</li>
           )}
@@ -119,7 +162,8 @@ export default function AccountSelect({
               {a.type && <span style={{ marginLeft: "auto", fontSize: 10, color: MUTED, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>{a.type}</span>}
             </li>
           ))}
-        </ul>
+        </ul>,
+        document.body
       )}
     </div>
   );
