@@ -169,3 +169,4 @@ export default function AccountSelect({
     </div>
   );
 }
+/* App-level overrides — layout is handled inline in App.tsx */
