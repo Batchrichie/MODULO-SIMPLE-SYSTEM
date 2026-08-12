@@ -242,11 +242,13 @@ export function getMobileMoreItems(permissions: string[]): NavItemConfig[] {
   const bottomKeys = new Set(getMobileBottomNav(permissions).map((n) => n.key));
   const admin = isAdmin(permissions);
   const ceo = isCeo(permissions);
-  return NAV_CONFIG.filter(
-    (n) =>
-      !bottomKeys.has(n.key) &&
-      canAccess(permissions, n.token) &&
-      !(admin && ADMIN_HIDDEN_KEYS.has(n.key)) &&
-      !(ceo && CEO_HIDDEN_KEYS.has(n.key))
-  );
+
+  return NAV_CONFIG.filter((n) => {
+    if (n.key === "logout") return true;
+    if (bottomKeys.has(n.key)) return false;
+    if (!canAccess(permissions, n.token)) return false;
+    if (admin && ADMIN_HIDDEN_KEYS.has(n.key)) return false;
+    if (ceo && CEO_HIDDEN_KEYS.has(n.key)) return false;
+    return true;
+  });
 }
