@@ -56,15 +56,15 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   async function createBill() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) {
-      alert("Please enter a valid amount.");
+      window.alert("Please enter a valid amount.");
       return;
     }
     if (!vendor.trim()) {
-      alert("Please enter a vendor name.");
+      window.alert("Please enter a vendor name.");
       return;
     }
     if (!expenseAccount) {
-      alert("Please select an expense account.");
+      window.alert("Please select an expense account.");
       return;
     }
 
@@ -108,7 +108,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       await db.saveJournalEntry(entry);
     } catch (err) {
       console.error("Failed to save bill:", err);
-      alert("Failed to save bill. Check console for details.");
+      window.alert("Failed to save bill. Check console for details.");
       return;
     }
 
@@ -124,7 +124,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     if (!payingBill) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) {
-      alert("Please enter a valid payment amount.");
+      window.alert("Please enter a valid payment amount.");
       return;
     }
 
@@ -169,7 +169,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       await db.saveJournalEntry(entry);
     } catch (err) {
       console.error("Failed to record bill payment:", err);
-      alert("Failed to record payment. Check console for details.");
+      window.alert("Failed to record payment. Check console for details.");
       return;
     }
 

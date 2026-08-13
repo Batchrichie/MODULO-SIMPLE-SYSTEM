@@ -21,8 +21,8 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
   async function record() {
     const amt = parseFloat(amount);
     const err = assertPayment(amt);
-    if (err) { alert(err); return; }
-    if (!paymentAccount) { alert("Please select a payment account."); return; }
+    if (err) { window.alert(err); return; }
+    if (!paymentAccount) { window.alert("Please select a payment account."); return; }
 
     const paymentId = "PYT-" + Date.now();
     const payment = { id: paymentId, date, amountGHS: amt, method: paymentAccount, reference };
@@ -66,7 +66,7 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       await db.saveJournalEntry(entry);
     } catch (err) {
       console.error("Failed to persist payment or journal entry:", err);
-      alert("Failed to record payment to server. Check console for details.");
+      window.alert("Failed to record payment to server. Check console for details.");
     }
 
     document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;

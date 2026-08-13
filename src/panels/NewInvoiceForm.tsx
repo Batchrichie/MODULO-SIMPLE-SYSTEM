@@ -87,7 +87,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
   async function create() {
     const err = assertInvoice({ billTo, items, dueDate, date });
     if (err) {
-      alert(err);
+      window.alert(err);
       return;
     }
     const year = date.slice(0, 4);

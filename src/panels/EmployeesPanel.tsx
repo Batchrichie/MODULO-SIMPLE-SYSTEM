@@ -84,7 +84,7 @@ export default function EmployeesPanel({ data, mutate }) {
       baseSalary: parseFloat(form.baseSalary) || 0,
     });
     if (err) {
-      alert(err);
+      window.alert(err);
       return;
     }
 
@@ -161,10 +161,10 @@ export default function EmployeesPanel({ data, mutate }) {
             : e
         ),
       }));
-      alert(result.mode === "resent" ? "Invite resent." : "Invite sent.");
+      window.alert(result.mode === "resent" ? "Invite resent." : "Invite sent.");
     } catch (err) {
       console.error("Failed to send invite:", err);
-      alert(err instanceof Error ? err.message : "Failed to send invite.");
+      window.alert(err instanceof Error ? err.message : "Failed to send invite.");
     } finally {
       setInvitingId(null);
     }
@@ -225,7 +225,6 @@ export default function EmployeesPanel({ data, mutate }) {
             <thead>
               <tr>
                 <Th>Name</Th>
-                <Th>Position</Th>
                 <Th>Designation</Th>
                 <Th right>Base Salary</Th>
                 <Th>Portal</Th>
@@ -238,15 +237,6 @@ export default function EmployeesPanel({ data, mutate }) {
               {(data.employees || []).map((e) => (
                 <tr key={e.id} className="row-hover">
                   <Td label="Name">{e.name}</Td>
-                  <Td label="Position">
-                    {e.positionId ? (
-                      <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>
-                        {positions.find((p) => p.id === e.positionId)?.title || e.positionId}
-                      </span>
-                    ) : (
-                      <span style={{ color: MUTED, fontSize: 12 }}>—</span>
-                    )}
-                  </Td>
                   <Td label="Designation">
                     {e.designation || <span style={{ color: MUTED }}>—</span>}
                   </Td>
@@ -350,7 +340,7 @@ export default function EmployeesPanel({ data, mutate }) {
               ))}
               {(data.employees || []).length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ color: MUTED, padding: 10 }}>
+                  <td colSpan={7} style={{ color: MUTED, padding: 10 }}>
                     No employees added yet.
                   </td>
                 </tr>

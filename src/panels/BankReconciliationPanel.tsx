@@ -92,6 +92,7 @@ export default function BankReconciliationPanel({ data, mutate }: PanelProps) {
 
   async function createReconciliation() {
     if (!accountCode || !statementDate || !statementBalance) { alert('Please select an account, statement date, and enter a statement balance.'); return; }
+      if (!accountCode || !statementDate || !statementBalance) { window.alert('Please select an account, statement date, and enter a statement balance.'); return; }
     const id = `BR-${Date.now()}`;
     const rec: BankReconciliation = { id, accountCode, statementDate, statementBalance: parseFloat(statementBalance) || 0, status: 'Draft', items: [] };
     mutate(d => ({ ...d, bankReconciliations: [rec, ...d.bankReconciliations] }));
@@ -113,6 +114,7 @@ export default function BankReconciliationPanel({ data, mutate }: PanelProps) {
   async function finalizeReconciliation() {
     if (!activeRec) return;
     if (Math.abs(difference) > 0.01) { alert(`Difference of GHS ${fmt(difference)} remains. Cannot finalize until balanced.`); return; }
+      if (Math.abs(difference) > 0.01) { window.alert(`Difference of GHS ${fmt(difference)} remains. Cannot finalize until balanced.`); return; }
     const updated = { ...activeRec, status: 'Reconciled' as const };
     mutate(d => ({ ...d, bankReconciliations: d.bankReconciliations.map(r => r.id === activeRec.id ? updated : r) }));
     try {
@@ -122,7 +124,8 @@ export default function BankReconciliationPanel({ data, mutate }: PanelProps) {
   }
 
   async function deleteReconciliation(id: string) {
-    if (!confirm('Delete this reconciliation?')) return;
+    const confirmed = await confirmAsync('Delete this reconciliation?');
+    if (!confirmed) return;
     const prev = data.bankReconciliations;
     mutate(d => ({ ...d, bankReconciliations: d.bankReconciliations.filter(r => r.id !== id) }));
     try {
@@ -130,6 +133,7 @@ export default function BankReconciliationPanel({ data, mutate }: PanelProps) {
       if (activeRecId === id) setActiveRecId(null);
     } catch (err) {
       console.error('Failed to delete:', err); alert('Failed to delete reconciliation.');
+        console.error('Failed to delete:', err); window.alert('Failed to delete reconciliation.');
       mutate(d => ({ ...d, bankReconciliations: prev }));
     }
   }

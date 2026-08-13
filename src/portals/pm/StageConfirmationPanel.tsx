@@ -52,6 +52,8 @@ export default function StageConfirmationPanel({ projectId, projectName, onRefre
     setConfirmingId(selectedMilestone.id);
     setError('');
     try {
+      const ok = await confirmAsync('Confirm stage completion?');
+      if (!ok) { setSaving(false); return; }
       await confirmMilestone(selectedMilestone.id, confirmNotes);
       setShowModal(false);
       setSelectedMilestone(null);

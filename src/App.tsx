@@ -38,6 +38,7 @@ import JournalPanel from "./panels/JournalPanel";
 import LedgerPanel from "./panels/LedgerPanel";
 import FinancialsPanel from "./panels/FinancialsPanel";
 import EmployeesPanel from "./panels/EmployeesPanel";
+import NotificationsProvider from "./components/ui/Notifications";
 import InvoicingPanel from "./panels/InvoicingPanel";
 import PayrollPanel from "./panels/PayrollPanel";
 import BillsPanel from "./panels/BillsPanel";
@@ -332,7 +333,7 @@ export default function App() {
   );
 
   return (
-    <>
+    <NotificationsProvider>
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: isMobile ? "auto" : "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
       <style>{`
         :root {
@@ -504,6 +505,6 @@ export default function App() {
       </div>
     </div>
     <div className="print-only">{printContent}</div>
-    </>
+    </NotificationsProvider>
   );
 }

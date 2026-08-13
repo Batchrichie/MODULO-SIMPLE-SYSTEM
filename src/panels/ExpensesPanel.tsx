@@ -37,10 +37,10 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
 
   async function postExpense() {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { alert("Please enter a valid amount."); return; }
-    if (!account) { alert("Please select an expense account."); return; }
-    if (!paymentAccount) { alert("Please select a payment account."); return; }
-    if (!description.trim()) { alert("Please enter a description."); return; }
+    if (!amt || amt <= 0) { window.alert("Please enter a valid amount."); return; }
+    if (!account) { window.alert("Please select an expense account."); return; }
+    if (!paymentAccount) { window.alert("Please select a payment account."); return; }
+    if (!description.trim()) { window.alert("Please enter a description."); return; }
 
     const entryNumber = `JE-EXP-${String(data.nextEntryNum).padStart(4, "0")}`;
     const period = date.slice(0, 7);
@@ -68,7 +68,7 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
       await db.saveJournalEntry(entry);
     } catch (err) {
       console.error("Failed to save expense:", err);
-      alert("Failed to post expense. Check console for details.");
+      window.alert("Failed to post expense. Check console for details.");
       return;
     }
 

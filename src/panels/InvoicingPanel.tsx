@@ -24,7 +24,8 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
   const [showVoided, setShowVoided] = useState(false);
 
   async function voidInvoice(inv: Invoice) {
-    if (!confirm(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`)) return;
+    const confirmed = await confirmAsync(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`);
+    if (!confirmed) return;
 
     const entryNumber = `JE-VOID-${String(data.nextEntryNum).padStart(4, "0")}`;
     const reversalEntry = {
@@ -56,7 +57,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
       await db.saveJournalEntry(reversalEntry);
     } catch (err) {
       console.error("Failed to void invoice:", err);
-      alert("Failed to void invoice on server. Check console for details.");
+      window.alert("Failed to void invoice on server. Check console for details.");
     }
   }
 

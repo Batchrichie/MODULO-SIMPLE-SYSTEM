@@ -95,7 +95,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
   async function post() {
     const err = assertJournalEntry({ date, description, lines });
     if (err) {
-      alert(err);
+      window.alert(err);
       return;
     }
     const validLines = lines.filter(

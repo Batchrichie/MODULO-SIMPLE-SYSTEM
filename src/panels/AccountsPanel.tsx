@@ -12,6 +12,7 @@ import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
 import { db } from "../supabaseClient";
+import { confirmAsync } from "../components/ui/Notifications";
 import { assertAccount } from "../validation";
 import type { AppData } from "../types";
 
@@ -40,7 +41,7 @@ export default function AccountsPanel({ data, mutate }) {
 
   function saveAccount() {
     const err = assertAccount(form, usedCodes);
-    if (err) { alert(err); return; }
+    if (err) { window.alert(err); return; }
     const newAccount = { ...form, code: form.code.trim(), reportingGroup: null };
     if (editingCode) {
       mutate(d => ({ ...d, accounts: d.accounts.map(a => a.code === editingCode ? newAccount : a) }));
@@ -49,19 +50,20 @@ export default function AccountsPanel({ data, mutate }) {
     }
     db.saveAccounts([newAccount]).catch(err => {
       console.error("Failed to save account:", err);
-      alert("Failed to persist account to server.");
+      window.alert("Failed to persist account to server.");
     });
     closeModal();
   }
 
-  function removeAccount(code) {
+  async function removeAccount(code) {
     const inUse = data.journal.some(e => e.lines.some(l => l.account === code));
-    if (inUse) { alert("This account has posted entries and can't be removed."); return; }
-    if (!confirm(`Delete account ${code}?`)) return;
+    if (inUse) { window.alert("This account has posted entries and can't be removed."); return; }
+    const confirmed = await confirmAsync(`Delete account ${code}?`);
+    if (!confirmed) return;
     mutate(d => ({ ...d, accounts: d.accounts.filter(a => a.code !== code) }));
     db.deleteAccount(code).catch(err => {
       console.error("Failed to delete account:", err);
-      alert("Failed to delete account on server.");
+      window.alert("Failed to delete account on server.");
     });
   }
 

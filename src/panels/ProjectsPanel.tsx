@@ -78,14 +78,14 @@ function StageBuilder({
   async function handleSave() {
     const validStages = stages.filter((s) => s.name.trim());
     if (validStages.length === 0) {
-      alert("Add at least one stage with a name.");
+      window.alert("Add at least one stage with a name.");
       return;
     }
     setSaving(true);
     try {
       // If project is new (not yet saved), skip milestone save — will be saved after project creation
       if (projectId.startsWith("PRJ-NEW") || !projectId) {
-        alert("Save the project first, then add stages.");
+        window.alert("Save the project first, then add stages.");
         setSaving(false);
         return;
       }
@@ -111,7 +111,7 @@ function StageBuilder({
       onSave();
     } catch (err) {
       console.error("Failed to save stages:", err);
-      alert("Failed to save stages. Check console.");
+      window.alert("Failed to save stages. Check console.");
     }
     setSaving(false);
   }
@@ -317,7 +317,7 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
       estimatedCost: parseFloat(form.estimatedCost) || 0,
     });
     if (err) {
-      alert(err);
+      window.alert(err);
       return;
     }
     const baseProject = {

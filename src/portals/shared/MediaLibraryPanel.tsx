@@ -45,7 +45,7 @@ export default function MediaLibraryPanel({ projectId }: Props) {
       await refresh();
     } catch (err: any) {
       console.error('Upload failed:', err);
-      alert(err?.message || 'Upload failed.');
+      window.alert(err?.message || 'Upload failed.');
     }
     setUploading(false);
   }
