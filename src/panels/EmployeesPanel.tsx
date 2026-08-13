@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, PenLine, Check, Shield } from "lucide-react";
+import { Plus, Trash2, PenLine, Check, Shield, Mail, Send, Clock } from "lucide-react";
 import { INK, PAPER, RULE, GREEN, ALERT, MUTED, FONT_BODY, GREEN_DEEP } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
@@ -18,9 +18,11 @@ export default function EmployeesPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [positions, setPositions] = useState<PositionOption[]>([]);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     name: "",
+    email: "",
     baseSalary: "",
     ssnitNo: "",
     niaCard: "",
@@ -38,6 +40,7 @@ export default function EmployeesPanel({ data, mutate }) {
   function resetForm() {
     setForm({
       name: "",
+      email: "",
       baseSalary: "",
       ssnitNo: "",
       niaCard: "",
@@ -59,6 +62,7 @@ export default function EmployeesPanel({ data, mutate }) {
     setEditingEmployeeId(employee.id);
     setForm({
       name: employee.name || "",
+      email: employee.email || "",
       baseSalary: String(employee.baseSalary || ""),
       ssnitNo: employee.ssnitNo || "",
       niaCard: employee.niaCard || "",
@@ -101,8 +105,11 @@ export default function EmployeesPanel({ data, mutate }) {
     if (editingEmployeeId) {
       mutate((d) => ({
         ...d,
+        // Merge rather than replace — the save form never touches onboarding
+        // fields (authUserId/onboardingStatus/invitedAt), so keep whatever
+        // is already in local state instead of wiping it until next reload.
         employees: d.employees.map((e) =>
-          e.id === editingEmployeeId ? employeePayload : e
+          e.id === editingEmployeeId ? { ...e, ...employeePayload } : e
         ),
       }));
     } else {
@@ -125,6 +132,37 @@ export default function EmployeesPanel({ data, mutate }) {
     resetForm();
     setEditingEmployeeId(null);
     setShowModal(false);
+  }
+
+  async function sendInvite(employee) {
+    if (!employee.email) {
+      alert("Add an email address for this employee before sending an invite.");
+      return;
+    }
+    setInvitingId(employee.id);
+    try {
+      const result = await db.inviteEmployee(employee.id);
+      mutate((d) => ({
+        ...d,
+        employees: d.employees.map((e) =>
+          e.id === employee.id
+            ? {
+                ...e,
+                authUserId: result.authUserId,
+                onboardingStatus: "invited",
+                invitedAt: new Date().toISOString(),
+                portalAccess: true,
+              }
+            : e
+        ),
+      }));
+      alert(result.mode === "resent" ? "Invite resent." : "Invite sent.");
+    } catch (err) {
+      console.error("Failed to send invite:", err);
+      alert(err instanceof Error ? err.message : "Failed to send invite.");
+    } finally {
+      setInvitingId(null);
+    }
   }
 
   function toggleActive(id) {
@@ -211,11 +249,17 @@ export default function EmployeesPanel({ data, mutate }) {
                     GHS {fmt(e.baseSalary)}
                   </Td>
                   <Td label="Portal">
-                    {e.portalAccess ? (
+                    {e.onboardingStatus === "active" && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: GREEN_DEEP, background: "var(--success-bg)", padding: "2px 8px", borderRadius: 6 }}>
                         <Shield size={11} /> Active
                       </span>
-                    ) : (
+                    )}
+                    {e.onboardingStatus === "invited" && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#9A6B00", background: "var(--warning-bg, #FFF4DB)", padding: "2px 8px", borderRadius: 6 }}>
+                        <Clock size={11} /> Invited
+                      </span>
+                    )}
+                    {(!e.onboardingStatus || e.onboardingStatus === "not_invited" || e.onboardingStatus === "inactive") && (
                       <span style={{ fontSize: 12, color: MUTED }}>—</span>
                     )}
                   </Td>
@@ -252,7 +296,35 @@ export default function EmployeesPanel({ data, mutate }) {
                     </button>
                   </Td>
                   <Td right label="Action">
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+                      {e.onboardingStatus !== "active" && (
+                        <button
+                          onClick={() => sendInvite(e)}
+                          disabled={invitingId === e.id || !e.email}
+                          title={!e.email ? "Add an email address first" : e.onboardingStatus === "invited" ? "Resend invite" : "Send invite"}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: !e.email ? MUTED : GREEN_DEEP,
+                            background: "none",
+                            border: `1px solid ${!e.email ? RULE : GREEN_DEEP}`,
+                            borderRadius: 6,
+                            padding: "3px 8px",
+                            cursor: !e.email || invitingId === e.id ? "default" : "pointer",
+                            opacity: invitingId === e.id ? 0.6 : 1,
+                          }}
+                        >
+                          {e.onboardingStatus === "invited" ? <Send size={11} /> : <Mail size={11} />}
+                          {invitingId === e.id
+                            ? "Sending…"
+                            : e.onboardingStatus === "invited"
+                            ? "Resend"
+                            : "Invite"}
+                        </button>
+                      )}
                       <button
                         onClick={() => openEditModal(e)}
                         style={{ background: "none", border: "none", cursor: "pointer", color: MUTED }}
@@ -316,6 +388,17 @@ export default function EmployeesPanel({ data, mutate }) {
                   </option>
                 ))}
               </select>
+            </div>
+            <div style={{ flex: "1 1 200px" }}>
+              <label style={labelStyle}>Email</label>
+              <input
+                type="email"
+                style={inputStyle}
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="ama@company.com"
+              />
+              <span style={{ fontSize: 11, color: MUTED }}>Required to send a portal invite</span>
             </div>
             <div style={{ flex: "1 1 200px" }}>
               <label style={labelStyle}>Designation</label>

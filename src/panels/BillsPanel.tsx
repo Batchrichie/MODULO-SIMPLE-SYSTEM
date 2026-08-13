@@ -308,3 +308,5 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     </div>
   );
 }
+
+/* App-level overrides — layout is handled inline in App.tsx */

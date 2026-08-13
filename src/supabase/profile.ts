@@ -11,6 +11,7 @@ export interface UserProfile {
   positionTitle: string | null;
   portalAccess: boolean;
   permissions: string[];
+  onboardingStatus: 'not_invited' | 'invited' | 'active' | 'inactive';
 }
 
 interface PositionRow {
@@ -25,6 +26,7 @@ interface EmployeeRow {
   position_id: string | null;
   portal_access: boolean;
   auth_user_id: string | null;
+  onboarding_status: 'not_invited' | 'invited' | 'active' | 'inactive' | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -44,7 +46,7 @@ export async function loadMyProfile(): Promise<UserProfile | null> {
   const { data: employee, error } = await supabase
     .from("employees")
     .select(
-      `id, name, position_id, portal_access, auth_user_id, positions:position_id (id, title, permissions)`
+      `id, name, position_id, portal_access, auth_user_id, onboarding_status, positions:position_id (id, title, permissions)`
     )
     .eq("auth_user_id", user.id)
     .maybeSingle();
@@ -66,6 +68,7 @@ export async function loadMyProfile(): Promise<UserProfile | null> {
     positionTitle: emp.positions?.title ?? null,
     portalAccess: emp.portal_access ?? false,
     permissions: emp.positions?.permissions ?? [],
+    onboardingStatus: emp.onboarding_status ?? 'not_invited',
   };
 }
 

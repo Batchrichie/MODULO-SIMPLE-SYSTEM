@@ -51,6 +51,8 @@ export interface Project {
   estimatedCost?: number | null;
 }
 
+export type OnboardingStatus = 'not_invited' | 'invited' | 'active' | 'inactive';
+
 export interface Employee {
   id: string;
   name: string;
@@ -63,6 +65,10 @@ export interface Employee {
   exemptSsnit: boolean;
   positionId?: string | null;
   portalAccess?: boolean;
+  email?: string | null;
+  authUserId?: string | null;
+  onboardingStatus?: OnboardingStatus;
+  invitedAt?: string | null;
 }
 
 export interface JournalLine {
@@ -317,6 +323,8 @@ export interface Db {
   deleteAccount: (code: string) => Promise<unknown>;
   deleteProject: (id: string) => Promise<unknown>;
   deleteEmployee: (id: string) => Promise<void>;
+  inviteEmployee: (employeeId: string) => Promise<{ mode: 'invited' | 'resent'; authUserId: string }>;
+  completeOnboarding?: (employeeId: string, password: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   saveBankReconciliation: (rec: BankReconciliation) => Promise<void>;
   deleteBankReconciliation: (id: string) => Promise<void>;

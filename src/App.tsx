@@ -18,6 +18,7 @@ import MyStatementPanel from "./portals/shared/MyStatementPanel";
 import MediaLibraryWrapper from "./portals/shared/MediaLibraryWrapper";
 import FieldActivityFeed from "./portals/ceo/FieldActivityFeed";
 import Login from "./Login";
+import PasswordChangeModal from "./components/PasswordChangeModal";
 
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
          FONT_DISPLAY, FONT_BODY } from "./theme/tokens";
@@ -278,6 +279,18 @@ export default function App() {
   if (!authSession) return <Login />;
   if (!loaded) {
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Loading your ledger…</div>;
+  }
+  if (profile?.onboardingStatus === "invited") {
+    return (
+      <PasswordChangeModal
+        employeeId={profile.employeeId}
+        employeeName={profile.employeeName}
+        isDark={theme === "dark"}
+        onComplete={() =>
+          setProfile((p) => (p ? { ...p, onboardingStatus: "active" } : p))
+        }
+      />
+    );
   }
 
   const brandInitial = (companyNameDraft || data.companyName || "M").trim().charAt(0).toUpperCase();

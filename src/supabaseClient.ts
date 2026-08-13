@@ -114,6 +114,10 @@ interface EmployeeRow {
   exempt_ssnit?: boolean | null;
   position_id?: string | null;
   portal_access?: boolean | null;
+  email?: string | null;
+  auth_user_id?: string | null;
+  onboarding_status?: Employee['onboardingStatus'] | null;
+  invited_at?: string | null;
 }
 
 function employeeFromRow(r: EmployeeRow): Employee {
@@ -129,6 +133,10 @@ function employeeFromRow(r: EmployeeRow): Employee {
     exemptSsnit: r.exempt_ssnit ?? false,
     positionId: r.position_id ?? null,
     portalAccess: r.portal_access ?? false,
+      email: r.email ?? null,
+      authUserId: r.auth_user_id ?? null,
+      onboardingStatus: r.onboarding_status ?? 'not_invited',
+      invitedAt: r.invited_at ?? null,
   };
 }
 
@@ -145,6 +153,11 @@ function employeeToRow(e: Employee): EmployeeRow {
     portal_access: e.portalAccess ?? false,
     exempt_paye: e.exemptPaye ?? false,
     exempt_ssnit: e.exemptSsnit ?? false,
+      email: e.email ?? null,
+      // Intentionally omitted: auth_user_id, onboarding_status, invited_at.
+      // Those are only ever written by inviteEmployee() / the self-service password
+      // flow — never by the generic "save employee" form — so we don't risk
+      // clobbering onboarding state on an unrelated edit.
   };
 }
 
@@ -888,6 +901,40 @@ export const db: Db = {
     if (rec.items && rec.items.length > 0) {
       await upsertTable('bank_reconciliation_items', rec.items.map(bankRecItemToRow));
     }
+  },
+  
+  inviteEmployee: async (employeeId) => {
+    const { data, error } = await supabase.functions.invoke('invite-employee', {
+      body: { employeeId },
+    });
+    if (error) {
+      let message = error.message || 'Failed to send invite.';
+      try {
+        const body = await error.context?.json?.();
+        if (body?.error) message = body.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(message);
+    }
+    return data as { mode: 'invited' | 'resent'; authUserId: string };
+  },
+
+  completeOnboarding: async (employeeId, password) => {
+    const { data, error } = await supabase.functions.invoke('complete-onboarding', {
+      body: { employeeId, password },
+    });
+    if (error) {
+      let message = error.message || 'Failed to complete onboarding.';
+      try {
+        const body = await error.context?.json?.();
+        if (body?.error) message = body.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(message);
+    }
+    return data;
   },
 
   deleteBankReconciliation: (id) => deleteFromTable('bank_reconciliations', 'id', id),
