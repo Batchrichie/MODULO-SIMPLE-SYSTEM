@@ -86,30 +86,64 @@ export default function JournalPanel({ data, mutate, readOnly, setPrintContent }
       <SectionTitle>
         Recent entries
       </SectionTitle>
-      <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "center" }}>
-        <Card style={{ padding: 12, flex: "0 0 180px" }}>
-          <div style={{ fontSize: 11, color: MUTED }}>ENTRIES</div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>{totals.entries}</div>
-        </Card>
-        <Card style={{ padding: 12, flex: "0 0 180px" }}>
-          <div style={{ fontSize: 11, color: MUTED }}>TOTAL DEBITS</div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>GHS {fmt(totals.totalDebits)}</div>
-        </Card>
-        <Card style={{ padding: 12, flex: "0 0 180px" }}>
-          <div style={{ fontSize: 11, color: MUTED }}>TOTAL CREDITS</div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>GHS {fmt(totals.totalCredits)}</div>
-        </Card>
-        <Card style={{ padding: 12, flex: "1 1 220px" }}>
-          <div style={{ fontSize: 11, color: MUTED }}>ACCOUNTS TOUCHED</div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>{totals.accountsTouched}</div>
-        </Card>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 12,
+          alignItems: "stretch",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", gap: 12, flex: "1 1 760px", flexWrap: "wrap", alignItems: "stretch" }}>
+          <Card style={{ padding: 12, flex: "0 0 180px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ fontSize: 11, color: MUTED }}>ENTRIES</div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>{totals.entries}</div>
+          </Card>
+          <Card style={{ padding: 12, flex: "0 0 180px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ fontSize: 11, color: MUTED }}>TOTAL DEBITS</div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>GHS {fmt(totals.totalDebits)}</div>
+          </Card>
+          <Card style={{ padding: 12, flex: "0 0 180px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ fontSize: 11, color: MUTED }}>TOTAL CREDITS</div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>GHS {fmt(totals.totalCredits)}</div>
+          </Card>
+          <Card style={{ padding: 12, flex: "1 1 220px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ fontSize: 11, color: MUTED }}>ACCOUNTS TOUCHED</div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>{totals.accountsTouched}</div>
+          </Card>
+        </div>
+
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            justifyContent: "flex-end",
+            flexWrap: "wrap",
+            minWidth: 0,
+          }}
+        >
           <Button onClick={() => setFilter("all")} variant={filter === "all" ? undefined : "ghost"}>All time</Button>
           <Button onClick={() => setFilter("today")} variant={filter === "today" ? undefined : "ghost"}>Today</Button>
           <Button onClick={() => setFilter("this_month")} variant={filter === "this_month" ? undefined : "ghost"}>This month</Button>
           <Button onClick={() => setFilter("this_year")} variant={filter === "this_year" ? undefined : "ghost"}>This year</Button>
           <Button onClick={() => setFilter("last_30")} variant={filter === "last_30" ? undefined : "ghost"}>Last 30 days</Button>
-          <select style={{ marginLeft: 8 }} value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+          <select
+            style={{
+              marginLeft: 8,
+              height: 36,
+              minWidth: 120,
+              padding: "0 12px",
+              borderRadius: 8,
+              border: `1px solid ${MUTED}`,
+              background: "rgba(255,255,255,0.02)",
+              color: "inherit",
+            }}
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value)}
+          >
             <option value="none">Group by: None</option>
             <option value="project">Project</option>
             <option value="account">Account</option>
