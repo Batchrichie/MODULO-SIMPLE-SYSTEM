@@ -316,7 +316,7 @@ export default function App() {
         <div key={group.label} style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", padding: "0 9px", marginBottom: 6 }}>{group.label}</div>
           <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {group.keys.map((k) => {
+            {group.keys.filter((k) => k !== "logout").map((k) => {
               const Icon = navIcon(k);
               return <NavItem key={k} icon={Icon} label={navLabel(k)} active={effectiveTab === k} onClick={() => setTab(k)} />;
             })}
