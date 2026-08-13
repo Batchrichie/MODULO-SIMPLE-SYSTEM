@@ -66,6 +66,7 @@ export interface Employee {
   positionId?: string | null;
   portalAccess?: boolean;
   email?: string | null;
+  phone?: string | null;
   authUserId?: string | null;
   onboardingStatus?: OnboardingStatus;
   invitedAt?: string | null;

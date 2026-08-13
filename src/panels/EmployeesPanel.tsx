@@ -23,6 +23,7 @@ export default function EmployeesPanel({ data, mutate }) {
   const [form, setForm] = useState({
     name: "",
     email: "",
+    phone: "",
     baseSalary: "",
     ssnitNo: "",
     niaCard: "",
@@ -41,6 +42,7 @@ export default function EmployeesPanel({ data, mutate }) {
     setForm({
       name: "",
       email: "",
+      phone: "",
       baseSalary: "",
       ssnitNo: "",
       niaCard: "",
@@ -63,6 +65,7 @@ export default function EmployeesPanel({ data, mutate }) {
     setForm({
       name: employee.name || "",
       email: employee.email || "",
+      phone: employee.phone || "",
       baseSalary: String(employee.baseSalary || ""),
       ssnitNo: employee.ssnitNo || "",
       niaCard: employee.niaCard || "",
@@ -89,6 +92,7 @@ export default function EmployeesPanel({ data, mutate }) {
       id: editingEmployeeId || "EMP-" + Date.now(),
       name: form.name.trim(),
       email: form.email?.trim() || null,
+      phone: form.phone?.trim() || null,
       baseSalary: parseFloat(form.baseSalary),
       active: editingEmployeeId
         ? data.employees.find((e) => e.id === editingEmployeeId)?.active ?? true
@@ -400,6 +404,16 @@ export default function EmployeesPanel({ data, mutate }) {
                 placeholder="ama@company.com"
               />
               <span style={{ fontSize: 11, color: MUTED }}>Required to send a portal invite</span>
+            </div>
+            <div style={{ flex: "1 1 200px" }}>
+              <label style={labelStyle}>Phone</label>
+              <input
+                type="tel"
+                style={inputStyle}
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="+233 20 000 0000"
+              />
             </div>
             <div style={{ flex: "1 1 200px" }}>
               <label style={labelStyle}>Designation</label>

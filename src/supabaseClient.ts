@@ -115,6 +115,7 @@ interface EmployeeRow {
   position_id?: string | null;
   portal_access?: boolean | null;
   email?: string | null;
+  phone?: string | null;
   auth_user_id?: string | null;
   onboarding_status?: Employee['onboardingStatus'] | null;
   invited_at?: string | null;
@@ -134,6 +135,7 @@ function employeeFromRow(r: EmployeeRow): Employee {
     positionId: r.position_id ?? null,
     portalAccess: r.portal_access ?? false,
       email: r.email ?? null,
+      phone: r.phone ?? null,
       authUserId: r.auth_user_id ?? null,
       onboardingStatus: r.onboarding_status ?? 'not_invited',
       invitedAt: r.invited_at ?? null,
@@ -153,7 +155,8 @@ function employeeToRow(e: Employee): EmployeeRow {
     portal_access: e.portalAccess ?? false,
     exempt_paye: e.exemptPaye ?? false,
     exempt_ssnit: e.exemptSsnit ?? false,
-      email: e.email ?? null,
+    email: e.email ?? null,
+    phone: e.phone ?? null,
       // Intentionally omitted: auth_user_id, onboarding_status, invited_at.
       // Those are only ever written by inviteEmployee() / the self-service password
       // flow — never by the generic "save employee" form — so we don't risk
