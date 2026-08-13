@@ -88,6 +88,7 @@ export default function EmployeesPanel({ data, mutate }) {
     const employeePayload = {
       id: editingEmployeeId || "EMP-" + Date.now(),
       name: form.name.trim(),
+      email: form.email?.trim() || null,
       baseSalary: parseFloat(form.baseSalary),
       active: editingEmployeeId
         ? data.employees.find((e) => e.id === editingEmployeeId)?.active ?? true
