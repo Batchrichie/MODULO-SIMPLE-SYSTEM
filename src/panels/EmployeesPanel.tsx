@@ -141,7 +141,7 @@ export default function EmployeesPanel({ data, mutate }) {
     }
     setInvitingId(employee.id);
     try {
-      const result = await db.inviteEmployee(employee.id);
+      const result = await db.inviteEmployee(employee.id, employee.email);
       mutate((d) => ({
         ...d,
         employees: d.employees.map((e) =>

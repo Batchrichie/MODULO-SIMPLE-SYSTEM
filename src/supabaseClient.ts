@@ -903,9 +903,11 @@ export const db: Db = {
     }
   },
   
-  inviteEmployee: async (employeeId) => {
+  inviteEmployee: async (employeeId, email) => {
+    const body: Record<string, unknown> = { employeeId };
+    if (email) body.email = email;
     const { data, error } = await supabase.functions.invoke('invite-employee', {
-      body: { employeeId },
+      body,
     });
     if (error) {
       let message = error.message || 'Failed to send invite.';

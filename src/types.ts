@@ -323,7 +323,7 @@ export interface Db {
   deleteAccount: (code: string) => Promise<unknown>;
   deleteProject: (id: string) => Promise<unknown>;
   deleteEmployee: (id: string) => Promise<void>;
-  inviteEmployee: (employeeId: string) => Promise<{ mode: 'invited' | 'resent'; authUserId: string }>;
+  inviteEmployee: (employeeId: string, email?: string) => Promise<{ mode: 'invited' | 'resent'; authUserId: string }>;
   completeOnboarding?: (employeeId: string, password: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   saveBankReconciliation: (rec: BankReconciliation) => Promise<void>;
