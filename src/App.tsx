@@ -421,7 +421,7 @@ export default function App() {
           {/* Admin panels */}
           {effectiveTab === "dashboard" && (adminFlag || ceoFlag) && <DashboardPanel data={data} setTab={setTab} />}
           {effectiveTab === "accounts" && canEdit && <AccountsPanel data={data} mutate={mutate} />}
-          {effectiveTab === "journal" && (adminFlag || ceoFlag) && <JournalPanel data={data} mutate={canEdit ? mutate : undefined} readOnly={ceoFlag} />}
+          {effectiveTab === "journal" && (adminFlag || ceoFlag) && <JournalPanel data={data} mutate={canEdit ? mutate : undefined} readOnly={ceoFlag} setPrintContent={queuePrint} />}
           {effectiveTab === "ledger" && (adminFlag || ceoFlag) && <LedgerPanel data={data} />}
           {effectiveTab === "financials" && (adminFlag || ceoFlag) && <FinancialsPanel data={data} setPrintContent={queuePrint} />}
           {effectiveTab === "projects" && <ProjectsPanel data={data} mutate={canEdit ? mutate : undefined} />}
