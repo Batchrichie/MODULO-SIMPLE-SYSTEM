@@ -25,11 +25,11 @@ export default function NavItem({ icon: Icon, label, active = false, onClick }: 
         border: "none",
         borderLeft: active ? `3px solid ${GREEN}` : "3px solid transparent",
         background: active
-          ? "var(--nav-active)"
+          ? "linear-gradient(135deg, var(--green), var(--green-deep))"
           : hover
           ? "var(--nav-hover)"
           : "transparent",
-        color: active ? GREEN_DEEP : INK,
+        color: active ? "#FFFFFF" : INK,
         fontFamily: FONT_BODY,
         fontSize: 13.5,
         fontWeight: active ? 700 : 500,
