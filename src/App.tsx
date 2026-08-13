@@ -334,7 +334,7 @@ export default function App() {
 
   return (
     <NotificationsProvider>
-    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: isMobile ? "auto" : "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
+    <div className="app-root" style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: isMobile ? "auto" : "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
       <style>{`
         :root {
           --ink: #1F2A24; --paper: #F7F4EE; --paper-raised: #FFFFFF; --rule: #DCD5C4;
@@ -372,6 +372,8 @@ export default function App() {
           .fin-page + .fin-page { page-break-before: always; }
           .fin-page tr { page-break-inside: avoid; }
           .fin-page thead { display: table-header-group; }
+          /* Ensure the app container doesn't reserve a full viewport height during print */
+          .app-root { height: auto !important; min-height: auto !important; overflow: visible !important; }
         }
         .print-only { display: none; }
         .grid-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
