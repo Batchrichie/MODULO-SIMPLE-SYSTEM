@@ -811,9 +811,10 @@ export async function saveSettings(settingsData: Partial<AppData>): Promise<void
 
 async function upsertTable<T>(tableName: string, rows: T[]): Promise<void> {
   if (!rows || rows.length === 0) return;
-  const { error } = await supabase.from(tableName).upsert(rows as Record<string, unknown>[]);
+  const sanitizedRows = rows.map((row) => JSON.parse(JSON.stringify(row, (_k, value) => (value === undefined ? null : value))));
+  const { error } = await supabase.from(tableName).upsert(sanitizedRows as Record<string, unknown>[]);
   if (error) {
-    console.error(`Error upserting ${tableName}:`, error);
+    console.error(`Error upserting ${tableName}:`, error, sanitizedRows);
     throw error;
   }
 }
@@ -832,6 +833,13 @@ export const db: Db = {
   saveEmployees: (employees) => upsertTable('employees', (employees ?? []).map(employeeToRow)),
 
   saveJournalEntry: async (entry) => {
+    const safeLines = (entry.lines ?? []).map((l) => ({
+      account: String(l.account ?? '').trim(),
+      debit: Number(l.debit) || 0,
+      credit: Number(l.credit) || 0,
+    }));
+    const reversed = (entry as any).reversed ?? false;
+
     await upsertTable('journal_entries', [
       {
         id: entry.id,
@@ -840,13 +848,13 @@ export const db: Db = {
         description: entry.description ?? null,
         period: entry.period ?? null,
         project: entry.project ?? null,
-        reversed: (entry as any).reversed ?? null,
+        reversed,
         reversal_of: (entry as any).reversalOf ?? null,
       },
     ]);
     await deleteFromTable('journal_lines', 'entry_id', entry.id);
-    if (entry.lines && entry.lines.length > 0) {
-      await upsertTable('journal_lines', entry.lines.map((l) => journalLineToRow(l, entry.id)));
+    if (safeLines.length > 0) {
+      await upsertTable('journal_lines', safeLines.map((l) => journalLineToRow(l, entry.id)));
     }
   },
 
@@ -893,7 +901,33 @@ export const db: Db = {
   },
 
   saveInvoice: async (invoice) => {
-    const row = invoiceToRow(invoice);
+    const safeInvoice = {
+      ...invoice,
+      totals: {
+        ...(invoice.totals ?? {}),
+        subtotal: Number(invoice.totals?.subtotal ?? 0),
+        discount: Number(invoice.totals?.discount ?? 0),
+        newSubtotal: Number(invoice.totals?.newSubtotal ?? 0),
+        nhilGetfund: Number(invoice.totals?.nhilGetfund ?? 0),
+        vat: Number(invoice.totals?.vat ?? 0),
+        grandTotal: Number(invoice.totals?.grandTotal ?? 0),
+        grandTotalGHS: Number(invoice.totals?.grandTotalGHS ?? invoice.totals?.grandTotal ?? 0),
+        newSubtotalGHS: Number(invoice.totals?.newSubtotalGHS ?? invoice.totals?.newSubtotal ?? 0),
+        nhilGetfundGHS: Number(invoice.totals?.nhilGetfundGHS ?? invoice.totals?.nhilGetfund ?? 0),
+        vatGHS: Number(invoice.totals?.vatGHS ?? invoice.totals?.vat ?? 0),
+      },
+      items: (invoice.items ?? []).map((it) => ({
+        ...it,
+        qty: Number(it.qty) || 0,
+        rate: Number(it.rate) || 0,
+      })),
+      payments: (invoice.payments ?? []).map((p) => ({
+        ...p,
+        amountGHS: Number(p.amountGHS) || 0,
+      })),
+    };
+
+    const row = invoiceToRow(safeInvoice);
     console.log('[saveInvoice] Upserting invoice row:', JSON.stringify(row, null, 2));
     let step = 'upsert invoices';
     try {
@@ -913,9 +947,9 @@ export const db: Db = {
     } catch (err) {
       throw new Error(`${step}: ${(err as Error).message}`);
     }
-    if (invoice.items && invoice.items.length > 0) {
+    if (safeInvoice.items && safeInvoice.items.length > 0) {
       step = 'upsert invoice_items';
-      const itemRows = invoice.items.map((it) => invoiceItemToRow(it, invoice.id));
+      const itemRows = safeInvoice.items.map((it) => invoiceItemToRow(it, safeInvoice.id));
       console.log('[saveInvoice] Item rows:', JSON.stringify(itemRows, null, 2));
       try {
         await upsertTable('invoice_items', itemRows);
@@ -923,10 +957,10 @@ export const db: Db = {
         throw new Error(`${step}: ${(err as Error).message}`);
       }
     }
-    if (invoice.payments && invoice.payments.length > 0) {
+    if (safeInvoice.payments && safeInvoice.payments.length > 0) {
       step = 'upsert payments';
       try {
-        await upsertTable('payments', invoice.payments.map((p) => paymentToRow(p, invoice.id)));
+        await upsertTable('payments', safeInvoice.payments.map((p) => paymentToRow(p, safeInvoice.id)));
       } catch (err) {
         throw new Error(`${step}: ${(err as Error).message}`);
       }

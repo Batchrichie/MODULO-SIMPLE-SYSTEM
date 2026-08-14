@@ -5,6 +5,7 @@ import Button from "../components/ui/Button";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
+import { getInvoiceBalance, getInvoicePaidAmount } from "../utils/invoiceUtils";
 import { db } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
@@ -26,8 +27,9 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
 
     const paymentId = "PYT-" + Date.now();
     const payment = { id: paymentId, date, amountGHS: amt, method: paymentAccount, reference };
-    const paidSoFar = inv.payments.reduce((s, p) => s + p.amountGHS, 0) + amt;
-    const newStatus = paidSoFar >= inv.totals.grandTotalGHS - 0.01 ? "Paid" : "Partially Paid";
+    const totalGhs = Number(inv.totals?.grandTotalGHS ?? inv.totals?.grandTotal ?? 0) || 0;
+    const paidSoFar = getInvoicePaidAmount(inv) + amt;
+    const newStatus = paidSoFar >= totalGhs - 0.01 ? "Paid" : "Partially Paid";
 
     const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
     const entry = {
@@ -69,14 +71,21 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       window.alert("Failed to record payment to server. Check console for details.");
     }
 
+    const receiptInvoice = updatedInvoice;
+    const receiptData = {
+      ...data,
+      invoices: data.invoices.map((i) => i.id === inv.id ? receiptInvoice : i),
+    };
+
     document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
     setPrintContent(
-      <ReceiptDocument data={data} inv={inv} payment={payment} receiptNo={receiptNo} />
+      <ReceiptDocument data={receiptData} inv={receiptInvoice} payment={payment} receiptNo={receiptNo} />
     );
     onDone && onDone();
   }
 
-  const balance = inv.totals.grandTotalGHS - inv.payments.reduce((s, p) => s + p.amountGHS, 0);
+  const balance = getInvoiceBalance(inv, data);
+  const balanceBackground = `GHS ${fmt(balance)}`;
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -90,7 +99,36 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         </div>
         <div style={{ flex: "1 1 150px" }}>
           <label style={labelStyle}>Amount (GHS)</label>
-          <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={fmt(balance)} />
+          <div style={{ position: "relative" }}>
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                padding: "0 12px",
+                color: "rgba(148, 163, 184, 0.72)",
+                fontWeight: 600,
+                fontSize: 14,
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                opacity: amount ? 0 : 1,
+              }}
+            >
+              {balanceBackground}
+            </span>
+            <input
+              style={{
+                ...inputStyle,
+                color: amount ? INK : "transparent",
+                caretColor: INK,
+              }}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+            />
+          </div>
         </div>
         <div style={{ flex: "1 1 200px" }}>
           <label style={labelStyle}>Paid into *</label>

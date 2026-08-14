@@ -43,6 +43,53 @@ export function computeInvoiceTotals(
   };
 }
 
+export function getInvoicePaidAmount(invoice: { payments?: Array<{ amountGHS?: number | null }> | null } | null | undefined): number {
+  if (!invoice?.payments) return 0;
+  return invoice.payments.reduce((sum, payment) => sum + (Number(payment?.amountGHS) || 0), 0);
+}
+
+export function getInvoiceGrandTotalGHS(
+  invoice: {
+    totals?: Partial<{ grandTotalGHS: number; grandTotal: number; chargeNhil?: boolean; chargeVat?: boolean }> | null;
+    items?: Array<{ lineType?: string; qty?: number | string; rate?: number | string }>;
+    discountPct?: number | string | null;
+    currency?: string;
+    exchangeRate?: number | string | null;
+  } | null | undefined,
+  data?: { nhilGetfundRate?: number | string | null; vatRate?: number | string | null } | null
+): number {
+  if (!invoice) return 0;
+  const stored = Number(invoice.totals?.grandTotalGHS ?? invoice.totals?.grandTotal ?? 0);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+
+  const items = invoice.items ?? [];
+  const computed = computeInvoiceTotals(
+    items,
+    Number(invoice.discountPct ?? 0),
+    Number(data?.nhilGetfundRate ?? 0.025),
+    Number(data?.vatRate ?? 0.15),
+    !!invoice.totals?.chargeNhil,
+    !!invoice.totals?.chargeVat
+  );
+
+  return Number(computed.grandTotal) || 0;
+}
+
+export function getInvoiceBalance(
+  invoice: {
+    totals?: Partial<{ grandTotalGHS: number; grandTotal: number; chargeNhil?: boolean; chargeVat?: boolean }> | null;
+    items?: Array<{ lineType?: string; qty?: number | string; rate?: number | string }>;
+    discountPct?: number | string | null;
+    payments?: Array<{ amountGHS?: number | null }> | null;
+  } | null | undefined,
+  data?: { nhilGetfundRate?: number | string | null; vatRate?: number | string | null } | null
+): number {
+  if (!invoice) return 0;
+  const grandTotal = getInvoiceGrandTotalGHS(invoice, data);
+  const paid = getInvoicePaidAmount(invoice);
+  return Math.max(grandTotal - paid, 0);
+}
+
 export const NAVY = "#1F3864";
 export const INVOICE_GOLD = "#D4AF37";
 

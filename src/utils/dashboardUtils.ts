@@ -7,10 +7,10 @@ function getPaymentAccountCodes(data: AppData): string[] {
     .map(a => a.code);
 }
 
-/** Compute running cash balance from journal entries for ALL payment accounts */
+/** Compute running payment-account cash balance from journal entries for all cash-like accounts. */
 export function computeCashFlow(data: AppData) {
   const paymentCodes = getPaymentAccountCodes(data);
-  // Fallback to any account with type 'Asset' in the 1xxx range if no payment accounts flagged
+  // Fallback to any asset account in the 1xxx range if no payment accounts are flagged.
   const cashCodes = paymentCodes.length > 0
     ? paymentCodes
     : data.accounts.filter(a => a.type === 'Asset' && /^1\d{3}$/.test(a.code)).map(a => a.code);
@@ -45,11 +45,11 @@ export function getDashboardMetrics(data: AppData) {
     return debit - credit;
   };
 
-  // --- Cash: sum all payment/bank account balances from DB ---
+  // --- Cash & cash equivalents: sum payment/bank account balances from the ledger ---
   const paymentCodes = data.accounts
     .filter(a => a.isPaymentAccount)
     .map(a => a.code);
-  // Fallback: Asset accounts in 1xxx range if none flagged
+  // Fallback: asset accounts in the 1xxx range if none are explicitly flagged.
   const cashCodes = paymentCodes.length > 0
     ? paymentCodes
     : data.accounts.filter(a => a.type === 'Asset' && /^1\d{3}$/.test(a.code)).map(a => a.code);

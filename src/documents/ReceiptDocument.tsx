@@ -4,6 +4,7 @@ import { LOGO_SRC } from "../theme/tokens";
 import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
 import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
+import { getInvoiceBalance, getInvoiceGrandTotalGHS, getInvoicePaidAmount } from "../utils/invoiceUtils";
 import { FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme/tokens";
 import type { AppData, Invoice, Payment } from "../types";
 
@@ -86,11 +87,22 @@ function PaidStamp() {
 
 export default function ReceiptDocument({ data, inv, payment, receiptNo }: ReceiptDocumentProps) {
   const company = data.company || COMPANY_TEMPLATE;
-  const idx = inv.payments.findIndex((p) => p.id === payment.id);
-  const paidThrough = inv.payments
-    .slice(0, idx + 1)
-    .reduce((s, p) => s + p.amountGHS, 0);
-  const outstanding = Math.max(inv.totals.grandTotalGHS - paidThrough, 0);
+  const invoicePayments = Array.isArray(inv.payments) ? inv.payments : [];
+  const idx = invoicePayments.findIndex((p) => p.id === payment.id);
+  const paymentIndex = idx >= 0 ? idx : invoicePayments.length;
+  const paidThrough = invoicePayments
+    .slice(0, paymentIndex + 1)
+    .reduce((s, p) => s + Number(p.amountGHS || 0), 0);
+  const invoiceForTotals = {
+    ...inv,
+    payments: invoicePayments,
+    totals: inv.totals ?? {
+      grandTotalGHS: getInvoiceGrandTotalGHS(inv, data),
+      grandTotal: getInvoiceGrandTotalGHS(inv, data),
+    },
+  };
+  const grandTotal = getInvoiceGrandTotalGHS(invoiceForTotals, data);
+  const outstanding = Math.max(grandTotal - paidThrough, 0);
   const isSettled = outstanding < 0.01;
 
   const s = {
@@ -395,7 +407,7 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
       <div style={s.summaryBox}>
         <div style={s.summaryRow}>
           <span>Invoice Total</span>
-          <span>GHS {fmt(inv.totals.grandTotalGHS)}</span>
+          <span>GHS {fmt(grandTotal)}</span>
         </div>
         <div style={s.summaryRow}>
           <span>Amount Received to Date</span>

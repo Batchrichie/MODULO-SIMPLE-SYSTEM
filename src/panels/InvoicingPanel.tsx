@@ -12,7 +12,7 @@ import { inputStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
 import { db, supabase } from "../supabaseClient";
 import { confirmAsync } from "../components/ui/Notifications";
-import { computeInvoiceTotals } from "../utils/invoiceUtils";
+import { computeInvoiceTotals, getInvoiceBalance, getInvoicePaidAmount, getInvoiceGrandTotalGHS } from "../utils/invoiceUtils";
 import NewInvoiceForm from "./NewInvoiceForm";
 import RecordPaymentForm from "./RecordPaymentForm";
 import InvoiceDocument from "../documents/InvoiceDocument";
@@ -24,6 +24,14 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
   const [payingInv, setPayingInv] = useState<Invoice | null>(null);
   const [cloneSource, setCloneSource] = useState<Invoice | null>(null);
   const [showVoided, setShowVoided] = useState(false);
+  const [isCompact, setIsCompact] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsCompact(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   async function voidInvoice(inv: Invoice) {
     const confirmed = await confirmAsync(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`);
@@ -151,6 +159,83 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
     setPrintContent(content);
   }
 
+  const renderInvoiceActions = (inv: Invoice, balance: number) => (
+    <div
+      style={{
+        display: "flex",
+        gap: 6,
+        justifyContent: isCompact ? "flex-start" : "flex-end",
+        flexWrap: "wrap",
+      }}
+    >
+      <Button
+        variant="ghost"
+        icon={Printer}
+        onClick={() => doPrint({ type: "invoice", invId: inv.id })}
+      >
+        Print
+      </Button>
+      {mutate && (
+        <>
+          <Button
+            variant="ghost"
+            icon={Plus}
+            onClick={() => {
+              setCloneSource(inv);
+              setShowNew(true);
+            }}
+          >
+            Clone
+          </Button>
+          {inv.status !== "Void" && (
+            <Button
+              variant="ghost"
+              icon={Trash2}
+              onClick={() => voidInvoice(inv)}
+            >
+              Void
+            </Button>
+          )}
+          {balance > 0.01 && inv.status !== "Void" && (
+            <Button
+              variant="ghost"
+              icon={Banknote}
+              onClick={() => setPayingInv(inv)}
+            >
+              Payment
+            </Button>
+          )}
+        </>
+      )}
+      {inv.payments.length > 0 && (
+        <select
+          style={{
+            ...inputStyle,
+            width: "auto",
+            fontSize: 12,
+            padding: "4px 8px",
+          }}
+          value=""
+          onChange={(e) => {
+            if (e.target.value)
+              doPrint({
+                type: "receipt",
+                invId: inv.id,
+                paymentId: e.target.value,
+              });
+          }}
+        >
+          <option value="">Reprint Receipt…</option>
+          {inv.payments.map((p, i) => (
+            <option key={p.id} value={p.id}>
+              Receipt {i + 1} — GHS {fmt(p.amountGHS)}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <SectionTitle
@@ -207,9 +292,45 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                   chargeNhil,
                   chargeVat
                 );
-                const grandTotalGHS = summary?.grand_total ?? inv.totals?.grandTotalGHS ?? rt.grandTotal;
-                const paid = summary?.paid ?? inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-                const balance = summary?.balance ?? grandTotalGHS - paid;
+                const grandTotalGHS = summary?.grand_total ?? getInvoiceGrandTotalGHS(inv, data) ?? rt.grandTotal;
+                const paid = summary?.paid ?? getInvoicePaidAmount(inv);
+                const balance = summary?.balance ?? getInvoiceBalance(inv, data);
+                if (isCompact) {
+                  return (
+                    <React.Fragment key={inv.id}>
+                      <tr className="row-hover">
+                        <Td mono label="Invoice #">
+                          {inv.invoiceNumber}
+                        </Td>
+                        <Td label="Bill To">{inv.billTo}</Td>
+                        <Td label="Project">{inv.projectLabel}</Td>
+                        <Td right mono label="Grand Total">
+                          GHS {fmt(grandTotalGHS)}
+                        </Td>
+                        <Td right mono label="Paid">
+                          GHS {fmt(paid)}
+                        </Td>
+                        <Td
+                          right
+                          mono
+                          bold
+                          label="Balance"
+                          style={{ color: balance > 0.01 ? ALERT : GREEN }}
+                        >
+                          GHS {fmt(balance)}
+                        </Td>
+                        <Td label="Status">{inv.status}</Td>
+                        <Td right label="Actions">&nbsp;</Td>
+                      </tr>
+                      <tr>
+                        <td colSpan={8} style={{ padding: "0 12px 14px" }}>
+                          {renderInvoiceActions(inv, balance)}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                }
+
                 return (
                   <tr key={inv.id} className="row-hover">
                     <Td mono label="Invoice #">
@@ -234,82 +355,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                     </Td>
                     <Td label="Status">{inv.status}</Td>
                     <Td right label="Actions">
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          justifyContent: "flex-end",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <Button
-                          variant="ghost"
-                          icon={Printer}
-                          onClick={() =>
-                            doPrint({ type: "invoice", invId: inv.id })
-                          }
-                        >
-                          Print
-                        </Button>
-                        {mutate && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              icon={Plus}
-                              onClick={() => {
-                                setCloneSource(inv);
-                                setShowNew(true);
-                              }}
-                            >
-                              Clone
-                            </Button>
-                            {inv.status !== "Void" && (
-                              <Button
-                                variant="ghost"
-                                icon={Trash2}
-                                onClick={() => voidInvoice(inv)}
-                              >
-                                Void
-                              </Button>
-                            )}
-                            {balance > 0.01 && inv.status !== "Void" && (
-                              <Button
-                                variant="ghost"
-                                icon={Banknote}
-                                onClick={() => setPayingInv(inv)}
-                              >
-                                Payment
-                              </Button>
-                            )}
-                          </>
-                        )}
-                        {inv.payments.length > 0 && (
-                          <select
-                            style={{
-                              ...inputStyle,
-                              width: "auto",
-                              fontSize: 12,
-                              padding: "4px 8px",
-                            }}
-                            value=""
-                            onChange={(e) => {
-                              if (e.target.value)
-                                doPrint({
-                                  type: "receipt",
-                                  invId: inv.id,
-                                  paymentId: e.target.value,
-                                });
-                            }}
-                          >
-                            <option value="">Reprint Receipt…</option>
-                            {inv.payments.map((p, i) => (
-                              <option key={p.id} value={p.id}>
-                                Receipt {i + 1} — GHS {fmt(p.amountGHS)}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
+                      {renderInvoiceActions(inv, balance)}
                     </Td>
                   </tr>
                 );

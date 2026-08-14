@@ -85,15 +85,15 @@ export default function DashboardPanel({ data, setTab }) {
       {/* 1. Core Financial KPIs */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
         <KpiCard
-          title="Cash Balance"
+          title="Cash & Cash Equivalents"
           value={metrics.cash}
           icon={Banknote}
           accent={GREEN}
-          sub={`Net Income: GHS ${fmt(metrics.netIncome)}`}
+          sub={`Payment-account balance: GHS ${fmt(metrics.cash)}`}
           detail={
             <>
               <p style={{ margin: "0 0 8px 0" }}>
-                Real-time cash position from your bank & payment accounts.
+                Real-time cash position from your bank and payment accounts.
               </p>
               <div style={{ display: "flex", gap: 20 }}>
                 <div>
