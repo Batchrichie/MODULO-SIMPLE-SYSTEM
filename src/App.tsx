@@ -21,7 +21,7 @@ import Login from "./Login";
 import PasswordChangeModal from "./components/PasswordChangeModal";
 
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
-         FONT_DISPLAY, FONT_BODY } from "./theme/tokens";
+         FONT_DISPLAY, FONT_BODY, LOGO_SRC } from "./theme/tokens";
 import { COMPANY_TEMPLATE, DEFAULT_DATA } from "./constants/defaults";
 import useGoogleFonts from "./hooks/useGoogleFonts";
 import useIsMobile from "./hooks/useIsMobile";
@@ -302,7 +302,10 @@ export default function App() {
   const sidebarContent = (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${RULE}` }}>
-        <div style={{ width: 38, height: 38, borderRadius: 8, background: GREEN, color: PAPER, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{brandInitial}</div>
+        <div style={{ width: 38, height: 38, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: PAPER_RAISED }}>
+          <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <div style={{ position: 'absolute', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: GREEN }}>{brandInitial}</div>
+        </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           {adminFlag && (
             <input style={{ ...inputStyle, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, border: "none", padding: "2px 0", background: "transparent" }} value={companyNameDraft} onChange={(e) => setCompanyNameDraft(e.target.value)} onBlur={saveCompanyName} />
@@ -408,7 +411,10 @@ export default function App() {
       <div className="no-print" style={{ display: "contents" }}>
         {isMobile ? (
           <div style={{ borderBottom: `1px solid ${RULE}`, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, background: PAPER_RAISED, position: "sticky", top: 0, zIndex: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 7, background: GREEN, color: PAPER, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{brandInitial}</div>
+            <div style={{ width: 30, height: 30, borderRadius: 7, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, flexShrink: 0, background: PAPER_RAISED }}>
+              <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <div style={{ position: 'absolute', color: GREEN }}>{brandInitial}</div>
+            </div>
             <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{data.companyName}</div>
             <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Toggle Theme" aria-label="Toggle dark mode" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, cursor: "pointer", flexShrink: 0 }}>
               {theme === "light" ? <Moon size={18} color={INK as any} strokeWidth={2} /> : <Sun size={18} color={INK as any} strokeWidth={2} />}

@@ -14,6 +14,6 @@ export const FONT_DISPLAY = "'Roboto Slab', serif";
 export const FONT_BODY = "'Inter', sans-serif";
 export const FONT_MONO = "'IBM Plex Mono', monospace";
 
-export const LOGO_SRC =
-  "https://z-cdn-media.chatglm.cn/files/c4df6667-2cb5-44bd-9e8c-084ed2a10aef.png?auth_key=1885240175-d071a696811b4023895eec2f8f72bcdc-0-f1149165f857bcfa6db14fa029bb57fd";
+// Use local asset for printable documents so prints don't depend on external CDN
+export const LOGO_SRC = new URL("../assets/Modulo_Logo.png", import.meta.url).href;
 

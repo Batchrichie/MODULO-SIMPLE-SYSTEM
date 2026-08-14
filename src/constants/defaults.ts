@@ -17,7 +17,9 @@ export const COMPANY_TEMPLATE = {
 };
 
 // Projects now come from the database exclusively.
-// No hardcoded DEFAULT_PROJECTS — users create projects via the UI.
+// Fallback `DEFAULT_PROJECTS` is defined below and includes General / Office.
+// Include a fallback General / Office project so the UI has a default
+// This is still a minimal offline fallback; real data should come from DB.
 export const DEFAULT_PROJECTS: Array<{
   id: string;
   name: string;
@@ -26,8 +28,17 @@ export const DEFAULT_PROJECTS: Array<{
   recognitionMethod: string;
   contractValue: number;
   estimatedCost: number;
-}> = [];
-
+}> = [
+  {
+    id: "GEN",
+    name: "General / Office",
+    status: "Active",
+    projectType: "General",
+    recognitionMethod: "Accrual",
+    contractValue: 0,
+    estimatedCost: 0,
+  },
+];
 export const GENERAL_PROJECT = { id: "GEN", name: "General / Office" };
 
 export const DEFAULT_DATA = {
