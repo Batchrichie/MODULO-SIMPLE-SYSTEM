@@ -86,6 +86,8 @@ export interface JournalEntry {
   period?: string | null;
   project?: string | null;
   lines: JournalLine[];
+  reversed?: boolean;
+  reversalOf?: string | null;
 }
 
 export interface InvoiceItem {
@@ -138,6 +140,8 @@ export interface Invoice {
   totals: InvoiceTotals;
   items: InvoiceItem[];
   payments: Payment[];
+  journalEntryId?: string | null;
+  reversalJournalEntryId?: string | null;
 }
 
 export interface PayrollLine {
@@ -318,6 +322,8 @@ export interface Db {
   saveProjects: (projects: Project[]) => Promise<unknown>;
   saveEmployees: (employees: Employee[]) => Promise<unknown>;
   saveJournalEntry: (entry: JournalEntry) => Promise<void>;
+  deleteJournalEntry?: (entryId: string) => Promise<void>;
+  deleteJournalEntriesByInvoiceNumber?: (invoiceNumber: string) => Promise<void>;
   saveInvoice: (invoice: Invoice) => Promise<void>;
   savePayrollRun: (run: PayrollRun) => Promise<void>;
   saveBill: (bill: Bill) => Promise<void>;

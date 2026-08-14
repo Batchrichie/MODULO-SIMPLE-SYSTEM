@@ -260,6 +260,8 @@ interface InvoiceRow {
   revenue_account?: string | null;
   status?: string | null;
   totals?: Invoice['totals'] | null;
+  journal_entry_id?: string | null;
+  reversal_entry_id?: string | null;
 }
 
 function invoiceFromRow(r: InvoiceRow): Invoice {
@@ -279,6 +281,8 @@ function invoiceFromRow(r: InvoiceRow): Invoice {
     revenueAccount: r.revenue_account,
     status: (r.status as import('./types').InvoiceStatus) ?? 'Sent',
     totals: r.totals ?? ({} as Invoice['totals']),
+    journalEntryId: r.journal_entry_id ?? null,
+    reversalJournalEntryId: r.reversal_entry_id ?? null,
   };
 }
 
@@ -299,6 +303,8 @@ function invoiceToRow(inv: Invoice): InvoiceRow {
     revenue_account: inv.revenueAccount ?? null,
     status: inv.status ?? null,
     totals: inv.totals ?? null,
+    journal_entry_id: inv.journalEntryId ?? null,
+    reversal_entry_id: inv.reversalJournalEntryId ?? null,
   };
 }
 
@@ -676,6 +682,8 @@ interface JournalEntryRow {
   description?: string | null;
   period?: string | null;
   project?: string | null;
+  reversed?: boolean | null;
+  reversal_of?: string | null;
 }
 
 interface PayrollRunRow {
@@ -735,6 +743,8 @@ export async function loadLedgerState(): Promise<AppData | null> {
       period: e.period,
       project: e.project,
       lines: (journalLines ?? []).filter((l: JournalLineRow & { entry_id: string }) => l.entry_id === e.id).map(journalLineFromRow),
+      reversed: (e as any).reversed ?? false,
+      reversalOf: (e as any).reversal_of ?? null,
     }));
 
     const invoicedInvoices: Invoice[] = (invoices ?? []).map((inv: InvoiceRow) => ({
@@ -830,11 +840,55 @@ export const db: Db = {
         description: entry.description ?? null,
         period: entry.period ?? null,
         project: entry.project ?? null,
+        reversed: (entry as any).reversed ?? null,
+        reversal_of: (entry as any).reversalOf ?? null,
       },
     ]);
     await deleteFromTable('journal_lines', 'entry_id', entry.id);
     if (entry.lines && entry.lines.length > 0) {
       await upsertTable('journal_lines', entry.lines.map((l) => journalLineToRow(l, entry.id)));
+    }
+  },
+
+  deleteJournalEntry: async (entryId: string) => {
+    if (!entryId) return;
+    const { error: delLinesErr } = await supabase.from('journal_lines').delete().eq('entry_id', entryId);
+    if (delLinesErr) {
+      console.error('Error deleting journal_lines for entry:', delLinesErr);
+      throw delLinesErr;
+    }
+    const { error: delEntryErr } = await supabase.from('journal_entries').delete().eq('id', entryId);
+    if (delEntryErr) {
+      console.error('Error deleting journal_entry:', delEntryErr);
+      throw delEntryErr;
+    }
+  },
+
+  deleteJournalEntriesByInvoiceNumber: async (invoiceNumber: string) => {
+    if (!invoiceNumber) return;
+    // Find journal entries whose description mentions the invoice number, but ignore void reversal entries
+    const { data: entries, error: selectErr } = await supabase
+      .from('journal_entries')
+      .select('id, entry_number, description')
+      .ilike('description', `%${invoiceNumber}%`)
+      .not('entry_number', 'like', 'JE-VOID-%');
+    if (selectErr) {
+      console.error('Error selecting journal entries for deletion:', selectErr);
+      throw selectErr;
+    }
+    const ids = (entries ?? []).map((e: any) => e.id).filter(Boolean);
+    if (ids.length === 0) return;
+    // Delete journal_lines for these entries
+    const { error: delLinesErr } = await supabase.from('journal_lines').delete().in('entry_id', ids);
+    if (delLinesErr) {
+      console.error('Error deleting journal_lines for invoice:', delLinesErr);
+      throw delLinesErr;
+    }
+    // Delete the entries themselves
+    const { error: delEntriesErr } = await supabase.from('journal_entries').delete().in('id', ids);
+    if (delEntriesErr) {
+      console.error('Error deleting journal_entries for invoice:', delEntriesErr);
+      throw delEntriesErr;
     }
   },
 

@@ -17,6 +17,7 @@ import Td from "../components/ui/Td";
 import Button from "../components/ui/Button";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
+import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { assertJournalEntry } from "../validation";
 import { db } from "../supabaseClient";
@@ -184,7 +185,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
               <Th>Account</Th>
               <Th right>Debit</Th>
               <Th right>Credit</Th>
-              <Th right>Balance after entry</Th>
+              <Th right>Balance</Th>
               <Th right>&nbsp;</Th>
             </tr>
           </thead>
@@ -219,20 +220,13 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
               return (
                 <tr key={i}>
                   <Td>
-                    <select
-                      style={inputStyle}
-                      value={l.account}
-                      onChange={(e) =>
-                        updateLine(i, "account", e.target.value)
-                      }
-                    >
-                      <option value="">Select account…</option>
-                      {data.accounts.map((a: any) => (
-                        <option key={a.code} value={a.code}>
-                          {a.code} — {a.name}
-                        </option>
-                      ))}
-                    </select>
+                      <AccountSelect
+                        value={l.account}
+                        onChange={(v) => updateLine(i, "account", v)}
+                        accounts={data.accounts}
+                        style={inputStyle}
+                        autoFocus={i === 0}
+                      />
                   </Td>
                   <Td right>
                     <input

@@ -162,6 +162,9 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
           : []),
       ],
     };
+    // Link the invoice to its posted journal entry so we can reference it later
+    inv.journalEntryId = entry.id;
+
     mutate((d) => ({
       ...d,
       invoices: [inv, ...d.invoices],
@@ -170,8 +173,9 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       nextInvoiceNum: d.nextInvoiceNum + 1,
     }));
     try {
-      await db.saveInvoice(inv);
+      // Persist journal entry first so the invoice can reference it
       await db.saveJournalEntry(entry);
+      await db.saveInvoice(inv);
     } catch (err) {
       console.error("Failed to persist invoice or journal entry:", err);
       alert("Failed to save invoice to server. Check console for details.");

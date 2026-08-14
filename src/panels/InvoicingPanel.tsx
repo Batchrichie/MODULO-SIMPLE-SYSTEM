@@ -28,6 +28,20 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
   async function voidInvoice(inv: Invoice) {
     const confirmed = await confirmAsync(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`);
     if (!confirmed) return;
+    // Preferred: use explicit link from invoice -> journal entry. Fallback: search by description.
+    const originalEntryId = inv.journalEntryId || null;
+    let originalEntry = null;
+    if (originalEntryId) {
+      originalEntry = data.journal.find((j) => j.id === originalEntryId) || null;
+    }
+    if (!originalEntry) {
+      originalEntry = data.journal.find((j) => (j.description || "").includes(inv.invoiceNumber)) || null;
+    }
+
+    if (!originalEntry) {
+      window.alert('Could not find the original journal entry for this invoice. Aborting void.');
+      return;
+    }
 
     const entryNumber = `JE-VOID-${String(data.nextEntryNum).padStart(4, "0")}`;
     const reversalEntry = {
@@ -37,28 +51,37 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
       description: `Void of invoice ${inv.invoiceNumber} — ${inv.billTo}`,
       period: new Date().toISOString().slice(0, 7),
       project: inv.project,
-      lines: [
-        { account: "1130", debit: 0, credit: inv.totals.grandTotalGHS ?? inv.totals.grandTotal },
-        { account: inv.revenueAccount || "4100", debit: inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal, credit: 0 },
-        ...(inv.totals.chargeNhil ? [{ account: "2205", debit: inv.totals.nhilGetfundGHS ?? inv.totals.nhilGetfund, credit: 0 }] : []),
-        ...(inv.totals.chargeVat ? [{ account: "2220", debit: inv.totals.vatGHS ?? inv.totals.vat, credit: 0 }] : []),
-      ],
+      lines: (originalEntry.lines || []).map((ln) => ({ account: ln.account, debit: ln.credit || 0, credit: ln.debit || 0 })),
     };
 
-    const updatedInv = { ...inv, status: "Void" as InvoiceStatus };
+    const updatedInv = { ...inv, status: "Void" as InvoiceStatus, reversalJournalEntryId: reversalEntry.id, journalEntryId: originalEntry.id };
 
+    // Update local state first (optimistic) — keep original entry but mark reversed locally and add reversal entry
     mutate((d) => ({
       ...d,
       invoices: d.invoices.map((i) => (i.id === inv.id ? updatedInv : i)),
-      journal: [reversalEntry, ...d.journal],
+      journal: [
+        reversalEntry,
+        ...d.journal.map((je) => (je.id === originalEntry.id ? { ...je, reversed: true, reversalOf: reversalEntry.id } : je)),
+      ],
       nextEntryNum: d.nextEntryNum + 1,
     }));
 
     try {
-      await db.saveInvoice(updatedInv);
+      // Create reversal entry first
       await db.saveJournalEntry(reversalEntry);
+      // Mark original entry as reversed and link to reversal
+      await db.saveJournalEntry({ ...originalEntry, reversed: true, reversalOf: reversalEntry.id });
+      // Persist invoice update linking to reversal
+      await db.saveInvoice(updatedInv);
     } catch (err) {
       console.error("Failed to void invoice:", err);
+      // Attempt rollback: remove reversal entry if it was created
+      try {
+        if (db.deleteJournalEntry) await db.deleteJournalEntry(reversalEntry.id);
+      } catch (rollbackErr) {
+        console.error('Rollback failed:', rollbackErr);
+      }
       window.alert("Failed to void invoice on server. Check console for details.");
     }
   }

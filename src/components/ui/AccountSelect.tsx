@@ -12,12 +12,14 @@ interface AccountSelectProps {
   filterFn?: (a: Account) => boolean;
   placeholder?: string;
   style?: CSSProperties;
+  autoFocus?: boolean;
 }
 
 export default function AccountSelect({
   value, onChange, accounts, filterTypes, filterFn,
   placeholder = "Type or select account...",
   style,
+  autoFocus,
 }: AccountSelectProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -58,11 +60,16 @@ export default function AccountSelect({
     function updatePosition() {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const minWidth = Math.max(rect.width, 420);
+      // On small screens, cap the dropdown width to viewport minus padding
+      const viewportPad = 24; // px total horizontal padding
+      const cap = Math.max(window.innerWidth - viewportPad, rect.width);
+      const preferredMin = 420;
+      const width = Math.max(rect.width, Math.min(preferredMin, window.innerWidth - viewportPad));
+      const left = window.innerWidth <= 480 ? 12 : rect.left + window.scrollX;
       setMenuPosition({
         top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: minWidth,
+        left,
+        width,
       });
     }
 
@@ -126,6 +133,7 @@ export default function AccountSelect({
         aria-expanded={open}
         aria-autocomplete="list"
         aria-haspopup="listbox"
+        autoFocus={autoFocus}
       />
       <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: MUTED, fontSize: 10, lineHeight: 1 }}>
         {open ? "\u25B2" : "\u25BC"}
@@ -141,7 +149,7 @@ export default function AccountSelect({
             position: "fixed",
             left: menuPosition.left,
             top: menuPosition.top,
-            width: Math.max(menuPosition.width, 420),
+            width: menuPosition.width,
             maxHeight: 220,
             overflowY: "auto",
             background: "var(--paper-raised)",
