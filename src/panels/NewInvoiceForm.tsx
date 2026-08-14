@@ -152,7 +152,7 @@ export default function NewInvoiceForm({
 
   const invoiceTaxRates = useMemo(
     () => ({
-      nhil: resolveTaxRate(data.nhilGetfundRate, 0.025),
+      nhil: resolveTaxRate(data.nhilGetfundRate, 0.05),
       vat: resolveTaxRate(data.vatRate, 0.15),
     }),
     [data.nhilGetfundRate, data.vatRate]

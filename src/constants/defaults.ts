@@ -45,7 +45,7 @@ export const DEFAULT_DATA = {
   ssnitEmployeeRate: 0.055,
   ssnitEmployerRate: 0.135,
   brackets: [],
-  nhilGetfundRate: 0.025,
+  nhilGetfundRate: 0.05,
   vatRate: 0.15,
   bills: [],
 };

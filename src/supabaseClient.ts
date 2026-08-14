@@ -634,7 +634,7 @@ export async function loadTaxConfig(): Promise<TaxConfig> {
   const fallback = {
     ssnitEmployeeRate: 0.055,
     ssnitEmployerRate: 0.135,
-    nhilGetfundRate: 0.025,
+    nhilGetfundRate: 0.05,
     vatRate: 0.15,
   };
 
