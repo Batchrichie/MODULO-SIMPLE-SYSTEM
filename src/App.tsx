@@ -228,7 +228,10 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.error("Failed to load profile/data:", err);
+        const msg = err instanceof Error
+          ? `${err.name}: ${err.message}\n${err.stack ?? ''}`
+          : `Non-Error thrown: ${JSON.stringify(err, null, 2)}`;
+        console.error("Failed to load profile/data — " + msg);
         setCompanyNameDraft("");
       }
       setLoaded(true);
