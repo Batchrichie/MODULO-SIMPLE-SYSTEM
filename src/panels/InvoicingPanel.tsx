@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Printer, Banknote } from "lucide-react";
 import { INK, GREEN, ALERT, MUTED } from "../theme/tokens";
 import Card from "../components/ui/Card";
@@ -10,7 +10,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
-import { db } from "../supabaseClient";
+import { db, supabase } from "../supabaseClient";
 import { confirmAsync } from "../components/ui/Notifications";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import NewInvoiceForm from "./NewInvoiceForm";
@@ -89,6 +89,35 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
   const visibleInvoices = showVoided
     ? data.invoices
     : data.invoices.filter((inv) => inv.status !== "Void");
+
+  const [summaries, setSummaries] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    // Fetch precomputed invoice summaries from DB view for visible invoices
+    const ids = visibleInvoices.map((i) => i.id);
+    if (ids.length === 0) {
+      setSummaries({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data: rows, error } = await supabase
+        .from("vw_invoice_summary")
+        .select("*")
+        .in("id", ids);
+      if (error) {
+        console.error("Failed to load invoice summaries:", error);
+        return;
+      }
+      if (cancelled) return;
+      const map: Record<string, any> = {};
+      (rows || []).forEach((r: any) => (map[r.id] = r));
+      setSummaries(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleInvoices]);
 
   function doPrint(target) {
     const inv = data.invoices.find((i) => i.id === target.invId);
@@ -169,6 +198,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
               {visibleInvoices.map((inv) => {
                 const chargeNhil = inv.totals?.chargeNhil ?? false;
                 const chargeVat = inv.totals?.chargeVat ?? false;
+                const summary = summaries[inv.id];
                 const rt = computeInvoiceTotals(
                   inv.items,
                   inv.discountPct ?? 0,
@@ -177,9 +207,9 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                   chargeNhil,
                   chargeVat
                 );
-                const grandTotalGHS = inv.totals?.grandTotalGHS ?? rt.grandTotal;
-                const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-                const balance = grandTotalGHS - paid;
+                const grandTotalGHS = summary?.grand_total ?? inv.totals?.grandTotalGHS ?? rt.grandTotal;
+                const paid = summary?.paid ?? inv.payments.reduce((s, p) => s + p.amountGHS, 0);
+                const balance = summary?.balance ?? grandTotalGHS - paid;
                 return (
                   <tr key={inv.id} className="row-hover">
                     <Td mono label="Invoice #">
