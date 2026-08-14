@@ -11,6 +11,8 @@ import Modal from "../components/ui/Modal";
 import { inputStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
 import { db } from "../supabaseClient";
+import { confirmAsync } from "../components/ui/Notifications";
+import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import NewInvoiceForm from "./NewInvoiceForm";
 import RecordPaymentForm from "./RecordPaymentForm";
 import InvoiceDocument from "../documents/InvoiceDocument";
@@ -142,8 +144,19 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
             </thead>
             <tbody>
               {visibleInvoices.map((inv) => {
+                const chargeNhil = inv.totals?.chargeNhil ?? false;
+                const chargeVat = inv.totals?.chargeVat ?? false;
+                const rt = computeInvoiceTotals(
+                  inv.items,
+                  inv.discountPct ?? 0,
+                  data.nhilGetfundRate ?? 0.025,
+                  data.vatRate ?? 0.15,
+                  chargeNhil,
+                  chargeVat
+                );
+                const grandTotalGHS = inv.totals?.grandTotalGHS ?? rt.grandTotal;
                 const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-                const balance = inv.totals.grandTotalGHS - paid;
+                const balance = grandTotalGHS - paid;
                 return (
                   <tr key={inv.id} className="row-hover">
                     <Td mono label="Invoice #">
@@ -152,7 +165,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                     <Td label="Bill To">{inv.billTo}</Td>
                     <Td label="Project">{inv.projectLabel}</Td>
                     <Td right mono label="Grand Total">
-                      {inv.currency} {fmt(inv.totals.grandTotal)}
+                      GHS {fmt(grandTotalGHS)}
                     </Td>
                     <Td right mono label="Paid">
                       GHS {fmt(paid)}
@@ -164,7 +177,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                       label="Balance"
                       style={{ color: balance > 0.01 ? ALERT : GREEN }}
                     >
-                      {fmt(balance)}
+                      GHS {fmt(balance)}
                     </Td>
                     <Td label="Status">{inv.status}</Td>
                     <Td right label="Actions">

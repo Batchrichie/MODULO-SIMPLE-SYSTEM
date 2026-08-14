@@ -1,7 +1,7 @@
 import React from "react";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 import { LOGO_SRC } from "../theme/tokens";
-import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
+import { NAVY, INVOICE_GOLD, computeInvoiceTotals } from "../utils/invoiceUtils";
 import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
 import { FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme/tokens";
@@ -22,9 +22,41 @@ interface InvoiceDocumentProps {
   inv: Invoice;
 }
 
-function getDueStatus(inv: Invoice) {
+// Build reliable totals ALWAYS by recalculating from line items.
+// Stored inv.totals may contain corrupted values from legacy save bugs.
+function resolveTotalsGHS(inv: Invoice, data: AppData) {
+  const stored = inv.totals;
+  const chargeNhil = stored?.chargeNhil ?? false;
+  const chargeVat = stored?.chargeVat ?? false;
+
+  const recalc = computeInvoiceTotals(
+    inv.items,
+    inv.discountPct ?? 0,
+    data.nhilGetfundRate ?? 0.025,
+    data.vatRate ?? 0.15,
+    chargeNhil,
+    chargeVat
+  );
+
+  const rate = inv.exchangeRate && inv.exchangeRate > 0 ? inv.exchangeRate : 1;
+
+  return {
+    subtotal: recalc.subtotal,
+    discount: recalc.discount,
+    newSubtotal: recalc.newSubtotal,
+    nhilGetfund: recalc.nhilGetfund,
+    vat: recalc.vat,
+    grandTotal: recalc.grandTotal,
+    chargeNhil,
+    chargeVat,
+    _raw: recalc,
+    _rate: rate,
+  };
+}
+
+function getDueStatus(inv: Invoice, grandTotalGHS: number) {
   const paid = (inv.payments || []).reduce((s, p) => s + p.amountGHS, 0);
-  const balance = Math.max(inv.totals.grandTotalGHS - paid, 0);
+  const balance = Math.max(grandTotalGHS - paid, 0);
 
   if (inv.status === "Void") {
     return { label: "Void", color: MUTED, balance };
@@ -47,11 +79,11 @@ function getDueStatus(inv: Invoice) {
 }
 
 export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
-  const t = inv.totals;
+  const t = resolveTotalsGHS(inv, data);
   const cur = inv.currency;
-  const sym = cur === "USD" ? "$" : "GHS";
+  const sym = "GHS";
   const company = data.company || COMPANY_TEMPLATE;
-  const due = getDueStatus(inv);
+  const due = getDueStatus(inv, t.grandTotal);
 
   const formatDate = (value?: string | null) => {
     if (!value) return "—";
@@ -391,12 +423,12 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
         <div style={{ paddingTop: 4, fontStyle: "italic", color: MUTED, fontSize: "9.5pt", maxWidth: "55%" }}>
           <b style={{ fontStyle: "normal" }}>Amount in words:</b>
           <br />
-          {amountInWords(t.grandTotal, cur)}
+          {amountInWords(t.grandTotal, "GHS")}
         </div>
 
         {cur === "USD" && (
           <div style={{ margin: "10px 0 0", fontSize: "8.5pt", color: ALERT, fontStyle: "italic" }}>
-            Exchange Rate: Payments preferably in USD. If settled in GHS, reference rate is USD 1 = GHC {inv.exchangeRate}.
+            Exchange Rate: All figures shown in GHS. Source invoice currency USD at reference rate USD 1 = GHS {inv.exchangeRate}.
           </div>
         )}
       </div>
