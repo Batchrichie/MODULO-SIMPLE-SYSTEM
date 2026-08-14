@@ -9,7 +9,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { computeInvoiceTotals } from "../utils/invoiceUtils";
+import { computeInvoiceTotals, resolveTaxRate } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
 import { db } from "../supabaseClient";
 import type { NewInvoiceFormProps } from "../types";
@@ -150,17 +150,25 @@ export default function NewInvoiceForm({
         ]
   );
 
+  const invoiceTaxRates = useMemo(
+    () => ({
+      nhil: resolveTaxRate(data.nhilGetfundRate, 0.025),
+      vat: resolveTaxRate(data.vatRate, 0.15),
+    }),
+    [data.nhilGetfundRate, data.vatRate]
+  );
+
   const totals = useMemo(
     () =>
       computeInvoiceTotals(
         items,
         discountPct,
-        data.nhilGetfundRate,
-        data.vatRate,
+        invoiceTaxRates.nhil,
+        invoiceTaxRates.vat,
         chargeNhil,
         chargeVat
       ),
-    [items, discountPct, data, chargeNhil, chargeVat]
+    [items, discountPct, invoiceTaxRates, chargeNhil, chargeVat]
   );
 
   function updateItem(i: number, field: string, val: string) {
@@ -683,7 +691,7 @@ export default function NewInvoiceForm({
               }}
             >
               <span style={{ color: MUTED }}>
-                NHIL &amp; GETFund ({(data.nhilGetfundRate * 100).toFixed(1)}%)
+                NHIL &amp; GETFund ({(invoiceTaxRates.nhil * 100).toFixed(1)}%)
               </span>
               <span style={{ color: INK }}>{fmt(totals.nhilGetfund)}</span>
             </div>
@@ -696,7 +704,7 @@ export default function NewInvoiceForm({
               }}
             >
               <span style={{ color: MUTED }}>
-                VAT ({(data.vatRate * 100).toFixed(0)}%)
+                VAT ({(invoiceTaxRates.vat * 100).toFixed(0)}%)
               </span>
               <span style={{ color: INK }}>{fmt(totals.vat)}</span>
             </div>
