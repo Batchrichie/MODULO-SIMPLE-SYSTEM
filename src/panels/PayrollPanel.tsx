@@ -10,6 +10,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
+import { normalizeTaxRate } from "../utils/invoiceUtils";
 import Payslip from "../documents/Payslip";
 import { saveTaxRates, savePayeBrackets, runPayrollAndFetch } from "../supabaseClient";
 import type { AppData, PayrollPanelProps } from "../types";
@@ -27,7 +28,8 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
 
   function updateTaxRate(field, value) {
     const percent = Number(value);
-    mutate((prev) => ({ ...prev, [field]: isNaN(percent) ? 0 : percent / 100 }));
+    const nextRate = Number.isFinite(percent) ? normalizeTaxRate(percent) : 0;
+    mutate((prev) => ({ ...prev, [field]: nextRate }));
   }
 
   function updateBracket(index, field, value) {

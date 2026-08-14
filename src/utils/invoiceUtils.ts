@@ -1,3 +1,10 @@
+export function normalizeTaxRate(value: number | string | null | undefined): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n / 100 : n;
+}
+
 export function computeInvoiceTotals(
   items: Array<{ lineType: string; qty: number | string; rate: number | string }>,
   discountPct: number,
@@ -14,8 +21,10 @@ export function computeInvoiceTotals(
     );
   const discount = subtotal * ((parseFloat(String(discountPct)) || 0) / 100);
   const newSubtotal = subtotal - discount;
-  const nhilGetfund = chargeNhil ? newSubtotal * nhilGetfundRate : 0;
-  const vat = chargeVat ? newSubtotal * vatRate : 0;
+  const safeNhilRate = normalizeTaxRate(nhilGetfundRate);
+  const safeVatRate = normalizeTaxRate(vatRate);
+  const nhilGetfund = chargeNhil ? newSubtotal * safeNhilRate : 0;
+  const vat = chargeVat ? newSubtotal * safeVatRate : 0;
   const grandTotal = newSubtotal + nhilGetfund + vat;
   return {
     subtotal,

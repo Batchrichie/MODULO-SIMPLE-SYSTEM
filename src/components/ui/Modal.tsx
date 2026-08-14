@@ -38,12 +38,15 @@ export default function Modal({ title, sub, onClose, children, wide = false }: M
           border: `1px solid ${RULE}`,
           width: "100%",
           maxWidth: wide ? 780 : 520,
-          padding: 28,
+          maxHeight: "calc(100vh - 48px)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           boxShadow: "0 20px 60px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.03)",
           animation: "slideUp 0.25s cubic-bezier(0.16,1,0.3,1)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: 28, paddingBottom: 14, flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 700, color: INK, margin: 0 }}>
               {title}
@@ -69,7 +72,9 @@ export default function Modal({ title, sub, onClose, children, wide = false }: M
             <X size={18} />
           </button>
         </div>
-        {children}
+        <div style={{ overflowY: "auto", padding: "0 28px 28px", WebkitOverflowScrolling: "touch" }}>
+          {children}
+        </div>
       </div>
     </div>
   );

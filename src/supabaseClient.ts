@@ -630,12 +630,20 @@ async function mergeAppSettings(updates: AppSettingsData): Promise<AppSettingsDa
 
 export async function loadTaxConfig(): Promise<TaxConfig> {
   const settings = await loadAppSettings();
+  const hasOwn = (key: string) => Object.prototype.hasOwnProperty.call(settings, key);
+  const fallback = {
+    ssnitEmployeeRate: 0.055,
+    ssnitEmployerRate: 0.135,
+    nhilGetfundRate: 0.025,
+    vatRate: 0.15,
+  };
+
   return {
     rates: {
-      ssnitEmployeeRate: Number(settings.ssnitEmployeeRate) || 0,
-      ssnitEmployerRate: Number(settings.ssnitEmployerRate) || 0,
-      nhilGetfundRate: Number(settings.nhilGetfundRate) || 0,
-      vatRate: Number(settings.vatRate) || 0,
+      ssnitEmployeeRate: normalizeTaxRate(hasOwn('ssnitEmployeeRate') ? settings.ssnitEmployeeRate : fallback.ssnitEmployeeRate),
+      ssnitEmployerRate: normalizeTaxRate(hasOwn('ssnitEmployerRate') ? settings.ssnitEmployerRate : fallback.ssnitEmployerRate),
+      nhilGetfundRate: normalizeTaxRate(hasOwn('nhilGetfundRate') ? settings.nhilGetfundRate : fallback.nhilGetfundRate),
+      vatRate: normalizeTaxRate(hasOwn('vatRate') ? settings.vatRate : fallback.vatRate),
     },
     brackets: Array.isArray(settings.brackets) ? (settings.brackets as PayeBracket[]) : [],
   };
