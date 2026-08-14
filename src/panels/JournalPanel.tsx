@@ -342,7 +342,7 @@ export default function JournalPanel({ data, mutate, readOnly, setPrintContent }
               fontSize: 11,
               color:
                 Math.abs(summary.totalDebits - summary.totalCredits) < 0.01
-                  ? GREEN_DEEP
+                  ? GREEN
                   : MUTED,
               marginTop: 4,
             }}
