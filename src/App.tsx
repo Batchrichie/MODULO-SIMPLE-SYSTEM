@@ -301,7 +301,8 @@ export default function App() {
 
   const sidebarContent = (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${RULE}` }}>
+      {/* TOP: Sticky header with logo and theme toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${RULE}`, flexShrink: 0 }}>
         <div style={{ width: 38, height: 38, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: PAPER_RAISED }}>
           <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <div style={{ position: 'absolute', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: GREEN }}>{brandInitial}</div>
@@ -319,18 +320,24 @@ export default function App() {
           {theme === "light" ? <Sun size={16} color={INK as any} strokeWidth={2} /> : <Moon size={16} color={INK as any} strokeWidth={2} />}
         </button>
       </div>
-      {navGroups.map((group) => (
-        <div key={group.label} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", padding: "0 9px", marginBottom: 6 }}>{group.label}</div>
-          <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {group.keys.filter((k) => k !== "logout").map((k) => {
-              const Icon = navIcon(k);
-              return <NavItem key={k} icon={Icon} label={navLabel(k)} active={effectiveTab === k} onClick={() => setTab(k)} />;
-            })}
-          </nav>
-        </div>
-      ))}
-      <div style={{ marginTop: "auto", paddingTop: 12, borderTop: `1px solid ${RULE}` }}>
+
+      {/* MIDDLE: Scrollable navigation items */}
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        {navGroups.map((group) => (
+          <div key={group.label} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", padding: "0 9px", marginBottom: 6 }}>{group.label}</div>
+            <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {group.keys.filter((k) => k !== "logout").map((k) => {
+                const Icon = navIcon(k);
+                return <NavItem key={k} icon={Icon} label={navLabel(k)} active={effectiveTab === k} onClick={() => setTab(k)} />;
+              })}
+            </nav>
+          </div>
+        ))}
+      </div>
+
+      {/* BOTTOM: Sticky logout button */}
+      <div style={{ paddingTop: 12, borderTop: `1px solid ${RULE}`, flexShrink: 0 }}>
         {navGroups.flatMap((group) => group.keys).includes("logout") && (
           <NavItem icon={X} label="Logout" active={effectiveTab === "logout"} onClick={() => setTab("logout")} />
         )}
@@ -421,7 +428,7 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <aside style={{ width: 240, borderRight: `1px solid ${RULE}`, padding: "24px 14px", flexShrink: 0, background: PAPER_RAISED, boxShadow: "1px 0 20px rgba(0,0,0,0.04)", position: "sticky", top: 0, height: "100vh", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+          <aside style={{ width: 240, borderRight: `1px solid ${RULE}`, padding: "24px 14px", flexShrink: 0, background: PAPER_RAISED, boxShadow: "1px 0 20px rgba(0,0,0,0.04)", position: "sticky", top: 0, height: "100vh", overflowY: "hidden", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
             {sidebarContent}
           </aside>
         )}

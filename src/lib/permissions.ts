@@ -125,8 +125,8 @@ export interface NavItemConfig {
 
 export const NAV_CONFIG: NavItemConfig[] = [
   // ── Overview ──
-  { key: "journal",              label: "Journal",           icon: PenLine,         token: ALL,               writeToken: ALL,                   group: "Overview" },
   { key: "dashboard",            label: "Dashboard",         icon: LayoutDashboard, token: ALL,                                         group: "Overview" },
+  { key: "journal",              label: "Journal",           icon: PenLine,         token: ALL,               writeToken: ALL,                   group: "Overview" },
   { key: "ledger",               label: "Trial Balance",     icon: Scale,           token: ALL,                                         group: "Overview" },
   { key: "financials",           label: "Financials",        icon: ArrowUpRight,     token: ALL,                                         group: "Overview" },
 
