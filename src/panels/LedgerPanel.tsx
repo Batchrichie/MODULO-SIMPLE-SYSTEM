@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
   BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
@@ -23,6 +23,7 @@ import LineChart from "../components/charts/LineChart";
 import BarChart from "../components/charts/BarChart";
 import DonutChart from "../components/charts/DonutChart";
 import { fmt, projectName } from "../utils/format";
+import { findAccountByRole } from "../supabaseClient";
 import { amountInWords } from "../utils/numberToWords";
 import { computeInvoiceTotals, NAVY, INVOICE_GOLD, invTdLabel, invTdVal } from "../utils/invoiceUtils";
 import { COMPANY_TEMPLATE, GENERAL_PROJECT } from "../constants/defaults";
@@ -40,30 +41,37 @@ import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelPr
              ReceiptDocumentProps, PayslipProps, ProjectStats } from "../types";
 
 export default function LedgerPanel({ data }) {
-  const rows = useMemo(() => {
-    return data.accounts.map((a) => {
-      let debit = 0,
-        credit = 0;
-      data.journal.forEach((e) =>
-        e.lines.forEach((l) => {
-          if (l.account === a.code) {
-            debit += l.debit;
-            credit += l.credit;
-          }
-        })
-      );
-      const rawBalance = a.normal === "Debit" ? debit - credit : credit - debit;
-      const signedBalance = Math.abs(rawBalance);
-      const isPaymentAbnormal = Boolean(a.isPaymentAccount) && rawBalance < 0;
-      const balanceSide = rawBalance >= 0
-        ? (a.normal === "Debit" ? "Dr" : "Cr")
-        : (a.normal === "Debit" ? "Cr" : "Dr");
-      return { ...a, debit, credit, rawBalance, balance: signedBalance, balanceSide, isPaymentAbnormal };
-    });
-  }, [data]);
+  const [rows, setRows] = useState([]);
+  const [loadingTb, setLoadingTb] = useState(true);
 
-  const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
-  const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
+  useEffect(() => {
+    async function fetchTrialBalance() {
+      setLoadingTb(true);
+      try {
+        const tb = await getTrialBalance();
+        setRows(tb || []);
+      } catch (err) {
+        console.error("Error loading trial balance:", err);
+        setRows([]);
+      } finally {
+        setLoadingTb(false);
+      }
+    }
+
+    fetchTrialBalance();
+  }, []);
+
+  if (loadingTb) {
+    return (
+      <div>
+        <SectionTitle sub="Live totals from every posted journal entry.">Trial Balance</SectionTitle>
+        <Card><p>Loading trial balance...</p></Card>
+      </div>
+    );
+  }
+
+  const totalDebit = rows.reduce((s, r) => s + Number(r.total_debit || 0), 0);
+  const totalCredit = rows.reduce((s, r) => s + Number(r.total_credit || 0), 0);
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   return (
@@ -88,25 +96,43 @@ export default function LedgerPanel({ data }) {
             </thead>
             <tbody>
               {rows
-                .filter((r) => r.debit || r.credit)
-                .map((r) => (
-                  <tr key={r.code} className="row-hover">
-                    <Td mono label="Code">
-                      {r.code}
-                    </Td>
-                    <Td label="Account">{r.name}</Td>
-                    <Td right mono label="Total Debit">
-                      {fmt(r.debit)}
-                    </Td>
-                    <Td right mono label="Total Credit">
-                      {fmt(r.credit)}
-                    </Td>
-                    <Td right mono bold label="Balance" style={{ color: r.isPaymentAbnormal ? ALERT : r.rawBalance >= 0 ? INK : ALERT }}>
-                      {r.balance > 0 ? `${r.balanceSide} ${fmt(r.balance)}` : "—"}
-                    </Td>
-                  </tr>
-                ))}
-              {rows.every((r) => !r.debit && !r.credit) && (
+                .filter((r) => Number(r.total_debit || 0) || Number(r.total_credit || 0))
+                .map((r) => {
+                  const debit = Number(r.total_debit || 0);
+                  const credit = Number(r.total_credit || 0);
+                  const balance = Number(r.balance || 0);
+                  const acct = data.accounts.find((a) => a.code === r.code);
+                  const isPaymentAbnormal = Boolean(acct?.isPaymentAccount) && balance < 0;
+                  const balanceSide = balance >= 0
+                    ? (acct?.normal === "Debit" ? "Dr" : "Cr")
+                    : (acct?.normal === "Debit" ? "Cr" : "Dr");
+                  const signedBalance = Math.abs(balance);
+
+                  return (
+                    <tr key={r.code} className="row-hover">
+                      <Td mono label="Code">
+                        {r.code}
+                      </Td>
+                      <Td label="Account">{r.name}</Td>
+                      <Td right mono label="Total Debit">
+                        {fmt(debit)}
+                      </Td>
+                      <Td right mono label="Total Credit">
+                        {fmt(credit)}
+                      </Td>
+                      <Td
+                        right
+                        mono
+                        bold
+                        label="Balance"
+                        style={{ color: isPaymentAbnormal ? ALERT : balance >= 0 ? INK : ALERT }}
+                      >
+                        {signedBalance > 0 ? `${balanceSide} ${fmt(signedBalance)}` : "—"}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              {rows.every((r) => !Number(r.total_debit || 0) && !Number(r.total_credit || 0)) && (
                 <tr>
                   <td colSpan={5} style={{ color: MUTED, padding: 10 }}>
                     No activity yet.

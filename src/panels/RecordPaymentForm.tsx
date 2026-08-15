@@ -6,7 +6,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { getInvoiceBalance, getInvoicePaidAmount } from "../utils/invoiceUtils";
-import { db } from "../supabaseClient";
+import { db, findAccountByRole } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
 import type { RecordPaymentFormProps } from "../types";
@@ -31,7 +31,12 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
     const paidSoFar = getInvoicePaidAmount(inv) + amt;
     const newStatus = paidSoFar >= totalGhs - 0.01 ? "Paid" : "Partially Paid";
 
-    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const entryNumber = `JE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const arAccount = findAccountByRole(data.accounts, "ar");
+    if (!arAccount) {
+      window.alert("Accounts Receivable account not configured. Please contact your admin.");
+      return;
+    }
     const entry = {
       id: entryNumber,
       entryNumber,
@@ -41,7 +46,7 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       project: inv.project,
       lines: [
         { account: paymentAccount, debit: amt, credit: 0 },
-        { account: "1130", debit: 0, credit: amt },
+        { account: arAccount.code, debit: 0, credit: amt },
       ],
     };
 
@@ -60,15 +65,15 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       ...d,
       invoices: d.invoices.map((i) => i.id === inv.id ? updatedInvoice : i),
       journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
     }));
 
     try {
       await db.saveInvoice(updatedInvoice);
       await db.saveJournalEntry(entry);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to persist payment or journal entry:", err);
-      window.alert("Failed to record payment to server. Check console for details.");
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
+      window.alert(`Failed to record payment: ${errorMsg}`);
     }
 
     const receiptInvoice = updatedInvoice;

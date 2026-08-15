@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
 import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
-import { db } from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 import type { AppData, PanelProps, JournalEntry } from '../types';
 
 export default function ExpensesPanel({ data, mutate }: PanelProps) {
@@ -28,6 +28,7 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
   const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
+  const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   function resetForm() {
     setDate(new Date().toISOString().slice(0, 10));
@@ -42,15 +43,16 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
     if (!paymentAccount) { window.alert("Please select a payment account."); return; }
     if (!description.trim()) { window.alert("Please enter a description."); return; }
 
-    const entryNumber = `JE-EXP-${String(data.nextEntryNum).padStart(4, "0")}`;
-    const period = date.slice(0, 7);
+    // Note: RPC will handle description — vendor concatenation, so send them separately
+    const entryNumber = makeTempId("JE-EXP");
 
+    // Construct temporary entry for optimistic UI update (will be replaced when journal reloads)
     const entry: JournalEntry = {
       id: entryNumber,
       entryNumber,
       date,
       description: `${description.trim()} — ${vendor.trim() || "Cash expense"}`,
-      period,
+      period: date.slice(0, 7),
       project: project === "GEN" ? null : project,
       lines: [
         { account, debit: amt, credit: 0 },
@@ -61,14 +63,29 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({
       ...d,
       journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
     }));
 
     try {
-      await db.saveJournalEntry(entry);
-    } catch (err) {
-      console.error("Failed to save expense:", err);
-      window.alert("Failed to post expense. Check console for details.");
+      const { data: newEntryId, error } = await supabase.rpc('post_expense', {
+        p_date: date,
+        p_description: description.trim(),
+        p_vendor: vendor.trim(),
+        p_expense_account: account,
+        p_payment_account: paymentAccount,
+        p_amount: amt,
+        p_project: project === "GEN" ? null : project,
+      });
+
+      if (error) {
+        console.error("Failed to post expense:", error);
+        const errorMsg = error?.message || error?.toString?.() || "Unknown error occurred";
+        window.alert(`Failed to post expense: ${errorMsg}`);
+        return;
+      }
+    } catch (err: any) {
+      console.error("Failed to post expense:", err);
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
+      window.alert(`Failed to post expense: ${errorMsg}`);
       return;
     }
 

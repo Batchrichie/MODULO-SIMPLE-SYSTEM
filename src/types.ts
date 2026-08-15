@@ -39,6 +39,7 @@ export interface Account {
   reportingGroup?: string | null;
   normal?: 'Debit' | 'Credit' | null;
   isPaymentAccount?: boolean;
+  role?: string | null; // Functional role: "cash", "ar", "ap", "revenue", "vat-payable", "nhil-payable", "current-asset"
 }
 
 export interface Project {

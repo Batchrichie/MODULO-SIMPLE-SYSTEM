@@ -103,7 +103,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
         l.account && (parseFloat(l.debit) > 0 || parseFloat(l.credit) > 0)
     );
     if (!balanced || validLines.length < 2) return;
-    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const entryNumber = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const period = date.slice(0, 7);
     const entry = {
       id: entryNumber,
@@ -121,14 +121,14 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
     mutate((d: any) => ({
       ...d,
       journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
     }));
     try {
       await db.saveJournalEntry(entry);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save journal entry:", err);
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       alert(
-        "Failed to save journal entry to server. Check console for details."
+        `Failed to save journal entry: ${errorMsg}`
       );
     }
     onDone && onDone();

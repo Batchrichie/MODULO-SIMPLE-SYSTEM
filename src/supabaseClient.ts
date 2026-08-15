@@ -45,6 +45,7 @@ interface AccountRow {
   reporting_group?: string | null;
   normal?: string | null;
   is_payment_account?: boolean | null;
+  role?: string | null;
 }
 
 function accountFromRow(r: AccountRow): Account {
@@ -55,6 +56,7 @@ function accountFromRow(r: AccountRow): Account {
     reportingGroup: r.reporting_group,
     normal: r.normal,
     isPaymentAccount: r.is_payment_account ?? false,
+    role: r.role ?? null,
   };
 }
 
@@ -66,7 +68,35 @@ function accountToRow(a: Account): AccountRow {
     reporting_group: a.reportingGroup ?? null,
     normal: a.normal ?? null,
     is_payment_account: a.isPaymentAccount ?? false,
+    role: a.role ?? null,
   };
+}
+
+/**
+ * Helper to find an account by its functional role.
+ * Returns the first matching account or undefined if not found.
+ */
+export function findAccountByRole(accounts: Account[], role: string): Account | undefined {
+  return accounts.find(a => a.role === role);
+}
+
+/**
+ * Helper to find multiple accounts by a list of roles.
+ * Returns all matching accounts.
+ */
+export function findAccountsByRole(accounts: Account[], roles: string[]): Account[] {
+  return accounts.filter(a => a.role && roles.includes(a.role));
+}
+
+/**
+ * Helper to find all current asset accounts (for balance sheet grouping).
+ * Falls back to checking account type if role is not set.
+ */
+export function getCurrentAssets(accounts: Account[]): Account[] {
+  const byRole = accounts.filter(a => a.role === 'current-asset');
+  if (byRole.length > 0) return byRole;
+  // Fallback: if no accounts have the role set, use type-based filtering
+  return accounts.filter(a => a.type === 'Asset' && ['1000','1100','1200','1300','1400'].includes(a.code));
 }
 
 interface ProjectRow {
@@ -833,28 +863,33 @@ export const db: Db = {
   saveEmployees: (employees) => upsertTable('employees', (employees ?? []).map(employeeToRow)),
 
   saveJournalEntry: async (entry) => {
-    const safeLines = (entry.lines ?? []).map((l) => ({
-      account: String(l.account ?? '').trim(),
-      debit: Number(l.debit) || 0,
-      credit: Number(l.credit) || 0,
-    }));
-    const reversed = (entry as any).reversed ?? false;
-
-    await upsertTable('journal_entries', [
-      {
-        id: entry.id,
-        entry_number: entry.entryNumber,
-        date: entry.date,
-        description: entry.description ?? null,
-        period: entry.period ?? null,
-        project: entry.project ?? null,
-        reversed,
-        reversal_of: (entry as any).reversalOf ?? null,
-      },
-    ]);
-    await deleteFromTable('journal_lines', 'entry_id', entry.id);
-    if (safeLines.length > 0) {
-      await upsertTable('journal_lines', safeLines.map((l) => journalLineToRow(l, entry.id)));
+    try {
+      const lines = (entry.lines ?? []).map((l) => ({
+        account: String(l.account ?? '').trim(),
+        debit: Number(l.debit) || 0,
+        credit: Number(l.credit) || 0,
+      }));
+      
+      if (lines.length === 0) {
+        throw new Error('Journal entry must have at least one line');
+      }
+      
+      const { data: newEntryId, error } = await supabase.rpc('post_journal_entry', {
+        p_date: entry.date,
+        p_description: entry.description ?? null,
+        p_project: entry.project ?? null,
+        p_lines: lines,
+      });
+      
+      if (error) {
+        console.error('Error posting journal entry via RPC:', error);
+        throw error;
+      }
+      
+      return newEntryId;
+    } catch (err) {
+      console.error('Failed to save journal entry:', err);
+      throw err;
     }
   },
 
@@ -1041,3 +1076,39 @@ export const db: Db = {
 
   deleteBankReconciliation: (id) => deleteFromTable('bank_reconciliations', 'id', id),
 };
+
+/* ------------------------------------------------------------------ */
+/*  Invoice voiding via guarded RPC                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Void an invoice atomically, creating a reversal journal entry.
+ * Uses void_invoice() RPC which handles reversal JE, original's reversed flag,
+ * invoice status, and audit trail in a single transaction.
+ */
+export async function voidInvoice(invoiceId: string, reason?: string | null): Promise<string> {
+  try {
+    // Get current user's employee ID for audit trail
+    const { data: employeeId, error: empErr } = await supabase.rpc('my_employee_id');
+    if (empErr || !employeeId) {
+      throw new Error('Could not resolve current employee for void audit trail');
+    }
+
+    // Call void_invoice RPC — handles all reversal logic atomically
+    const { data: reversalEntryId, error } = await supabase.rpc('void_invoice', {
+      p_invoice_id: invoiceId,
+      p_performed_by: employeeId,
+      p_reason: reason ?? null,
+    });
+
+    if (error) {
+      console.error('Error voiding invoice via RPC:', error);
+      throw error;
+    }
+
+    return reversalEntryId;
+  } catch (err) {
+    console.error('Failed to void invoice:', err);
+    throw err;
+  }
+}

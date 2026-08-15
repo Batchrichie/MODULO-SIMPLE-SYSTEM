@@ -10,7 +10,7 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import { fmt, projectName } from "../utils/format";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
-import { db } from "../supabaseClient";
+import { supabase, db, findAccountByRole } from "../supabaseClient";
 import type { NewInvoiceFormProps } from "../types";
 
 export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormProps) {
@@ -25,7 +25,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
   const [discountPct, setDiscountPct] = useState(String(cloneSource?.discountPct || "0"));
   const [chargeNhil, setChargeNhil] = useState(cloneSource?.totals?.chargeNhil ?? true);
   const [chargeVat, setChargeVat] = useState(cloneSource?.totals?.chargeVat ?? true);
-  const [revenueAccount, setRevenueAccount] = useState(cloneSource?.revenueAccount || "4100");
+  const [revenueAccount, setRevenueAccount] = useState(cloneSource?.revenueAccount || defaultRevenueAccount);
   const [items, setItems] = useState(
     cloneSource?.items?.length
       ? cloneSource.items.map((it) => ({
@@ -143,7 +143,17 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       status: "Sent",
       payments: [],
     };
-    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+
+    const arAccount = findAccountByRole(data.accounts, "ar");
+    const vatAccount = findAccountByRole(data.accounts, "vat-payable");
+    const nhilAccount = findAccountByRole(data.accounts, "nhil-payable");
+    if (!arAccount) {
+      alert("Accounts Receivable account not configured. Please contact your admin.");
+      return;
+    }
+
+    // Construct a temporary journal entry for optimistic UI update
+    const entryNumber = `JE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const entry = {
       id: entryNumber,
       entryNumber,
@@ -152,13 +162,13 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       period: date.slice(0, 7),
       project,
       lines: [
-        { account: "1130", debit: totals.grandTotalGHS, credit: 0 },
+        { account: arAccount.code, debit: totals.grandTotalGHS, credit: 0 },
         { account: revenueAccount, debit: 0, credit: totals.newSubtotalGHS },
-        ...(chargeNhil
-          ? [{ account: "2205", debit: 0, credit: totals.nhilGetfundGHS }]
+        ...(chargeNhil && nhilAccount
+          ? [{ account: nhilAccount.code, debit: 0, credit: totals.nhilGetfundGHS }]
           : []),
-        ...(chargeVat
-          ? [{ account: "2220", debit: 0, credit: totals.vatGHS }]
+        ...(chargeVat && vatAccount
+          ? [{ account: vatAccount.code, debit: 0, credit: totals.vatGHS }]
           : []),
       ],
     };
@@ -169,16 +179,46 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       ...d,
       invoices: [inv, ...d.invoices],
       journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
       nextInvoiceNum: d.nextInvoiceNum + 1,
     }));
     try {
-      // Persist journal entry first so the invoice can reference it
-      await db.saveJournalEntry(entry);
-      await db.saveInvoice(inv);
-    } catch (err) {
-      console.error("Failed to persist invoice or journal entry:", err);
-      alert("Failed to save invoice to server. Check console for details.");
+      // Call post_invoice RPC which creates both the invoice GL entry and the invoice record
+      const { data: newEntryId, error: rpcError } = await supabase.rpc('post_invoice', {
+        p_invoice_id: invoiceNumber,
+        p_invoice_number: invoiceNumber,
+        p_date: date,
+        p_due_date: dueDate || null,
+        p_bill_to: billTo.trim() || null,
+        p_for_text: forText.trim() || null,
+        p_location: location || null,
+        p_project: project === "GEN" ? null : project,
+        p_project_label: projectName(data.projects, project) || null,
+        p_currency: currency,
+        p_exchange_rate: rate,
+        p_discount_pct: parseFloat(discountPct) || 0,
+        p_revenue_account: revenueAccount,
+        p_items: cleanItems.map((item) => ({
+          line_type: item.lineType,
+          description: item.description,
+          unit: item.unit || null,
+          qty: item.qty,
+          rate: item.rate,
+        })),
+      });
+
+      if (rpcError) {
+        console.error("Failed to post invoice:", rpcError);
+        const errorMsg = rpcError?.message || rpcError?.toString?.() || "Unknown error occurred";
+        alert(`Failed to save invoice: ${errorMsg}`);
+        return;
+      }
+
+      // RPC handles the full invoice creation — no need for separate db.saveInvoice()
+      // Optimistic UI update via mutate() above will show temp data until next journal reload
+    } catch (err: any) {
+      console.error("Failed to persist invoice:", err);
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
+      alert(`Failed to save invoice: ${errorMsg}`);
     }
     onDone && onDone();
   }

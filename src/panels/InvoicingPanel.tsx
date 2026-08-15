@@ -10,7 +10,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
-import { db, supabase } from "../supabaseClient";
+import { db, supabase, voidInvoice } from "../supabaseClient";
 import { confirmAsync } from "../components/ui/Notifications";
 import { computeInvoiceTotals, getInvoiceBalance, getInvoicePaidAmount, getInvoiceGrandTotalGHS } from "../utils/invoiceUtils";
 import NewInvoiceForm from "./NewInvoiceForm";
@@ -33,64 +33,40 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  async function voidInvoice(inv: Invoice) {
+  async function handleVoidInvoice(inv: Invoice) {
     const confirmed = await confirmAsync(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`);
     if (!confirmed) return;
-    // Preferred: use explicit link from invoice -> journal entry. Fallback: search by description.
-    const originalEntryId = inv.journalEntryId || null;
-    let originalEntry = null;
-    if (originalEntryId) {
-      originalEntry = data.journal.find((j) => j.id === originalEntryId) || null;
-    }
-    if (!originalEntry) {
-      originalEntry = data.journal.find((j) => (j.description || "").includes(inv.invoiceNumber)) || null;
-    }
 
-    if (!originalEntry) {
-      window.alert('Could not find the original journal entry for this invoice. Aborting void.');
-      return;
-    }
+    const invoiceId = inv.id;
 
-    const entryNumber = `JE-VOID-${String(data.nextEntryNum).padStart(4, "0")}`;
-    const reversalEntry = {
-      id: entryNumber,
-      entryNumber,
-      date: new Date().toISOString().slice(0, 10),
-      description: `Void of invoice ${inv.invoiceNumber} — ${inv.billTo}`,
-      period: new Date().toISOString().slice(0, 7),
-      project: inv.project,
-      lines: (originalEntry.lines || []).map((ln) => ({ account: ln.account, debit: ln.credit || 0, credit: ln.debit || 0 })),
-    };
-
-    const updatedInv = { ...inv, status: "Void" as InvoiceStatus, reversalJournalEntryId: reversalEntry.id, journalEntryId: originalEntry.id };
-
-    // Update local state first (optimistic) — keep original entry but mark reversed locally and add reversal entry
+    // Update local state optimistically — mark invoice as void
     mutate((d) => ({
       ...d,
-      invoices: d.invoices.map((i) => (i.id === inv.id ? updatedInv : i)),
-      journal: [
-        reversalEntry,
-        ...d.journal.map((je) => (je.id === originalEntry.id ? { ...je, reversed: true, reversalOf: reversalEntry.id } : je)),
-      ],
-      nextEntryNum: d.nextEntryNum + 1,
+      invoices: d.invoices.map((i) => 
+        i.id === inv.id ? { ...i, status: "Void" as InvoiceStatus } : i
+      ),
     }));
 
     try {
-      // Create reversal entry first
-      await db.saveJournalEntry(reversalEntry);
-      // Mark original entry as reversed and link to reversal
-      await db.saveJournalEntry({ ...originalEntry, reversed: true, reversalOf: reversalEntry.id });
-      // Persist invoice update linking to reversal
-      await db.saveInvoice(updatedInv);
-    } catch (err) {
+      // Call void_invoice RPC — handles reversal JE creation, original entry's reversed flag,
+      // invoice status, voided_at/voided_by, and audit trail all in one transaction
+      const reversalEntryId = await voidInvoice(invoiceId);
+
+      // Success — reversal entry created and invoice marked void
+      // The server has all the correct data; local optimistic update matches
+    } catch (err: any) {
       console.error("Failed to void invoice:", err);
-      // Attempt rollback: remove reversal entry if it was created
-      try {
-        if (db.deleteJournalEntry) await db.deleteJournalEntry(reversalEntry.id);
-      } catch (rollbackErr) {
-        console.error('Rollback failed:', rollbackErr);
-      }
-      window.alert("Failed to void invoice on server. Check console for details.");
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
+      window.alert(`Failed to void invoice: ${errorMsg}`);
+      
+      // Rollback optimistic update on error
+      mutate((d) => ({
+        ...d,
+        invoices: d.invoices.map((i) => 
+          i.id === inv.id ? inv : i  // Restore original invoice
+        ),
+      }));
+      return;
     }
   }
 
@@ -191,7 +167,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
             <Button
               variant="ghost"
               icon={Trash2}
-              onClick={() => voidInvoice(inv)}
+              onClick={() => handleVoidInvoice(inv)}
             >
               Void
             </Button>

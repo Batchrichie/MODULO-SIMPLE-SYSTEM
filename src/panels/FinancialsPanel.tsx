@@ -12,7 +12,7 @@ import MiniTable from "../components/ui/MiniTable";
 import { fmt } from "../utils/format";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 
-import { getTrialBalance, getBalanceSheet, getProfitAndLoss } from "../supabaseClient";
+import { getTrialBalance, getBalanceSheet, getProfitAndLoss, getCurrentAssets } from "../supabaseClient";
 import { computeCashFlow } from "../utils/dashboardUtils";
 import IncomeStatementDocument from "../documents/IncomeStatementDocument";
 import BalanceSheetDocument from "../documents/BalanceSheetDocument";
@@ -89,8 +89,11 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
 
   // Map bsData to the `bs` shape used by the UI
   const assets = (bsData || []).filter(r => r.type === 'Asset' || r.type === 'Contra-Asset').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
-  const currentAssets = assets.filter(a => ['1000','1100','1200','1300','1400'].includes(a.code));
-  const nonCurrentAssets = assets.filter(a => !['1000','1100','1200','1300','1400'].includes(a.code));
+  const currentAssetCodes = getCurrentAssets(data.accounts).map(a => a.code);
+  const currentAssets = currentAssetCodes.length > 0
+    ? assets.filter(a => currentAssetCodes.includes(a.code))
+    : assets.filter(a => ['1000','1100','1200','1300','1400'].includes(a.code)); // Fallback for migration
+  const nonCurrentAssets = assets.filter(a => !currentAssets.find(ca => ca.code === a.code));
   const liabilities = (bsData || []).filter(r => r.type === 'Liability').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
   const equity = (bsData || []).filter(r => r.type === 'Equity').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
 

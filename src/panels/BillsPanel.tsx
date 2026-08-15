@@ -34,7 +34,8 @@ import {
 import {
   db, loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates,
   savePayeBrackets, getTrialBalance, getBalanceSheet, getProfitAndLoss,
-  getSession, onAuthStateChange, signOut, runPayrollAndFetch
+  getSession, onAuthStateChange, signOut, runPayrollAndFetch,
+  findAccountByRole
 } from "../supabaseClient";
 import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelProps,
              NewInvoiceFormProps, RecordPaymentFormProps, InvoiceDocumentProps,
@@ -52,6 +53,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [expenseAccount, setExpenseAccount] = useState("");
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+  const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   async function createBill() {
     const amt = parseFloat(amount);
@@ -68,7 +70,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       return;
     }
 
-    const billNumber = `BL-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const billNumber = makeTempId("BL");
     const bill: Bill = {
       id: billNumber,
       billNumber,
@@ -82,7 +84,13 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       payments: [],
     };
 
-    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const apAccount = findAccountByRole(data.accounts, "ap");
+    if (!apAccount) {
+      window.alert("Accounts Payable account not configured. Please contact your admin.");
+      return;
+    }
+
+    const entryNumber = makeTempId("JE");
     const entry: JournalEntry = {
       id: entryNumber,
       entryNumber,
@@ -92,7 +100,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       project: project === "GEN" ? null : project,
       lines: [
         { account: expenseAccount, debit: amt, credit: 0 },
-        { account: "2000", debit: 0, credit: amt },
+        { account: apAccount.code, debit: 0, credit: amt },
       ],
     };
 
@@ -100,15 +108,15 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       ...d,
       bills: [bill, ...d.bills],
       journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
     }));
 
     try {
       await db.saveBill(bill);
       await db.saveJournalEntry(entry);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save bill:", err);
-      window.alert("Failed to save bill. Check console for details.");
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
+      window.alert(`Failed to save bill: ${errorMsg}`);
       return;
     }
 
@@ -143,7 +151,14 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
 
     const updatedBill = { ...bill, payments: [...bill.payments, payment], status: newStatus };
 
-    const entryNumber = `JE-${String(data.nextEntryNum).padStart(4, "0")}`;
+    const apAccount = findAccountByRole(data.accounts, "ap");
+    const cashAccount = findAccountByRole(data.accounts, "cash");
+    if (!apAccount || !cashAccount) {
+      window.alert("Accounts Payable or Cash account not configured. Please contact your admin.");
+      return;
+    }
+
+    const entryNumber = makeTempId("JE");
     const entry: JournalEntry = {
       id: entryNumber,
       entryNumber,
@@ -152,8 +167,8 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       period: date.slice(0, 7),
       project: bill.project,
       lines: [
-        { account: "2000", debit: amt, credit: 0 },
-        { account: "1000", debit: 0, credit: amt },
+        { account: apAccount.code, debit: amt, credit: 0 },
+        { account: cashAccount.code, debit: 0, credit: amt },
       ],
     };
 
@@ -161,15 +176,15 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       ...d,
       bills: d.bills.map((b) => (b.id === bill.id ? updatedBill : b)),
       journal: [entry, ...d.journal],
-      nextEntryNum: d.nextEntryNum + 1,
     }));
 
     try {
       await db.saveBill(updatedBill);
       await db.saveJournalEntry(entry);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to record bill payment:", err);
-      window.alert("Failed to record payment. Check console for details.");
+      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
+      window.alert(`Failed to record payment: ${errorMsg}`);
       return;
     }
 
