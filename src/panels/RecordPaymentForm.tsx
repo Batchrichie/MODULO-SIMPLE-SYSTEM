@@ -69,7 +69,7 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
 
     try {
       await db.saveInvoice(updatedInvoice);
-      await postJournalEntry(
+      const postedEntryId = await postJournalEntry(
         entry.date,
         entry.description ?? null,
         entry.project ?? null,
@@ -79,6 +79,13 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
           credit: Number(line.credit) || 0,
         }))
       );
+
+      mutate((d) => ({
+        ...d,
+        journal: d.journal.map((item) =>
+          item.id === entry.id ? { ...item, id: postedEntryId } : item
+        ),
+      }));
     } catch (err: any) {
       console.error("Failed to persist payment or journal entry:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

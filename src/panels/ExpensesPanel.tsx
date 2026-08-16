@@ -66,7 +66,7 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
     }));
 
     try {
-      await postJournalEntry(
+      const postedEntryId = await postJournalEntry(
         entry.date,
         entry.description ?? null,
         entry.project ?? null,
@@ -76,6 +76,13 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
           credit: Number(line.credit) || 0,
         }))
       );
+
+      mutate((d) => ({
+        ...d,
+        journal: d.journal.map((item) =>
+          item.id === entry.id ? { ...item, id: postedEntryId } : item
+        ),
+      }));
     } catch (err: any) {
       console.error("Failed to post expense:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
@@ -88,7 +95,20 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
   }
 
   const recentExpenses = data.journal
-    .filter((e) => e.entryNumber?.startsWith("JE-EXP-"))
+    .filter((e) => {
+      if (!e.lines || e.lines.length < 2) return false;
+      const debitLine = e.lines.find((line) => line.debit > 0);
+      const creditLine = e.lines.find((line) => line.credit > 0);
+      if (!debitLine || !creditLine) return false;
+      const expenseAccount = data.accounts.find((a) => a.code === debitLine.account);
+      const paymentAccount = data.accounts.find((a) => a.code === creditLine.account);
+      return Boolean(
+        expenseAccount &&
+        expenseAccount.type?.toLowerCase() === "expense" &&
+        paymentAccount &&
+        paymentAccount.isPaymentAccount
+      );
+    })
     .slice(0, 20);
 
   const totalExpenses = recentExpenses.reduce(

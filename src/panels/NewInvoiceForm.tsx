@@ -214,6 +214,17 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         return;
       }
 
+      const realJournalEntryId = newEntryId as string | null;
+      if (realJournalEntryId) {
+        inv.journalEntryId = realJournalEntryId;
+        mutate((d) => ({
+          ...d,
+          invoices: d.invoices.map((item) =>
+            item.id === inv.id ? { ...item, journalEntryId: realJournalEntryId } : item
+          ),
+        }));
+      }
+
       // RPC handles the full invoice creation — no need for separate db.saveInvoice()
       // Optimistic UI update via mutate() above will show temp data until next journal reload
     } catch (err: any) {
