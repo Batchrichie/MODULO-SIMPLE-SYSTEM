@@ -35,7 +35,7 @@ import {
   db, loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates,
   savePayeBrackets, getTrialBalance, getBalanceSheet, getProfitAndLoss,
   getSession, onAuthStateChange, signOut, runPayrollAndFetch,
-  findAccountByRole
+  findAccountByRole, postJournalEntry
 } from "../supabaseClient";
 import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelProps,
              NewInvoiceFormProps, RecordPaymentFormProps, InvoiceDocumentProps,
@@ -112,7 +112,16 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
 
     try {
       await db.saveBill(bill);
-      await db.saveJournalEntry(entry);
+      await postJournalEntry(
+        entry.date,
+        entry.description ?? null,
+        entry.project ?? null,
+        entry.lines.map((line) => ({
+          account: line.account,
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+        }))
+      );
     } catch (err: any) {
       console.error("Failed to save bill:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
@@ -180,7 +189,16 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
 
     try {
       await db.saveBill(updatedBill);
-      await db.saveJournalEntry(entry);
+      await postJournalEntry(
+        entry.date,
+        entry.description ?? null,
+        entry.project ?? null,
+        entry.lines.map((line) => ({
+          account: line.account,
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+        }))
+      );
     } catch (err: any) {
       console.error("Failed to record bill payment:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

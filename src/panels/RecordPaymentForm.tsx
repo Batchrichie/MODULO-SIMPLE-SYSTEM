@@ -6,7 +6,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { getInvoiceBalance, getInvoicePaidAmount } from "../utils/invoiceUtils";
-import { db, findAccountByRole } from "../supabaseClient";
+import { db, postJournalEntry, findAccountByRole } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
 import type { RecordPaymentFormProps } from "../types";
@@ -69,7 +69,16 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
 
     try {
       await db.saveInvoice(updatedInvoice);
-      await db.saveJournalEntry(entry);
+      await postJournalEntry(
+        entry.date,
+        entry.description ?? null,
+        entry.project ?? null,
+        entry.lines.map((line) => ({
+          account: line.account,
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+        }))
+      );
     } catch (err: any) {
       console.error("Failed to persist payment or journal entry:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

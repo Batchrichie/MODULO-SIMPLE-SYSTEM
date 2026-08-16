@@ -20,7 +20,7 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { assertJournalEntry } from "../validation";
-import { db } from "../supabaseClient";
+import { postJournalEntry } from "../supabaseClient";
 
 /* ---------- helpers ---------- */
 
@@ -123,7 +123,16 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       journal: [entry, ...d.journal],
     }));
     try {
-      await db.saveJournalEntry(entry);
+      await postJournalEntry(
+        entry.date,
+        entry.description ?? null,
+        entry.project ?? null,
+        entry.lines.map((line) => ({
+          account: line.account,
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+        }))
+      );
     } catch (err: any) {
       console.error("Failed to save journal entry:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

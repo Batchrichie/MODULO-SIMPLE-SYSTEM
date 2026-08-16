@@ -534,6 +534,36 @@ export async function getSession(): Promise<Session | null> {
   return data.session;
 }
 
+export async function postJournalEntry(
+  date: string,
+  description: string | null,
+  project: string | null,
+  lines: { account: string; debit: number; credit: number }[]
+): Promise<string> {
+  const { data: newEntryId, error } = await supabase.rpc('post_journal_entry', {
+    p_date: date,
+    p_description: description,
+    p_project: project,
+    p_lines: lines,
+  });
+  if (error) throw error;
+  return newEntryId as string;
+}
+
+export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promise<string> {
+  const { data: employeeId, error: empErr } = await supabase.rpc('my_employee_id');
+  if (empErr) throw empErr;
+  if (!employeeId) throw new Error('Could not resolve your employee record — contact an administrator.');
+
+  const { data: reversalEntryId, error } = await supabase.rpc('void_invoice', {
+    p_invoice_id: invoiceId,
+    p_performed_by: employeeId,
+    p_reason: reason ?? null,
+  });
+  if (error) throw error;
+  return reversalEntryId as string;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Financial views / RPC                                               */
 /* ------------------------------------------------------------------ */

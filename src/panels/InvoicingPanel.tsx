@@ -10,7 +10,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
-import { db, supabase, voidInvoice } from "../supabaseClient";
+import { db, supabase, voidInvoiceRpc } from "../supabaseClient";
 import { confirmAsync } from "../components/ui/Notifications";
 import { computeInvoiceTotals, getInvoiceBalance, getInvoicePaidAmount, getInvoiceGrandTotalGHS } from "../utils/invoiceUtils";
 import NewInvoiceForm from "./NewInvoiceForm";
@@ -50,7 +50,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
     try {
       // Call void_invoice RPC — handles reversal JE creation, original entry's reversed flag,
       // invoice status, voided_at/voided_by, and audit trail all in one transaction
-      const reversalEntryId = await voidInvoice(invoiceId);
+      const reversalEntryId = await voidInvoiceRpc(invoiceId);
 
       // Success — reversal entry created and invoice marked void
       // The server has all the correct data; local optimistic update matches

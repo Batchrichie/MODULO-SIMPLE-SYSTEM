@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
 import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
-import { supabase } from '../supabaseClient';
+import { postJournalEntry } from '../supabaseClient';
 import type { AppData, PanelProps, JournalEntry } from '../types';
 
 export default function ExpensesPanel({ data, mutate }: PanelProps) {
@@ -66,22 +66,16 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
     }));
 
     try {
-      const { data: newEntryId, error } = await supabase.rpc('post_expense', {
-        p_date: date,
-        p_description: description.trim(),
-        p_vendor: vendor.trim(),
-        p_expense_account: account,
-        p_payment_account: paymentAccount,
-        p_amount: amt,
-        p_project: project === "GEN" ? null : project,
-      });
-
-      if (error) {
-        console.error("Failed to post expense:", error);
-        const errorMsg = error?.message || error?.toString?.() || "Unknown error occurred";
-        window.alert(`Failed to post expense: ${errorMsg}`);
-        return;
-      }
+      await postJournalEntry(
+        entry.date,
+        entry.description ?? null,
+        entry.project ?? null,
+        entry.lines.map((line) => ({
+          account: line.account,
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+        }))
+      );
     } catch (err: any) {
       console.error("Failed to post expense:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

@@ -10,10 +10,16 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import { fmt, projectName } from "../utils/format";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
-import { supabase, db, findAccountByRole } from "../supabaseClient";
+import { supabase, findAccountByRole } from "../supabaseClient";
 import type { NewInvoiceFormProps } from "../types";
 
 export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormProps) {
+  const revenueOptions = data.accounts.filter((a) => {
+    const type = (a.type || "").toLowerCase();
+    return type === "revenue" || type === "income";
+  });
+  const defaultRevenueAccount = revenueOptions[0]?.code ?? "";
+
   const [billTo, setBillTo] = useState(cloneSource?.billTo || "");
   const [forText, setForText] = useState(cloneSource?.forText || "");
   const [location, setLocation] = useState(cloneSource?.location || "GREATER ACCRA");
@@ -48,11 +54,6 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         ]
   );
 
-  // Filter revenue/income accounts (case-insensitive to match DB values like "income", "Revenue", "Income")
-  const revenueOptions = data.accounts.filter((a) => {
-    const type = (a.type || "").toLowerCase();
-    return type === "revenue" || type === "income";
-  });
   const totals = useMemo(
     () =>
       computeInvoiceTotals(
@@ -182,7 +183,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       nextInvoiceNum: d.nextInvoiceNum + 1,
     }));
     try {
-      // Call post_invoice RPC which creates both the invoice GL entry and the invoice record
+      // post_invoice creates its own GL posting internally; do not call postJournalEntry() here
       const { data: newEntryId, error: rpcError } = await supabase.rpc('post_invoice', {
         p_invoice_id: invoiceNumber,
         p_invoice_number: invoiceNumber,
