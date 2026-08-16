@@ -19,13 +19,13 @@ import type { AppData } from "../types";
 export default function AccountsPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
-  const [form, setForm] = useState({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false });
+  const [form, setForm] = useState({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, role: null as string | null });
   const usedCodes = editingCode
     ? new Set(data.accounts.filter(a => a.code !== editingCode).map(a => a.code))
     : new Set(data.accounts.map(a => a.code));
 
   function resetForm() {
-    setForm({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false });
+    setForm({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, role: null });
     setEditingCode(null);
   }
 
@@ -33,7 +33,7 @@ export default function AccountsPanel({ data, mutate }) {
 
   function openEdit(acct) {
     setEditingCode(acct.code);
-    setForm({ code: acct.code, name: acct.name, type: acct.type, normal: acct.normal || "Debit", isPaymentAccount: acct.isPaymentAccount || false });
+    setForm({ code: acct.code, name: acct.name, type: acct.type, normal: acct.normal || "Debit", isPaymentAccount: acct.isPaymentAccount || false, role: acct.role ?? null });
     setShowModal(true);
   }
 
@@ -42,7 +42,7 @@ export default function AccountsPanel({ data, mutate }) {
   function saveAccount() {
     const err = assertAccount(form, usedCodes);
     if (err) { window.alert(err); return; }
-    const newAccount = { ...form, code: form.code.trim(), reportingGroup: null };
+    const newAccount = { ...form, code: form.code.trim(), reportingGroup: null, role: form.role ?? null };
     if (editingCode) {
       mutate(d => ({ ...d, accounts: d.accounts.map(a => a.code === editingCode ? newAccount : a) }));
     } else {
@@ -94,6 +94,7 @@ export default function AccountsPanel({ data, mutate }) {
                     <Th>Code</Th>
                     <Th>Name</Th>
                     <Th>Normal</Th>
+                    <Th>Role</Th>
                     <Th>Payment Acct</Th>
                     <Th right>Actions</Th>
                   </tr>
@@ -104,6 +105,7 @@ export default function AccountsPanel({ data, mutate }) {
                       <Td mono label="Code" style={{ fontWeight: 600 }}>{a.code}</Td>
                       <Td label="Name">{a.name}</Td>
                       <Td label="Normal Balance" style={{ fontSize: 12, color: MUTED }}>{a.normal}</Td>
+                      <Td label="Role" style={{ fontSize: 12, color: MUTED }}>{a.role || "—"}</Td>
                       <Td label="Payment">
                         {a.isPaymentAccount ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: GREEN, background: 'var(--success-bg)', padding: '2px 8px', borderRadius: 6 }}>
@@ -173,6 +175,19 @@ export default function AccountsPanel({ data, mutate }) {
                   onChange={e => setForm({ ...form, normal: e.target.value })}>
                   <option>Debit</option>
                   <option>Credit</option>
+                </select>
+              </div>
+              <div style={{ flex: '1 1 180px' }}>
+                <label style={labelStyle}>Role</label>
+                <select
+                  style={inputStyle}
+                  value={form.role ?? "none"}
+                  onChange={e => setForm({ ...form, role: e.target.value === "none" ? null : e.target.value })}
+                >
+                  <option value="none">None</option>
+                  <option value="ar">ar</option>
+                  <option value="vat-payable">vat-payable</option>
+                  <option value="nhil-payable">nhil-payable</option>
                 </select>
               </div>
             </div>

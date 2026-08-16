@@ -123,6 +123,11 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         }))
       );
     } catch (err: any) {
+      mutate((d) => ({
+        ...d,
+        bills: d.bills.filter((item) => item.id !== bill.id),
+        journal: d.journal.filter((item) => item.id !== entry.id),
+      }));
       console.error("Failed to save bill:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to save bill: ${errorMsg}`);
@@ -200,6 +205,11 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         }))
       );
     } catch (err: any) {
+      mutate((d) => ({
+        ...d,
+        bills: d.bills.map((item) => item.id === bill.id ? bill : item),
+        journal: d.journal.filter((item) => item.id !== entry.id),
+      }));
       console.error("Failed to record bill payment:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to record payment: ${errorMsg}`);

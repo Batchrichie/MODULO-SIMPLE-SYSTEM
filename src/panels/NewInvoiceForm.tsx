@@ -208,6 +208,12 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       });
 
       if (rpcError) {
+        mutate((d) => ({
+          ...d,
+          invoices: d.invoices.filter((item) => item.id !== inv.id),
+          journal: d.journal.filter((item) => item.id !== entry.id),
+          nextInvoiceNum: Math.max(1, d.nextInvoiceNum - 1),
+        }));
         console.error("Failed to post invoice:", rpcError);
         const errorMsg = rpcError?.message || rpcError?.toString?.() || "Unknown error occurred";
         alert(`Failed to save invoice: ${errorMsg}`);
@@ -228,6 +234,12 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       // RPC handles the full invoice creation — no need for separate db.saveInvoice()
       // Optimistic UI update via mutate() above will show temp data until next journal reload
     } catch (err: any) {
+      mutate((d) => ({
+        ...d,
+        invoices: d.invoices.filter((item) => item.id !== inv.id),
+        journal: d.journal.filter((item) => item.id !== entry.id),
+        nextInvoiceNum: Math.max(1, d.nextInvoiceNum - 1),
+      }));
       console.error("Failed to persist invoice:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       alert(`Failed to save invoice: ${errorMsg}`);

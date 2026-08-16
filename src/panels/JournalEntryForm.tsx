@@ -123,7 +123,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       journal: [entry, ...d.journal],
     }));
     try {
-      await postJournalEntry(
+      const postedEntryId = await postJournalEntry(
         entry.date,
         entry.description ?? null,
         entry.project ?? null,
@@ -133,7 +133,18 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
           credit: Number(line.credit) || 0,
         }))
       );
+
+      mutate((d: any) => ({
+        ...d,
+        journal: d.journal.map((item: any) =>
+          item.id === entry.id ? { ...item, id: postedEntryId, entryNumber: postedEntryId } : item
+        ),
+      }));
     } catch (err: any) {
+      mutate((d: any) => ({
+        ...d,
+        journal: d.journal.filter((item: any) => item.id !== entry.id),
+      }));
       console.error("Failed to save journal entry:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       alert(

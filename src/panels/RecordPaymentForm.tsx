@@ -87,6 +87,11 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         ),
       }));
     } catch (err: any) {
+      mutate((d) => ({
+        ...d,
+        invoices: d.invoices.map((item) => item.id === inv.id ? inv : item),
+        journal: d.journal.filter((item) => item.id !== entry.id),
+      }));
       console.error("Failed to persist payment or journal entry:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to record payment: ${errorMsg}`);

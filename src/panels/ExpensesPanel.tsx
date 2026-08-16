@@ -84,6 +84,10 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
         ),
       }));
     } catch (err: any) {
+      mutate((d) => ({
+        ...d,
+        journal: d.journal.filter((item: JournalEntry) => item.id !== entry.id),
+      }));
       console.error("Failed to post expense:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to post expense: ${errorMsg}`);
