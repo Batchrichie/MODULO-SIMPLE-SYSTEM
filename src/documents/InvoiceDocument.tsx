@@ -22,35 +22,33 @@ interface InvoiceDocumentProps {
   inv: Invoice;
 }
 
-// Build reliable totals ALWAYS by recalculating from line items.
-// Stored inv.totals may contain corrupted values from legacy save bugs.
-function resolveTotalsGHS(inv: Invoice, data: AppData) {
-  const stored = inv.totals;
-  const chargeNhil = stored?.chargeNhil ?? false;
-  const chargeVat = stored?.chargeVat ?? false;
+// Invoice totals are stored in the database as the canonical converted values.
+// Consume those converted totals directly instead of re-deriving them in the frontend.
+function resolveTotalsGHS(inv: Invoice) {
+  const stored = inv.totals ?? {};
+  const chargeNhil = !!stored.chargeNhil;
+  const chargeVat = !!stored.chargeVat;
 
-  const recalc = computeInvoiceTotals(
-    inv.items,
-    inv.discountPct ?? 0,
-    data.nhilGetfundRate ?? 0.025,
-    data.vatRate ?? 0.15,
-    chargeNhil,
-    chargeVat
+  const subtotal = Number(stored.subtotal ?? 0);
+  const discount = Number(stored.discount ?? 0);
+  const newSubtotal = Number(
+    stored.newSubtotalGHS ?? stored.newSubtotal ?? Math.max(subtotal - discount, 0)
+  );
+  const nhilGetfund = Number(stored.nhilGetfundGHS ?? stored.nhilGetfund ?? 0);
+  const vat = Number(stored.vatGHS ?? stored.vat ?? 0);
+  const grandTotal = Number(
+    stored.grandTotalGHS ?? stored.grandTotal ?? newSubtotal + nhilGetfund + vat
   );
 
-  const rate = inv.exchangeRate && inv.exchangeRate > 0 ? inv.exchangeRate : 1;
-
   return {
-    subtotal: recalc.subtotal,
-    discount: recalc.discount,
-    newSubtotal: recalc.newSubtotal,
-    nhilGetfund: recalc.nhilGetfund,
-    vat: recalc.vat,
-    grandTotal: recalc.grandTotal,
+    subtotal,
+    discount,
+    newSubtotal,
+    nhilGetfund,
+    vat,
+    grandTotal,
     chargeNhil,
     chargeVat,
-    _raw: recalc,
-    _rate: rate,
   };
 }
 
@@ -79,9 +77,9 @@ function getDueStatus(inv: Invoice, grandTotalGHS: number) {
 }
 
 export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
-  const t = resolveTotalsGHS(inv, data);
+  const t = resolveTotalsGHS(inv);
   const cur = inv.currency;
-  const sym = "GHS";
+  const sym = cur;
   const company = data.company || COMPANY_TEMPLATE;
   const due = getDueStatus(inv, t.grandTotal);
 
@@ -423,12 +421,12 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
         <div style={{ paddingTop: 4, fontStyle: "italic", color: MUTED, fontSize: "9.5pt", maxWidth: "55%" }}>
           <b style={{ fontStyle: "normal" }}>Amount in words:</b>
           <br />
-          {amountInWords(t.grandTotal, "GHS")}
+          {amountInWords(t.grandTotal, cur)}
         </div>
 
         {cur === "USD" && (
           <div style={{ margin: "10px 0 0", fontSize: "8.5pt", color: ALERT, fontStyle: "italic" }}>
-            Exchange Rate: All figures shown in GHS. Source invoice currency USD at reference rate USD 1 = GHS {inv.exchangeRate}.
+            Exchange Rate: Invoice currency USD at reference rate USD 1 = GHS {inv.exchangeRate}. Amounts shown in USD.
           </div>
         )}
       </div>

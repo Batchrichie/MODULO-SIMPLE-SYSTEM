@@ -23,7 +23,7 @@ import LineChart from "../components/charts/LineChart";
 import BarChart from "../components/charts/BarChart";
 import DonutChart from "../components/charts/DonutChart";
 import { fmt, projectName } from "../utils/format";
-import { findAccountByRole } from "../supabaseClient";
+import { findAccountByRole, findAccountsByRole } from "../supabaseClient";
 import { amountInWords } from "../utils/numberToWords";
 import { computeInvoiceTotals, NAVY, INVOICE_GOLD, invTdLabel, invTdVal } from "../utils/invoiceUtils";
 import { COMPANY_TEMPLATE, GENERAL_PROJECT } from "../constants/defaults";
@@ -177,10 +177,11 @@ export default function LedgerPanel({ data }) {
 function computeCashFlow(data) {
   const rows = [];
   let running = 0;
+  const cashCodes = findAccountsByRole(data.accounts, ["cash"]).map((a) => a.code);
   const sorted = [...data.journal].sort((a, b) => (a.date > b.date ? 1 : -1));
   sorted.forEach((e) => {
     const net = e.lines.reduce(
-      (s, l) => s + (l.account === "1000" ? l.debit - l.credit : 0),
+      (s, l) => s + (cashCodes.includes(l.account) ? l.debit - l.credit : 0),
       0
     );
     if (net !== 0) {

@@ -89,10 +89,15 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
 
   // Map bsData to the `bs` shape used by the UI
   const assets = (bsData || []).filter(r => r.type === 'Asset' || r.type === 'Contra-Asset').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
-  const currentAssetCodes = getCurrentAssets(data.accounts).map(a => a.code);
-  const currentAssets = currentAssetCodes.length > 0
-    ? assets.filter(a => currentAssetCodes.includes(a.code))
-    : assets.filter(a => ['1000','1100','1200','1300','1400'].includes(a.code)); // Fallback for migration
+  let currentAssetCodes: string[] = [];
+  try {
+    currentAssetCodes = getCurrentAssets(data.accounts).map(a => a.code);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Current asset accounts are not configured. Please contact your admin.';
+    window.alert(message);
+    return <Card><p>{message}</p></Card>;
+  }
+  const currentAssets = assets.filter(a => currentAssetCodes.includes(a.code));
   const nonCurrentAssets = assets.filter(a => !currentAssets.find(ca => ca.code === a.code));
   const liabilities = (bsData || []).filter(r => r.type === 'Liability').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));
   const equity = (bsData || []).filter(r => r.type === 'Equity').map(r => ({ code: r.code, name: r.name, amount: Number(r.amount) }));

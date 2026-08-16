@@ -90,13 +90,14 @@ export function findAccountsByRole(accounts: Account[], roles: string[]): Accoun
 
 /**
  * Helper to find all current asset accounts (for balance sheet grouping).
- * Falls back to checking account type if role is not set.
+ * The database role is the source of truth; do not silently guess from code ranges.
  */
 export function getCurrentAssets(accounts: Account[]): Account[] {
   const byRole = accounts.filter(a => a.role === 'current-asset');
-  if (byRole.length > 0) return byRole;
-  // Fallback: if no accounts have the role set, use type-based filtering
-  return accounts.filter(a => a.type === 'Asset' && ['1000','1100','1200','1300','1400'].includes(a.code));
+  if (byRole.length === 0) {
+    throw new Error('Current asset accounts are not configured. Please contact your admin.');
+  }
+  return byRole;
 }
 
 interface ProjectRow {
