@@ -105,13 +105,14 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
     if (!balanced || validLines.length < 2) return;
     const entryNumber = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const period = date.slice(0, 7);
+    const normalizedProject = project === "GEN" ? null : project;
     const entry = {
       id: entryNumber,
       entryNumber,
       date,
       description,
       period,
-      project,
+      project: normalizedProject,
       lines: validLines.map((l) => ({
         account: l.account,
         debit: parseFloat(l.debit) || 0,
@@ -126,7 +127,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       const postedEntryId = await postJournalEntry(
         entry.date,
         entry.description ?? null,
-        entry.project ?? null,
+        normalizedProject,
         entry.lines.map((line) => ({
           account: line.account,
           debit: Number(line.debit) || 0,

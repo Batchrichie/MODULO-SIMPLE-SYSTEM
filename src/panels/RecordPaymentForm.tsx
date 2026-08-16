@@ -37,13 +37,14 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       window.alert("Accounts Receivable account not configured. Please contact your admin.");
       return;
     }
+    const normalizedProject = inv.project === "GEN" ? null : inv.project;
     const entry = {
       id: entryNumber,
       entryNumber,
       date,
       description: `Payment received — ${inv.invoiceNumber} (${inv.billTo})`,
       period: date.slice(0, 7),
-      project: inv.project,
+      project: normalizedProject,
       lines: [
         { account: paymentAccount, debit: amt, credit: 0 },
         { account: arAccount.code, debit: 0, credit: amt },
@@ -72,7 +73,7 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       const postedEntryId = await postJournalEntry(
         entry.date,
         entry.description ?? null,
-        entry.project ?? null,
+        normalizedProject,
         entry.lines.map((line) => ({
           account: line.account,
           debit: Number(line.debit) || 0,

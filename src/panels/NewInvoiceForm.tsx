@@ -125,6 +125,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       chargeNhil,
       chargeVat,
     };
+    const normalizedProject = project === "GEN" ? null : project;
     const inv = {
       id: invoiceNumber,
       invoiceNumber,
@@ -133,7 +134,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       billTo: billTo.trim(),
       forText: forText.trim(),
       location,
-      project,
+      project: normalizedProject,
       projectLabel: projectName(data.projects, project),
       currency,
       exchangeRate: rate,
@@ -192,7 +193,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         p_bill_to: billTo.trim() || null,
         p_for_text: forText.trim() || null,
         p_location: location || null,
-        p_project: project === "GEN" ? null : project,
+        p_project: normalizedProject,
         p_project_label: projectName(data.projects, project) || null,
         p_currency: currency,
         p_exchange_rate: rate,
