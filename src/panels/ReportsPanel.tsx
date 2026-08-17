@@ -55,7 +55,7 @@ export default function ReportsPanel({ data }: { data: AppData }) {
 
     data.invoices.forEach((inv) => {
       const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-      const balance = (inv.totals.grandTotalGHS ?? inv.totals.grandTotal) - paid;
+      const balance = (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) - paid;
       if (balance <= 0.01) return;
 
       const daysOverdue = Math.floor(
@@ -104,7 +104,7 @@ export default function ReportsPanel({ data }: { data: AppData }) {
     return data.projects.map((p) => {
       const revenue = data.invoices
         .filter((inv) => inv.project === p.id && inv.status !== 'Void')
-        .reduce((s, inv) => s + (inv.totals.grandTotalGHS ?? inv.totals.grandTotal), 0);
+        .reduce((s, inv) => s + (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0), 0);
       const costs = data.journal
         .filter((je) => je.project === p.id)
         .flatMap((je) => je.lines)

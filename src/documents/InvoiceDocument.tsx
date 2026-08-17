@@ -1,7 +1,7 @@
 import React from "react";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 import { LOGO_SRC } from "../theme/tokens";
-import { NAVY, INVOICE_GOLD, computeInvoiceTotals } from "../utils/invoiceUtils";
+import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
 import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
 import { FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme/tokens";
@@ -22,33 +22,40 @@ interface InvoiceDocumentProps {
   inv: Invoice;
 }
 
-// Invoice totals are stored in the database as the canonical converted values.
-// Consume those converted totals directly instead of re-deriving them in the frontend.
-function resolveTotalsGHS(inv: Invoice) {
+// The database jsonb is the source of truth for invoice totals. Read the stored
+// transaction-currency and GHS-equivalent values directly instead of computing them.
+function readInvoiceTotals(inv: Invoice) {
   const stored = inv.totals ?? {};
-  const chargeNhil = !!stored.chargeNhil;
-  const chargeVat = !!stored.chargeVat;
-
   const subtotal = Number(stored.subtotal ?? 0);
-  const discount = Number(stored.discount ?? 0);
-  const newSubtotal = Number(
-    stored.newSubtotalGHS ?? stored.newSubtotal ?? Math.max(subtotal - discount, 0)
-  );
-  const nhilGetfund = Number(stored.nhilGetfundGHS ?? stored.nhilGetfund ?? 0);
-  const vat = Number(stored.vatGHS ?? stored.vat ?? 0);
-  const grandTotal = Number(
-    stored.grandTotalGHS ?? stored.grandTotal ?? newSubtotal + nhilGetfund + vat
-  );
+  const taxableValue = Number(stored.taxableValue ?? stored.newSubtotal ?? 0);
+  const vat = Number(stored.vat ?? 0);
+  const nhil = Number(stored.nhilGetfund ?? stored.nhil ?? 0);
+  const getfund = Number(stored.getfund ?? 0);
+  const total = Number(stored.total ?? stored.grandTotal ?? 0);
+  const subtotalGhs = Number(stored.subtotal_ghs ?? stored.subtotal ?? 0);
+  const taxableValueGhs = Number(stored.taxable_value_ghs ?? stored.taxableValue ?? stored.newSubtotalGHS ?? stored.newSubtotal ?? 0);
+  const vatGhs = Number(stored.vat_ghs ?? stored.vatGHS ?? stored.vat ?? 0);
+  const nhilGhs = Number(stored.nhil_ghs ?? stored.nhilGetfundGHS ?? stored.nhilGetfund ?? 0);
+  const getfundGhs = Number(stored.getfund_ghs ?? stored.getfund ?? 0);
+  const totalGhs = Number(stored.total_ghs ?? stored.grandTotalGHS ?? stored.total ?? stored.grandTotal ?? 0);
+  const exchangeRate = Number(stored.exchange_rate ?? inv.exchangeRate ?? 1);
 
   return {
     subtotal,
-    discount,
-    newSubtotal,
-    nhilGetfund,
+    taxableValue,
     vat,
-    grandTotal,
-    chargeNhil,
-    chargeVat,
+    nhil,
+    getfund,
+    total,
+    subtotalGhs,
+    taxableValueGhs,
+    vatGhs,
+    nhilGhs,
+    getfundGhs,
+    totalGhs,
+    exchangeRate,
+    chargeNhil: !!stored.chargeNhil,
+    chargeVat: !!stored.chargeVat,
   };
 }
 
@@ -77,11 +84,11 @@ function getDueStatus(inv: Invoice, grandTotalGHS: number) {
 }
 
 export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
-  const t = resolveTotalsGHS(inv);
+  const t = readInvoiceTotals(inv);
   const cur = inv.currency;
   const sym = cur;
   const company = data.company || COMPANY_TEMPLATE;
-  const due = getDueStatus(inv, t.grandTotal);
+  const due = getDueStatus(inv, t.totalGhs || t.total);
 
   const formatDate = (value?: string | null) => {
     if (!value) return "—";
@@ -116,6 +123,7 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
       gap: 16,
     },
     headerLeft: { display: "flex", alignItems: "center", gap: 16 },
+    companyBlock: { display: "flex", flexDirection: "column" as const, justifyContent: "center" },
     logo: { height: 58, width: "auto", objectFit: "contain" as const },
     company: {
       fontFamily: FONT_DISPLAY,
@@ -126,11 +134,18 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
       lineHeight: 1.2,
     },
     tagline: {
-      fontSize: "8pt",
+      fontSize: "7.5pt",
       color: MUTED,
       textTransform: "uppercase" as const,
-      letterSpacing: "1.5px",
-      marginTop: 2,
+      letterSpacing: "1.2px",
+      marginTop: 4,
+    },
+    companyContact: {
+      textAlign: "right" as const,
+      fontSize: "8.5pt",
+      color: MUTED,
+      lineHeight: 1.7,
+      maxWidth: 360,
     },
     docTitle: {
       fontSize: "11pt",
@@ -226,10 +241,14 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
         <div style={s.header}>
           <div style={s.headerLeft}>
             <img src={LOGO_SRC} alt={`${company.name} logo`} style={s.logo} />
-            <div>
+            <div style={s.companyBlock}>
               <div style={s.company}>{company.name}</div>
               <div style={s.tagline}>Design · Build · Deliver</div>
             </div>
+          </div>
+          <div style={s.companyContact}>
+            <div>{company.addressLine} · {company.cityLine} · {company.poBox}</div>
+            <div>Phone: {company.phone} · Telephone: {company.telephone} · {company.email}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={s.docTitle}>Invoice</div>
@@ -247,7 +266,7 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
               {due.balance > 0 ? "Balance Due" : "Grand Total"}
             </div>
             <div style={s.heroFigure}>
-              {sym} {fmt(due.balance > 0 ? due.balance : t.grandTotal)}
+              {sym} {fmt(t.total)}
             </div>
           </div>
           <div style={s.heroChip}>{due.label}</div>
@@ -364,39 +383,28 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
               <span>Subtotal</span>
               <span>{sym} {fmt(t.subtotal)}</span>
             </div>
-            {parseFloat(String(t.discount)) > 0 && (
+            {Number(t.taxableValue) > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "9.5pt", color: MUTED }}>
-                <span>Discount ({inv.discountPct || 0}%)</span>
-                <span style={{ color: ALERT }}>-{sym} {fmt(t.discount)}</span>
+                <span>Taxable Value</span>
+                <span>{sym} {fmt(t.taxableValue)}</span>
               </div>
             )}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "5px 0",
-                fontSize: "9.5pt",
-                color: "#2D2D2D",
-                fontWeight: 700,
-                background: "#F5F0E6",
-                margin: "0 -20px",
-                paddingLeft: 20,
-                paddingRight: 20,
-              }}
-            >
-              <span>New Subtotal</span>
-              <span>{sym} {fmt(t.newSubtotal)}</span>
-            </div>
-            {t.chargeNhil && (
+            {Number(t.nhil) > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "9.5pt", color: MUTED }}>
-                <span>NHIL & GETFund</span>
-                <span>{sym} {fmt(t.nhilGetfund)}</span>
+                <span>NHIL</span>
+                <span>{sym} {fmt(t.nhil)}</span>
               </div>
             )}
-            {t.chargeVat && (
+            {Number(t.vat) > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "9.5pt", color: MUTED }}>
                 <span>VAT ({(data.vatRate * 100).toFixed(1)}%)</span>
                 <span>{sym} {fmt(t.vat)}</span>
+              </div>
+            )}
+            {Number(t.getfund) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "9.5pt", color: MUTED }}>
+                <span>GETFund</span>
+                <span>{sym} {fmt(t.getfund)}</span>
               </div>
             )}
             <div
@@ -412,23 +420,34 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
                 justifyContent: "space-between",
               }}
             >
-              <span>GRAND TOTAL</span>
-              <span>{sym} {fmt(t.grandTotal)}</span>
+              <span>TOTAL</span>
+              <span>{sym} {fmt(t.total)}</span>
             </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 18, padding: "12px 16px", background: CREAM, border: `1px solid ${RULE}`, borderRadius: 6 }}>
+          <div style={{ fontSize: "8pt", letterSpacing: "1.2px", textTransform: "uppercase", fontWeight: 700, color: NAVY, marginBottom: 8 }}>
+            GHS equivalent
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: "9.5pt" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", color: MUTED }}><span>Subtotal</span><span>GHS {fmt(t.subtotalGhs)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: MUTED }}><span>Taxable Value</span><span>GHS {fmt(t.taxableValueGhs)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: MUTED }}><span>VAT</span><span>GHS {fmt(t.vatGhs)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: MUTED }}><span>NHIL</span><span>GHS {fmt(t.nhilGhs)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: MUTED }}><span>GETFund</span><span>GHS {fmt(t.getfundGhs)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: INK, fontWeight: 700 }}><span>Total</span><span>GHS {fmt(t.totalGhs)}</span></div>
+          </div>
+          <div style={{ marginTop: 10, fontSize: "8.5pt", color: ALERT, fontStyle: "italic" }}>
+            Exchange rate: {cur} 1 = GHS {fmt(t.exchangeRate)}
           </div>
         </div>
 
         <div style={{ paddingTop: 4, fontStyle: "italic", color: MUTED, fontSize: "9.5pt", maxWidth: "55%" }}>
           <b style={{ fontStyle: "normal" }}>Amount in words:</b>
           <br />
-          {amountInWords(t.grandTotal, cur)}
+          {amountInWords(t.total, cur)}
         </div>
-
-        {cur === "USD" && (
-          <div style={{ margin: "10px 0 0", fontSize: "8.5pt", color: ALERT, fontStyle: "italic" }}>
-            Exchange Rate: Invoice currency USD at reference rate USD 1 = GHS {inv.exchangeRate}. Amounts shown in USD.
-          </div>
-        )}
       </div>
 
       <div

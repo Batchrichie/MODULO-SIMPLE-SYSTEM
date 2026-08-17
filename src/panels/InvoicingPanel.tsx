@@ -87,7 +87,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
     (async () => {
       const { data: rows, error } = await supabase
         .from("vw_invoice_summary")
-        .select("*")
+        .select("id, currency, grand_total, total_ghs, paid, balance, balance_ghs")
         .in("id", ids);
       if (error) {
         console.error("Failed to load invoice summaries:", error);
@@ -268,9 +268,11 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                   chargeNhil,
                   chargeVat
                 );
-                const grandTotalGHS = summary?.grand_total ?? getInvoiceGrandTotalGHS(inv, data) ?? rt.grandTotal;
+                const grandTotalGHS = summary?.total_ghs ?? getInvoiceGrandTotalGHS(inv, data) ?? rt.grandTotal;
                 const paid = summary?.paid ?? getInvoicePaidAmount(inv);
-                const balance = summary?.balance ?? getInvoiceBalance(inv, data);
+                const balance = summary?.balance_ghs ?? summary?.balance ?? Math.max((summary?.total_ghs ?? grandTotalGHS) - paid, 0);
+                const displayTotal = Number(summary?.grand_total ?? inv.totals?.total ?? inv.totals?.grandTotal ?? grandTotalGHS ?? 0);
+                const displayCurrency = summary?.currency ?? inv.currency ?? "GHS";
                 if (isCompact) {
                   return (
                     <React.Fragment key={inv.id}>
@@ -281,7 +283,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                         <Td label="Bill To">{inv.billTo}</Td>
                         <Td label="Project">{inv.projectLabel}</Td>
                         <Td right mono label="Grand Total">
-                          GHS {fmt(grandTotalGHS)}
+                          {displayCurrency} {fmt(displayTotal)}
                         </Td>
                         <Td right mono label="Paid">
                           GHS {fmt(paid)}
@@ -315,7 +317,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
                     <Td label="Bill To">{inv.billTo}</Td>
                     <Td label="Project">{inv.projectLabel}</Td>
                     <Td right mono label="Grand Total">
-                      GHS {fmt(grandTotalGHS)}
+                      {displayCurrency} {fmt(displayTotal)}
                     </Td>
                     <Td right mono label="Paid">
                       GHS {fmt(paid)}

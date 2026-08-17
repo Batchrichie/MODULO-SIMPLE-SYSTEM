@@ -50,7 +50,14 @@ export function getInvoicePaidAmount(invoice: { payments?: Array<{ amountGHS?: n
 
 export function getInvoiceGrandTotalGHS(
   invoice: {
-    totals?: Partial<{ grandTotalGHS: number; grandTotal: number; chargeNhil?: boolean; chargeVat?: boolean }> | null;
+    totals?: Partial<{
+      total_ghs: number;
+      total: number;
+      grandTotalGHS: number;
+      grandTotal: number;
+      chargeNhil?: boolean;
+      chargeVat?: boolean;
+    }> | null;
     items?: Array<{ lineType?: string; qty?: number | string; rate?: number | string }>;
     discountPct?: number | string | null;
     currency?: string;
@@ -59,7 +66,7 @@ export function getInvoiceGrandTotalGHS(
   data?: { nhilGetfundRate?: number | string | null; vatRate?: number | string | null } | null
 ): number {
   if (!invoice) return 0;
-  const stored = Number(invoice.totals?.grandTotalGHS ?? invoice.totals?.grandTotal ?? 0);
+  const stored = Number(invoice.totals?.total_ghs ?? invoice.totals?.grandTotalGHS ?? invoice.totals?.total ?? invoice.totals?.grandTotal ?? 0);
   if (Number.isFinite(stored) && stored > 0) return stored;
 
   const items = invoice.items ?? [];
@@ -72,22 +79,40 @@ export function getInvoiceGrandTotalGHS(
     !!invoice.totals?.chargeVat
   );
 
+  const rawGrandTotal = Number(invoice.totals?.total ?? invoice.totals?.grandTotal ?? computed.grandTotal ?? 0);
+  const currency = String(invoice.currency ?? "GHS").toUpperCase();
+  const exchangeRate = Number(invoice.exchangeRate ?? 1) || 1;
+
+  if (currency !== "GHS") {
+    return rawGrandTotal * exchangeRate;
+  }
+
   return Number(computed.grandTotal) || 0;
 }
 
 export function getInvoiceBalance(
   invoice: {
-    totals?: Partial<{ grandTotalGHS: number; grandTotal: number; chargeNhil?: boolean; chargeVat?: boolean }> | null;
+    totals?: Partial<{ total_ghs?: number; grandTotalGHS: number; total?: number; grandTotal?: number; chargeNhil?: boolean; chargeVat?: boolean }> | null;
     items?: Array<{ lineType?: string; qty?: number | string; rate?: number | string }>;
     discountPct?: number | string | null;
+    currency?: string;
+    exchangeRate?: number | string | null;
     payments?: Array<{ amountGHS?: number | null }> | null;
   } | null | undefined,
   data?: { nhilGetfundRate?: number | string | null; vatRate?: number | string | null } | null
 ): number {
   if (!invoice) return 0;
-  const grandTotal = getInvoiceGrandTotalGHS(invoice, data);
+
+  const totalGhs = Number(
+    invoice.totals?.total_ghs ??
+    invoice.totals?.grandTotalGHS ??
+    (String(invoice.currency ?? "GHS").toUpperCase() !== "GHS"
+      ? (Number(invoice.totals?.total ?? invoice.totals?.grandTotal ?? 0) * (Number(invoice.exchangeRate ?? 1) || 1))
+      : Number(invoice.totals?.total ?? invoice.totals?.grandTotal ?? 0))
+  ) || 0;
+
   const paid = getInvoicePaidAmount(invoice);
-  return Math.max(grandTotal - paid, 0);
+  return Math.max(totalGhs - paid, 0);
 }
 
 export const NAVY = "#1F3864";

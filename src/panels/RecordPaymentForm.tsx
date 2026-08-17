@@ -27,7 +27,7 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
 
     const paymentId = "PYT-" + Date.now();
     const payment = { id: paymentId, date, amountGHS: amt, method: paymentAccount, reference };
-    const totalGhs = Number(inv.totals?.grandTotalGHS ?? inv.totals?.grandTotal ?? 0) || 0;
+    const totalGhs = Number(inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) || 0;
     const paidSoFar = getInvoicePaidAmount(inv) + amt;
     const newStatus = paidSoFar >= totalGhs - 0.01 ? "Paid" : "Partially Paid";
 

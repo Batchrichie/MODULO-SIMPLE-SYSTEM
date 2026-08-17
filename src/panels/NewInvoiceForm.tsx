@@ -115,13 +115,13 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       chargeNhil,
       chargeVat
     );
-    const rate = currency === "USD" ? parseFloat(exchangeRate) || 1 : 1;
+    const rate = currency !== "GHS" ? parseFloat(exchangeRate) || 1 : 1;
     const totals = {
       ...t,
-      grandTotalGHS: currency === "USD" ? t.grandTotal * rate : t.grandTotal,
-      newSubtotalGHS: currency === "USD" ? t.newSubtotal * rate : t.newSubtotal,
-      nhilGetfundGHS: currency === "USD" ? t.nhilGetfund * rate : t.nhilGetfund,
-      vatGHS: currency === "USD" ? t.vat * rate : t.vat,
+      grandTotalGHS: currency !== "GHS" ? t.grandTotal * rate : t.grandTotal,
+      newSubtotalGHS: currency !== "GHS" ? t.newSubtotal * rate : t.newSubtotal,
+      nhilGetfundGHS: currency !== "GHS" ? t.nhilGetfund * rate : t.nhilGetfund,
+      vatGHS: currency !== "GHS" ? t.vat * rate : t.vat,
       chargeNhil,
       chargeVat,
     };
@@ -316,11 +316,15 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
           >
             <option value="GHS">GHS</option>
             <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="GBP">GBP</option>
+            <option value="ZAR">ZAR</option>
+            <option value="NGN">NGN</option>
           </select>
         </div>
-        {currency === "USD" && (
+        {currency !== "GHS" && (
           <div style={{ flex: "1 1 120px" }}>
-            <label style={labelStyle}>Exchange rate (GHS per USD)</label>
+            <label style={labelStyle}>{`Exchange rate (GHS per ${currency})`}</label>
             <input
               style={inputStyle}
               value={exchangeRate}

@@ -346,7 +346,7 @@ export default function PmDashboardPanel({ data, profile }: PmDashboardPanelProp
                   <tbody>
                     {unpaidInvoices.map(inv => {
                       const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-                      const balance = (inv.totals.grandTotalGHS ?? inv.totals.grandTotal) - paid;
+                      const balance = (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) - paid;
                       const today = new Date().toISOString().slice(0, 10);
                       const overdue = balance > 0.01 && inv.dueDate && inv.dueDate < today;
                       const proj = data.projects.find(p => p.id === inv.project);

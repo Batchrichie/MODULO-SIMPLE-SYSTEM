@@ -124,10 +124,10 @@ export default function ExportPanel({ data, isMobile }) {
         "Bill To": inv.billTo,
         Project: inv.projectLabel,
         Currency: inv.currency,
-        "Grand Total": inv.totals.grandTotal,
-        "Grand Total (GHS)": inv.totals.grandTotalGHS,
+        "Grand Total": inv.totals?.total ?? inv.totals?.grandTotal ?? 0,
+        "Grand Total (GHS)": inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0,
         "Paid (GHS)": paid,
-        "Balance (GHS)": inv.totals.grandTotalGHS - paid,
+        "Balance (GHS)": (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) - paid,
         Status: inv.status,
       });
     });

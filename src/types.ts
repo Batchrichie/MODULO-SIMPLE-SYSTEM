@@ -5,7 +5,7 @@ import type { ReactNode, Dispatch, SetStateAction, ComponentType } from 'react';
 /*  Domain primitives                                                   */
 /* ------------------------------------------------------------------ */
 
-export type Currency = 'GHS' | 'USD';
+export type Currency = 'GHS' | 'USD' | 'EUR' | 'GBP' | 'ZAR' | 'NGN';
 
 export type InvoiceStatus = 'Sent' | 'Partially Paid' | 'Paid' | 'Void';
 
@@ -109,14 +109,24 @@ export interface Payment {
 }
 
 export interface InvoiceTotals {
-  subtotal: number;
-  discount: number;
-  newSubtotal: number;
-  nhilGetfund: number;
-  vat: number;
-  grandTotal: number;
-  chargeNhil: boolean;
-  chargeVat: boolean;
+  subtotal?: number;
+  taxableValue?: number;
+  discount?: number;
+  newSubtotal?: number;
+  nhilGetfund?: number;
+  vat?: number;
+  getfund?: number;
+  total?: number;
+  subtotal_ghs?: number;
+  taxable_value_ghs?: number;
+  vat_ghs?: number;
+  nhil_ghs?: number;
+  getfund_ghs?: number;
+  total_ghs?: number;
+  exchange_rate?: number;
+  chargeNhil?: boolean;
+  chargeVat?: boolean;
+  grandTotal?: number;
   grandTotalGHS?: number;
   newSubtotalGHS?: number;
   nhilGetfundGHS?: number;

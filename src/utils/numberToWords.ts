@@ -65,12 +65,35 @@ function numberToWords(num) {
   }
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
+const CURRENCY_NAMES = {
+  GHS: "Ghana Cedis",
+  USD: "US Dollars",
+  EUR: "Euros",
+  GBP: "British Pounds",
+  ZAR: "South African Rand",
+  NGN: "Nigerian Naira",
+};
+
+const MINOR_UNIT_NAMES = {
+  GHS: "Pesewas",
+  USD: "Cents",
+  EUR: "Cents",
+  GBP: "Pence",
+  ZAR: "Cents",
+  NGN: "Kobo",
+};
+
 export function amountInWords(amount, currency) {
-  const whole = Math.floor(amount);
-  const cents = Math.round((amount - whole) * 100);
-  const currencyName = currency === "USD" ? "US Dollars" : "Ghana Cedis";
+  const safeCurrency = String(currency ?? "GHS").toUpperCase();
+  const whole = Math.floor(Math.abs(amount));
+  const minorUnits = Math.round((Math.abs(amount) - whole) * 100);
+  const currencyName =
+    CURRENCY_NAMES[safeCurrency] ?? `${safeCurrency || "Unknown"} Currency`;
+  const minorUnitName =
+    MINOR_UNIT_NAMES[safeCurrency] ?? "Minor Units";
+
   let words = numberToWords(whole) + " " + currencyName;
-  if (cents > 0) words += " and " + numberToWords(cents) + " Pesewas";
+  if (minorUnits > 0) words += " and " + numberToWords(minorUnits) + " " + minorUnitName;
   return words + " Only";
 }
 

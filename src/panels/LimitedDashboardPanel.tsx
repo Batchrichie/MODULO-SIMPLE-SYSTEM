@@ -264,7 +264,7 @@ export default function LimitedDashboardPanel({ data, profile, setTab }: Limited
                 <tbody>
                   {upcomingDeadlines.map(inv => {
                     const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-                    const balance = (inv.totals.grandTotalGHS ?? inv.totals.grandTotal) - paid;
+                    const balance = (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) - paid;
                     const daysUntilDue = Math.ceil((new Date(inv.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                     return (
                       <tr key={inv.id} className="row-hover">

@@ -60,7 +60,8 @@ export function getDashboardMetrics(data: AppData) {
     .filter(inv => inv.status !== 'Void')
     .reduce((sum, inv) => {
       const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-      return sum + Math.max((inv.totals.grandTotalGHS ?? inv.totals.grandTotal) - paid, 0);
+      const totalGhs = inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0;
+      return sum + Math.max(totalGhs - paid, 0);
     }, 0);
 
   // --- AP: sum of unpaid bill balances ---

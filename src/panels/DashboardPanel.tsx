@@ -53,7 +53,7 @@ export default function DashboardPanel({ data, setTab }) {
   const outstandingInvoices = data.invoices
     .map(inv => {
       const paid = inv.payments.reduce((s, p) => s + p.amountGHS, 0);
-      const balance = inv.totals.grandTotalGHS - paid;
+      const balance = (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) - paid;
       const isOverdue = balance > 0.01 && inv.dueDate < today;
       return { ...inv, balance, isOverdue };
     })
