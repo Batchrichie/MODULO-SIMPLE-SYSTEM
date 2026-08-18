@@ -44,7 +44,17 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
           getProfitAndLoss(startDate, endDate),
         ]);
 
-        setTbData(tb || []);
+        // The database Trial Balance view exposes total_debit/total_credit,
+        // while TrialBalanceDocument expects debit/credit. Normalize the
+        // database shape here so the PDF receives the actual balances.
+        setTbData(
+          (tb || []).map((r) => ({
+            code: r.code,
+            name: r.name,
+            debit: Number(r.total_debit) || 0,
+            credit: Number(r.total_credit) || 0,
+          }))
+        );
         setBsData(bs || []);
         setPlData(pl || []);
       } catch (err) {
