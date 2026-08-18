@@ -6,8 +6,25 @@ interface TBRow { code: string; name: string; debit: number; credit: number; }
 
 export default function TrialBalanceDocument({ company, genDate, tbData }: { company: any; genDate: string; tbData: TBRow[] }) {
   const tblWidth = "calc(100% - 64px)";
-  const totalDebit = tbData.reduce((s, r) => s + (Number(r.debit) || 0), 0);
-  const totalCredit = tbData.reduce((s, r) => s + (Number(r.credit) || 0), 0);
+
+  // Trial Balance presentation uses the net balance per account.
+  // Debit balance = total debits - total credits.
+  // Credit balance = total credits - total debits.
+  // Only the side with the resulting balance is displayed.
+  const rows = tbData.map((r) => {
+    const debit = Number(r.debit) || 0;
+    const credit = Number(r.credit) || 0;
+    const net = debit - credit;
+
+    return {
+      ...r,
+      debitBalance: net > 0 ? net : 0,
+      creditBalance: net < 0 ? Math.abs(net) : 0,
+    };
+  });
+
+  const totalDebit = rows.reduce((s, r) => s + r.debitBalance, 0);
+  const totalCredit = rows.reduce((s, r) => s + r.creditBalance, 0);
 
   return (
     <PrintPageWrapper>
@@ -21,12 +38,12 @@ export default function TrialBalanceDocument({ company, genDate, tbData }: { com
             <th style={{...finStyles.thBg, textAlign: "right"}}>Credit (GHS)</th>
           </tr></thead>
           <tbody>
-            {tbData.map((r, i) => (
+            {rows.map((r, i) => (
               <tr key={i}>
                 <td style={finStyles.td}>{r.code}</td>
                 <td style={finStyles.td}>{r.name}</td>
-                <td style={finStyles.tdR}>{r.debit > 0 ? fmt(r.debit) : "—"}</td>
-                <td style={finStyles.tdR}>{r.credit > 0 ? fmt(r.credit) : "—"}</td>
+                <td style={finStyles.tdR}>{r.debitBalance > 0 ? fmt(r.debitBalance) : "—"}</td>
+                <td style={finStyles.tdR}>{r.creditBalance > 0 ? fmt(r.creditBalance) : "—"}</td>
               </tr>
             ))}
             <tr style={finStyles.grandRow}>
