@@ -303,9 +303,9 @@ export default function App() {
     <>
       {/* TOP: Sticky header with logo and theme toggle */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${RULE}`, flexShrink: 0 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: PAPER_RAISED }}>
-          <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          <div style={{ position: 'absolute', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: GREEN }}>{brandInitial}</div>
+        <div style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: PAPER_RAISED }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: GREEN }}>{brandInitial}</div>
+          <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           {adminFlag && (
@@ -417,12 +417,15 @@ export default function App() {
 
       <div className="no-print" style={{ display: "contents" }}>
         {isMobile ? (
-          <div style={{ borderBottom: `1px solid ${RULE}`, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, background: PAPER_RAISED, position: "sticky", top: 0, zIndex: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 7, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, flexShrink: 0, background: PAPER_RAISED }}>
-              <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              <div style={{ position: 'absolute', color: GREEN }}>{brandInitial}</div>
+          <div style={{ borderBottom: `1px solid ${RULE}`, padding: "10px 16px", display: "flex", alignItems: "center", gap: 10, background: PAPER_RAISED, position: "sticky", top: 0, zIndex: 10 }}>
+            {/* Logo — left, fixed width */}
+            <div style={{ position: 'relative', flexShrink: 0, width: 30, height: 30, borderRadius: 7, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: PAPER_RAISED }}>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, color: GREEN }}>{brandInitial}</div>
+              <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             </div>
-            <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{data.companyName}</div>
+            {/* Company name — center, flex: 1 with ellipsis */}
+            <div style={{ flex: 1, minWidth: 0, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, color: INK }}>{data.companyName || "Modulo"}</div>
+            {/* Theme toggle — right, fixed width */}
             <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Toggle Theme" aria-label="Toggle dark mode" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, cursor: "pointer", flexShrink: 0 }}>
               {theme === "light" ? <Moon size={18} color={INK as any} strokeWidth={2} /> : <Sun size={18} color={INK as any} strokeWidth={2} />}
             </button>

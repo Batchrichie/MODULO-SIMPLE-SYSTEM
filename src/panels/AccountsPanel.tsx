@@ -185,7 +185,15 @@ export default function AccountsPanel({ data, mutate }) {
                   onChange={e => setForm({ ...form, role: e.target.value === "none" ? null : e.target.value })}
                 >
                   <option value="none">None</option>
-                  <option value="ar">ar</option>
+                  <option value="current-asset">current-asset</option>
+                  <option value="non-current-asset">non-current-asset</option>
+                  <option value="cash">cash</option>
+                  <option value="ar">ar (Accounts Receivable)</option>
+                  <option value="ap">ap (Accounts Payable)</option>
+                  <option value="current-liability">current-liability</option>
+                  <option value="non-current-liability">non-current-liability</option>
+                  <option value="equity">equity</option>
+                  <option value="revenue">revenue</option>
                   <option value="vat-payable">vat-payable</option>
                   <option value="nhil-payable">nhil-payable</option>
                 </select>
