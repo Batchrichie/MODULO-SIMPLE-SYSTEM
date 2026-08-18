@@ -110,13 +110,21 @@ interface ProjectRow {
   estimated_cost?: number | null;
 }
 
+function normalizeRecognitionMethod(value: string | null | undefined): string {
+  if (!value) return "POINT_IN_TIME";
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "_");
+  if (normalized === "poc" || normalized === "percentage_of_completion") return "POC";
+  if (normalized === "point_in_time") return "POINT_IN_TIME";
+  return "POINT_IN_TIME";
+}
+
 function projectFromRow(r: ProjectRow): Project {
   return {
     id: r.id,
     name: r.name,
     status: r.status,
     projectType: r.project_type,
-    recognitionMethod: r.recognition_method,
+    recognitionMethod: normalizeRecognitionMethod(r.recognition_method),
     contractValue: r.contract_value,
     estimatedCost: r.estimated_cost,
   };

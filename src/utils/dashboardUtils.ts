@@ -220,19 +220,144 @@ export function projectStatsFn(data: AppData): ProjectStats[] {
       .reduce((s, l) => s + l.debit, 0);
     const estimatedCost = p.estimatedCost ?? 0;
     const remainingCost = Math.max(estimatedCost - actualCost, 0);
-    const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
-    const wipMargin = revenueBilled - actualCost;
-    return {
-      id: p.id,
-      name: p.name,
-      status: p.status,
-      contractValue: p.contractValue ?? 0,
-      revenueBilled,
-      actualCost,
-      estimatedCost,
-      remainingCost,
-      projectedMargin,
-      wipMargin,
-    };
+  const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
+  const wipMargin = revenueBilled - actualCost;
+  return {
+    id: p.id,
+    name: p.name,
+    status: p.status,
+    contractValue: p.contractValue ?? 0,
+    revenueBilled,
+    actualCost,
+    estimatedCost,
+    remainingCost,
+    projectedMargin,
+    wipMargin,
+  };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cash Flow Statement computation                                    */
+/* ------------------------------------------------------------------ */
+
+interface CashFlowLine {
+  description: string;
+  amount: number;
+  indent?: boolean;
+  bold?: boolean;
+  isSubtotal?: boolean;
+}
+
+interface CashFlowSection {
+  title: string;
+  lines: CashFlowLine[];
+  subtotal: number;
+}
+
+export interface CashFlowStatement {
+  operating: CashFlowSection;
+  investing: CashFlowSection;
+  financing: CashFlowSection;
+  netChange: number;
+  openingBalance: number;
+  closingBalance: number;
+}
+
+function getAccountByCode(data: AppData, code: string) {
+  return data.accounts.find(a => a.code === code);
+}
+
+function classifyActivity(accountType: string | undefined, role: string | undefined): 'operating' | 'investing' | 'financing' {
+  if (!accountType) return 'operating';
+  const r = (role || '').toLowerCase();
+  if (r === 'ar' || r === 'ap' || r === 'vat-payable' || r === 'nhil-payable' || r === 'current-liability') return 'operating';
+  if (r === 'non-current-asset') return 'investing';
+  if (r === 'equity' || r === 'non-current-liability') return 'financing';
+  switch (accountType) {
+    case 'Revenue':
+    case 'Income':
+    case 'Expense':
+      return 'operating';
+    case 'Asset':
+      return 'investing';
+    case 'Liability':
+    case 'Equity':
+      return 'financing';
+    default:
+      return 'operating';
+  }
+}
+
+function formatAccountName(data: AppData, code: string): string {
+  const acc = getAccountByCode(data, code);
+  return acc ? acc.name : code;
+}
+
+export function computeCashFlowStatement(data: AppData, startDate?: string, endDate?: string): CashFlowStatement {
+  const paymentCodes = getPaymentAccountCodes(data);
+  const cashCodeSet = new Set(paymentCodes);
+
+  const entries = data.journal.filter(e => {
+    if (startDate && e.date < startDate) return false;
+    if (endDate && e.date > endDate) return false;
+    return true;
+  });
+
+  const operatingMap = new Map<string, number>();
+  const investingMap = new Map<string, number>();
+  const financingMap = new Map<string, number>();
+
+  entries.forEach(entry => {
+    const hasCashLine = entry.lines.some(l => cashCodeSet.has(l.account));
+    if (!hasCashLine) return;
+
+    const cashNet = entry.lines.reduce((s, l) => s + (cashCodeSet.has(l.account) ? l.debit - l.credit : 0), 0);
+    if (cashNet === 0) return;
+
+    const nonCashLines = entry.lines.filter(l => !cashCodeSet.has(l.account));
+    if (nonCashLines.length === 0) return;
+
+    const primaryLine = nonCashLines[0];
+    const account = getAccountByCode(data, primaryLine.account);
+    const activity = classifyActivity(account?.type, account?.role);
+
+    const description = formatAccountName(data, primaryLine.account);
+    const targetMap = activity === 'operating' ? operatingMap : activity === 'investing' ? investingMap : financingMap;
+    const existing = targetMap.get(description) || 0;
+    targetMap.set(description, existing + cashNet);
+  });
+
+  const buildSection = (title: string, map: Map<string, number>, invertSign: boolean): CashFlowSection => {
+    const lines: CashFlowLine[] = [];
+    let subtotal = 0;
+    map.forEach((amount, desc) => {
+      const val = invertSign ? -amount : amount;
+      subtotal += val;
+      lines.push({ description: desc, amount: val, indent: true });
+    });
+    return { title, lines, subtotal };
+  };
+
+  const operating = buildSection('CASH FLOWS FROM OPERATING ACTIVITIES', operatingMap, false);
+  const investing = buildSection('CASH FLOWS FROM INVESTING ACTIVITIES', investingMap, false);
+  const financing = buildSection('CASH FLOWS FROM FINANCING ACTIVITIES', financingMap, false);
+
+  const netChange = operating.subtotal + investing.subtotal + financing.subtotal;
+
+  const sortedAll = [...data.journal].sort((a, b) => (a.date > b.date ? 1 : -1));
+  const filteredForBalance = startDate ? sortedAll.filter(e => e.date < startDate) : sortedAll;
+  const openingBalance = filteredForBalance.reduce((s, e) => {
+    return s + e.lines.reduce((s2, l) => s2 + (cashCodeSet.has(l.account) ? l.debit - l.credit : 0), 0);
+  }, 0);
+  const closingBalance = openingBalance + netChange;
+
+  return {
+    operating,
+    investing,
+    financing,
+    netChange,
+    openingBalance,
+    closingBalance,
+  };
 }

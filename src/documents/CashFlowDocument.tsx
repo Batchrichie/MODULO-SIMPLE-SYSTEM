@@ -1,128 +1,56 @@
 import React from "react";
-import { PageHeader, Footer, PrintPageWrapper, finStyles } from "./FinancialShared";
+import { PageHeader, Footer, LR, GL, SR, TR, finStyles, PrintPageWrapper } from "./FinancialShared";
 import { fmt } from "../utils/format";
 import type { AppData } from "../types";
+import { computeCashFlowStatement, type CashFlowStatement } from "../utils/dashboardUtils";
 
-interface CFLine { description: string; amount: number; indent?: boolean; bold?: boolean; isSubtotal?: boolean; }
-interface CFSection { title: string; lines: CFLine[]; subtotal: number; }
-
-export default function CashFlowDocument({ 
-  company, 
-  projName, 
-  cf, 
-  data, 
-  startDate, 
-  endDate 
-}: { 
-  company: any; 
-  projName: string; 
-  cf: any[]; 
+interface CashFlowDocumentProps {
+  company: any;
+  projName: string;
   data?: AppData;
   startDate?: string;
   endDate?: string;
-}) {
-  // Calculate cash and cash equivalents (all payment accounts) balances
-  const getPaymentAccountBalance = (upToDate?: string): number => {
-    if (!data) return 0;
-    
-    const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
-    let totalBalance = 0;
-    
-    paymentAccounts.forEach(account => {
-      let balance = 0;
-      data.journal.forEach(entry => {
-        if (upToDate && entry.date > upToDate) return; // Stop at specified date
-        entry.lines.forEach(line => {
-          if (line.account === account.code) {
-            const debit = line.debit || 0;
-            const credit = line.credit || 0;
-            // Payment accounts (cash/bank) are typically debit-normal
-            balance += debit - credit;
-          }
-        });
-      });
-      totalBalance += balance;
-    });
-    return totalBalance;
-  };
+}
 
-  // Opening balance = balance before startDate
-  const openingBalance = startDate ? getPaymentAccountBalance(startDate) : 0;
-  // Closing balance = balance as of endDate
-  const closingBalance = endDate ? getPaymentAccountBalance(endDate) : 0;
-  const netChange = closingBalance - openingBalance;
-  // Group journal entries by activity type (Operating/Investing/Financing)
-  const categorizeActivity = (accountType: string, isExpense: boolean): string => {
-    if (accountType === 'Expense') return isExpense ? 'operating' : 'operating';
-    if (accountType === 'Revenue' || accountType === 'Income') return 'operating';
-    if (accountType === 'Asset') return 'investing';
-    if (accountType === 'Liability' || accountType === 'Equity') return 'financing';
-    return 'operating';
-  };
+export default function CashFlowDocument({ company, projName, data, startDate, endDate }: CashFlowDocumentProps) {
+  const statement: CashFlowStatement = data
+    ? computeCashFlowStatement(data, startDate, endDate)
+    : {
+        operating: { title: "CASH FLOWS FROM OPERATING ACTIVITIES", lines: [], subtotal: 0 },
+        investing: { title: "CASH FLOWS FROM INVESTING ACTIVITIES", lines: [], subtotal: 0 },
+        financing: { title: "CASH FLOWS FROM FINANCING ACTIVITIES", lines: [], subtotal: 0 },
+        netChange: 0,
+        openingBalance: 0,
+        closingBalance: 0,
+      };
 
-  // Sample structured cash flow (in real scenario, this would come from aggregated journal data)
-  const operatingLines: CFLine[] = [
-    { description: 'Profit before working capital changes', amount: 0, bold: true },
-    { description: 'Depreciation of property, plant & equipment', amount: 0, indent: true },
-    { description: 'Amortisation of intangible assets', amount: 0, indent: true },
-    { description: 'Loss on disposal of equipment', amount: 0, indent: true },
-    { description: 'Finance costs', amount: 0, indent: true },
-    { description: 'Operating profit before working capital changes', amount: 0, isSubtotal: true, bold: true },
-    { description: 'Increase/(decrease) in trade receivables', amount: 0, indent: true },
-    { description: 'Increase/(decrease) in trade payables', amount: 0, indent: true },
-    { description: 'Increase/(decrease) in other payables', amount: 0, indent: true },
-    { description: 'Cash generated from operations', amount: 0, isSubtotal: true, bold: true },
-    { description: 'Income tax paid', amount: 0, indent: true },
-    { description: 'Net cash from operating activities', amount: 0, isSubtotal: true, bold: true },
-  ];
-
-  const investingLines: CFLine[] = [
-    { description: 'Purchase of property, plant & equipment', amount: 0, indent: true },
-    { description: 'Proceeds from sale of equipment', amount: 0, indent: true },
-    { description: 'Loan to related party', amount: 0, indent: true },
-    { description: 'Interest received from investments', amount: 0, indent: true },
-    { description: 'Net cash used in investing activities', amount: 0, isSubtotal: true, bold: true },
-  ];
-
-  const financingLines: CFLine[] = [
-    { description: 'Proceeds from issue of share capital', amount: 0, indent: true },
-    { description: 'Loan drawdowns', amount: 0, indent: true },
-    { description: 'Repayment of borrowings', amount: 0, indent: true },
-    { description: 'Dividends paid', amount: 0, indent: true },
-    { description: 'Net cash used in financing activities', amount: 0, isSubtotal: true, bold: true },
-  ];
-
-  const operatingSubtotal = operatingLines.reduce((s, l) => s + (l.isSubtotal ? 0 : l.amount), 0);
-  const investingSubtotal = investingLines.reduce((s, l) => s + (l.isSubtotal ? 0 : l.amount), 0);
-  const financingSubtotal = financingLines.reduce((s, l) => s + (l.isSubtotal ? 0 : l.amount), 0);
-
-  const sections: CFSection[] = [
-    { title: 'CASH FLOWS FROM OPERATING ACTIVITIES', lines: operatingLines, subtotal: operatingSubtotal },
-    { title: 'CASH FLOWS FROM INVESTING ACTIVITIES', lines: investingLines, subtotal: investingSubtotal },
-    { title: 'CASH FLOWS FROM FINANCING ACTIVITIES', lines: financingLines, subtotal: financingSubtotal },
-  ];
-
-  const netCashIncrease = operatingSubtotal + investingSubtotal + financingSubtotal;
+  const sections = [statement.operating, statement.investing, statement.financing];
 
   return (
     <PrintPageWrapper>
       <div style={finStyles.pageWrap}>
-        <PageHeader title="CASH FLOW STATEMENT" subtitle={`Year ended 31 December`} company={company} />
-        
+        <PageHeader title="CASH FLOW STATEMENT" subtitle={`${projName} · Year ended 31 December`} company={company} />
+
         <div style={{ margin: "0 32px", width: "calc(100% - 64px)" }}>
           {sections.map((section, sIdx) => (
             <div key={sIdx} style={{ marginBottom: 24 }}>
               <div style={{ fontSize: "11pt", fontWeight: 700, color: "#1a1a1a", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 {section.title}
               </div>
-              
+
               <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
                 <tbody>
+                  {section.lines.length === 0 && (
+                    <tr>
+                      <td style={{ padding: "8px 0", fontSize: "10pt", color: "#888", fontStyle: "italic" }}>No cash movements in this category.</td>
+                      <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#888" }}>—</td>
+                    </tr>
+                  )}
                   {section.lines.map((line, lIdx) => (
-                    <tr key={lIdx} style={{ borderBottom: line.isSubtotal ? "1px solid #ccc" : "none" }}>
+                    <tr key={lIdx} style={{ borderBottom: "none" }}>
                       <td style={{
-                        padding: "8px 0",
-                        paddingLeft: line.indent ? "40px" : "0",
+                        padding: "6px 0",
+                        paddingLeft: line.indent ? "32px" : "0",
                         fontSize: "10pt",
                         fontWeight: line.bold ? 600 : 400,
                         color: "#1a1a1a",
@@ -130,7 +58,7 @@ export default function CashFlowDocument({
                         {line.description}
                       </td>
                       <td style={{
-                        padding: "8px 0",
+                        padding: "6px 0",
                         paddingLeft: "20px",
                         textAlign: "right",
                         fontSize: "10pt",
@@ -143,6 +71,14 @@ export default function CashFlowDocument({
                       </td>
                     </tr>
                   ))}
+                  <tr style={{ borderTop: "1px solid #ccc" }}>
+                    <td style={{ padding: "8px 0", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a" }}>
+                      Net cash {sIdx === 0 ? "from" : sIdx === 1 ? "used in" : "from"} {sIdx === 0 ? "operating" : sIdx === 1 ? "investing" : "financing"} activities
+                    </td>
+                    <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace" }}>
+                      {fmt(Math.abs(section.subtotal))}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -158,25 +94,24 @@ export default function CashFlowDocument({
               <tbody>
                 <tr>
                   <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a", fontStyle: "italic" }}>(Cash on Hand, Mobile Money, Bank Accounts)</td>
-                  <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#888", minWidth: "100px" }}>
-                  </td>
+                  <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#888", minWidth: "100px" }}></td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Net increase in cash and cash equivalents</td>
+                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Net increase/(decrease) in cash and cash equivalents</td>
                   <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace", fontWeight: 600 }}>
-                    {fmt(Math.abs(netChange))}
+                    {fmt(Math.abs(statement.netChange))}
                   </td>
                 </tr>
                 <tr>
                   <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Cash and cash equivalents at beginning of period</td>
                   <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace" }}>
-                    {fmt(Math.abs(openingBalance))}
+                    {fmt(Math.abs(statement.openingBalance))}
                   </td>
                 </tr>
                 <tr style={{ borderTop: "1px solid #ccc" }}>
                   <td style={{ padding: "8px 0", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a" }}>Cash and cash equivalents at end of period</td>
                   <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace" }}>
-                    {fmt(Math.abs(closingBalance))}
+                    {fmt(Math.abs(statement.closingBalance))}
                   </td>
                 </tr>
               </tbody>

@@ -29,15 +29,15 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
   const [plData, setPlData] = useState([]);
   const [loadingFin, setLoadingFin] = useState(true);
 
+  const startDate = "2026-01-01";
+  const endDate = "2026-12-31";
+
   const cf = useMemo(() => computeCashFlow(data), [data.journal]);
 
   useEffect(() => {
     async function fetchFinancials() {
       setLoadingFin(true);
       try {
-        const startDate = "2026-01-01";
-        const endDate = "2026-12-31";
-
         const [tb, bs, pl] = await Promise.all([
           getTrialBalance(),
           getBalanceSheet(),
@@ -151,7 +151,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
         {view === "company" && (
           <>
             <BalanceSheetDocument company={company} genDate={genDate} bs={bs} />
-            <CashFlowDocument company={company} projName={projName} cf={cf} />
+            <CashFlowDocument company={company} projName={projName} data={data} startDate={startDate} endDate={endDate} />
             <TrialBalanceDocument company={company} genDate={genDate} tbData={tbData} />
           </>
         )}
