@@ -1,11 +1,56 @@
 import React from "react";
 import { PageHeader, Footer, PrintPageWrapper, finStyles } from "./FinancialShared";
 import { fmt } from "../utils/format";
+import type { AppData } from "../types";
 
 interface CFLine { description: string; amount: number; indent?: boolean; bold?: boolean; isSubtotal?: boolean; }
 interface CFSection { title: string; lines: CFLine[]; subtotal: number; }
 
-export default function CashFlowDocument({ company, projName, cf }: { company: any; projName: string; cf: any[] }) {
+export default function CashFlowDocument({ 
+  company, 
+  projName, 
+  cf, 
+  data, 
+  startDate, 
+  endDate 
+}: { 
+  company: any; 
+  projName: string; 
+  cf: any[]; 
+  data?: AppData;
+  startDate?: string;
+  endDate?: string;
+}) {
+  // Calculate cash and cash equivalents (all payment accounts) balances
+  const getPaymentAccountBalance = (upToDate?: string): number => {
+    if (!data) return 0;
+    
+    const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
+    let totalBalance = 0;
+    
+    paymentAccounts.forEach(account => {
+      let balance = 0;
+      data.journal.forEach(entry => {
+        if (upToDate && entry.date > upToDate) return; // Stop at specified date
+        entry.lines.forEach(line => {
+          if (line.account === account.code) {
+            const debit = line.debit || 0;
+            const credit = line.credit || 0;
+            // Payment accounts (cash/bank) are typically debit-normal
+            balance += debit - credit;
+          }
+        });
+      });
+      totalBalance += balance;
+    });
+    return totalBalance;
+  };
+
+  // Opening balance = balance before startDate
+  const openingBalance = startDate ? getPaymentAccountBalance(startDate) : 0;
+  // Closing balance = balance as of endDate
+  const closingBalance = endDate ? getPaymentAccountBalance(endDate) : 0;
+  const netChange = closingBalance - openingBalance;
   // Group journal entries by activity type (Operating/Investing/Financing)
   const categorizeActivity = (accountType: string, isExpense: boolean): string => {
     if (accountType === 'Expense') return isExpense ? 'operating' : 'operating';
@@ -112,21 +157,26 @@ export default function CashFlowDocument({ company, projName, cf }: { company: a
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
                 <tr>
-                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Net increase in cash and cash equivalents</td>
-                  <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace", fontWeight: 600 }}>
-                    {fmt(Math.abs(netCashIncrease))}
+                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a", fontStyle: "italic" }}>(Cash on Hand, Mobile Money, Bank Accounts)</td>
+                  <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#888", minWidth: "100px" }}>
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Cash and cash equivalents at beginning of year</td>
+                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Net increase in cash and cash equivalents</td>
+                  <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace", fontWeight: 600 }}>
+                    {fmt(Math.abs(netChange))}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ padding: "8px 0", fontSize: "10pt", color: "#1a1a1a" }}>Cash and cash equivalents at beginning of period</td>
                   <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace" }}>
-                    —
+                    {fmt(Math.abs(openingBalance))}
                   </td>
                 </tr>
                 <tr style={{ borderTop: "1px solid #ccc" }}>
-                  <td style={{ padding: "8px 0", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a" }}>Cash and cash equivalents at end of year</td>
+                  <td style={{ padding: "8px 0", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a" }}>Cash and cash equivalents at end of period</td>
                   <td style={{ padding: "8px 0", paddingLeft: "20px", textAlign: "right", fontSize: "10pt", fontWeight: 600, color: "#1a1a1a", minWidth: "100px", fontFamily: "'Courier New', Courier, monospace" }}>
-                    {fmt(Math.abs(netCashIncrease))}
+                    {fmt(Math.abs(closingBalance))}
                   </td>
                 </tr>
               </tbody>
