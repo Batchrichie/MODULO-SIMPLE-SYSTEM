@@ -64,6 +64,23 @@ export default function DashboardPanel({ data, setTab }) {
   // Use prioritized projects (active/current first, up to 3)
   const activeProjects = prioritizedProjects.slice(0, 3);
 
+  const paymentAccountBalances = useMemo(() => {
+    const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
+    if (paymentAccounts.length === 0) return [];
+    const balances: Record<string, number> = {};
+    paymentAccounts.forEach(a => { balances[a.code] = 0; });
+    data.journal.forEach(e => e.lines.forEach(l => {
+      if (balances[l.account] !== undefined) {
+        balances[l.account] += l.debit - l.credit;
+      }
+    }));
+    return paymentAccounts.map(a => ({
+      code: a.code,
+      name: a.name,
+      balance: balances[a.code] || 0,
+    }));
+  }, [data.accounts, data.journal]);
+
   return (
     <div>
       <SectionTitle sub="A comprehensive snapshot of your firm's financial and operational health.">
@@ -89,12 +106,22 @@ export default function DashboardPanel({ data, setTab }) {
           value={metrics.cash}
           icon={Banknote}
           accent={GREEN}
-          sub={`Payment-account balance: GHS ${fmt(metrics.cash)}`}
+          sub={`Cash on Hand, Mobile Money & Bank`}
           detail={
             <>
-              <p style={{ margin: "0 0 8px 0" }}>
-                Real-time cash position from your bank and payment accounts.
+              <p style={{ margin: "0 0 10px 0" }}>
+                Sum of all payment account balances (Cash on Hand, Mobile Money, Bank).
               </p>
+              {paymentAccountBalances.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                  {paymentAccountBalances.map(acc => (
+                    <div key={acc.code} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                      <span style={{ color: "#94A3B8" }}>{acc.name}</span>
+                      <span style={{ fontWeight: 600 }}>GHS {fmt(acc.balance)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 20 }}>
                 <div>
                   <div style={{ color: "#94A3B8", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Revenue YTD</div>
