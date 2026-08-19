@@ -17,3 +17,4 @@ export { default as ExpensesPanel } from "./ExpensesPanel";
 export { default as BillsPanel } from "./BillsPanel";
 export { default as AgedPayablesPanel } from "./AgedPayablesPanel";
 export { default as BankReconciliationPanel } from "./BankReconciliationPanel";
+export { default as LoansPanel } from "./LoansPanel";

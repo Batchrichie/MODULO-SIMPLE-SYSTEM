@@ -34,12 +34,13 @@ export const MEDIA_WRITE = "media:write";
 export const PAYROLL_SELF = "payroll:self";
 export const PAYROLL_STATEMENT = "payroll:statement";
 export const FIELD_ACTIVITY_VIEW = "field-activity:view";
+export const LOANS_SELF = "loans:self";
 
 /** Tokens exclusive to non-admin portal users (hidden from CEO) */
 const PORTAL_ONLY_TOKENS: ReadonlySet<string> = new Set([
   DASHBOARD_OPS, DASHBOARD_LIMITED,
   MEDIA_WRITE, PAYROLL_SELF, PAYROLL_STATEMENT,
-  FIELD_ACTIVITY_VIEW,
+  FIELD_ACTIVITY_VIEW, LOANS_SELF,
 ]);
 
 /** Every scoped token (excludes ALL and CEO base) */
@@ -49,7 +50,7 @@ export const SCOPED_TOKENS = [
   CEO_EMPLOYEES_WRITE, CEO_PAYROLL_WRITE,
   DASHBOARD_OPS, DASHBOARD_LIMITED, PROJECTS_VIEW,
   PROGRESS_WRITE, SITE_REPORTS_WRITE, ISSUES_WRITE, MEDIA_WRITE,
-  PAYROLL_SELF, PAYROLL_STATEMENT, FIELD_ACTIVITY_VIEW,
+  PAYROLL_SELF, PAYROLL_STATEMENT, FIELD_ACTIVITY_VIEW, LOANS_SELF,
 ] as const;
 
 /* ------------------------------------------------------------------ */
@@ -141,6 +142,7 @@ export const NAV_CONFIG: NavItemConfig[] = [
   { key: "bank-reconciliation",  label: "Bank Rec",          icon: Landmark,        token: ALL,                                         group: "Operations" },
   { key: "reports",              label: "Reports",           icon: FileText,        token: ALL,                                         group: "Operations" },
   { key: "field-activity",       label: "Field Activity",    icon: Radio,           token: FIELD_ACTIVITY_VIEW,                         group: "Operations" },
+  { key: "loans",                label: "Loans",             icon: Banknote,         token: CEO,                                         group: "Operations" },
 
   // ── Setup (admin only — hidden from CEO) ──
   { key: "accounts",             label: "Chart of Accounts", icon: BookOpen,        token: ALL,                                         group: "Setup" },
@@ -151,6 +153,7 @@ export const NAV_CONFIG: NavItemConfig[] = [
   { key: "my-payslips",          label: "My Payslips",       icon: Banknote,        token: PAYROLL_SELF,      group: "My Pay",         mobileOnly: true },
   { key: "my-statement",         label: "My Statement",      icon: FileText,        token: PAYROLL_STATEMENT, group: "My Pay",         mobileOnly: true },
   { key: "media-library",        label: "Media Library",     icon: Camera,          token: MEDIA_WRITE,       group: "Resources",       mobileOnly: true },
+  { key: "my-loans",             label: "My Loans",           icon: Banknote,         token: LOANS_SELF,         group: "My Pay",          mobileOnly: true },
 
   // ── Account ──
   { key: "logout",               label: "Logout",            icon: X,               token: "",                  group: "Account" },
@@ -161,7 +164,7 @@ export const NAV_CONFIG: NavItemConfig[] = [
  * use `!adminFlag && !ceoFlag` in App.tsx.
  */
 const ADMIN_HIDDEN_KEYS = new Set([
-  "pm-dashboard", "my-payslips", "my-statement", "media-library",
+  "pm-dashboard", "my-payslips", "my-statement", "media-library", "my-loans",
 ]);
 
 /**
@@ -172,7 +175,7 @@ const ADMIN_HIDDEN_KEYS = new Set([
  */
 const CEO_HIDDEN_KEYS = new Set([
   "expenses", "bank-reconciliation", "accounts", "export",
-  "pm-dashboard", "my-payslips", "my-statement", "media-library", "field-activity",
+  "pm-dashboard", "my-payslips", "my-statement", "media-library", "my-loans", "field-activity",
 ]);
 
 /**

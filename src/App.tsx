@@ -15,6 +15,7 @@ import PMDashboard from "./portals/pm/PMDashboard";
 import ProjectsBasicList from "./portals/shared/ProjectsBasicList";
 import MyPayslipsPanel from "./portals/shared/MyPayslipsPanel";
 import MyStatementPanel from "./portals/shared/MyStatementPanel";
+import MyLoansPanel from "./portals/shared/MyLoansPanel";
 import MediaLibraryWrapper from "./portals/shared/MediaLibraryWrapper";
 import FieldActivityFeed from "./portals/ceo/FieldActivityFeed";
 import Login from "./Login";
@@ -47,6 +48,7 @@ import AgedPayablesPanel from "./panels/AgedPayablesPanel";
 import BankReconciliationPanel from "./panels/BankReconciliationPanel";
 import ReportsPanel from "./panels/ReportsPanel";
 import ExportPanel from "./panels/ExportPanel";
+import LoansPanel from "./panels/LoansPanel";
 
 import type { AppData } from "./types";
 
@@ -454,6 +456,7 @@ export default function App() {
           {effectiveTab === "bank-reconciliation" && canEdit && <BankReconciliationPanel data={data} mutate={mutate} />}
           {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
           {effectiveTab === "field-activity" && <FieldActivityFeed />}
+          {effectiveTab === "loans" && (adminFlag || ceoFlag) && <LoansPanel />}
           {effectiveTab === "export" && canEdit && <ExportPanel data={data} isMobile={isMobile} />}
 
           {/* PM Portal */}
@@ -462,6 +465,7 @@ export default function App() {
           {/* Shared portal panels — visible to non-admin with relevant tokens */}
           {effectiveTab === "my-payslips" && !adminFlag && !ceoFlag && profile && <MyPayslipsPanel data={data} profile={profile} />}
           {effectiveTab === "my-statement" && !adminFlag && !ceoFlag && profile && <MyStatementPanel data={data} profile={profile} />}
+          {effectiveTab === "my-loans" && !adminFlag && !ceoFlag && profile && <MyLoansPanel profile={profile} />}
           {effectiveTab === "media-library" && !adminFlag && !ceoFlag && <MediaLibraryWrapper />}
 
           {/* Non-admin limited dashboard — shows projects list */}
