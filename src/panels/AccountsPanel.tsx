@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Trash2, PenLine, Check, Landmark } from "lucide-react";
+import { Plus, Trash2, PenLine, Check, Landmark, Search } from "lucide-react";
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GOLD, ALERT, MUTED,
          FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
 import Card from "../components/ui/Card";
@@ -19,6 +19,7 @@ import type { AppData } from "../types";
 export default function AccountsPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, role: null as string | null });
   const usedCodes = editingCode
     ? new Set(data.accounts.filter(a => a.code !== editingCode).map(a => a.code))
@@ -68,11 +69,15 @@ export default function AccountsPanel({ data, mutate }) {
   }
 
   const grouped = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? data.accounts.filter(a => a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
+      : data.accounts;
     const order = ["Asset", "Liability", "Equity", "Income", "Expense"];
     return order
-      .filter(type => data.accounts.some(a => a.type === type))
-      .map(type => ({ type, accounts: data.accounts.filter(a => a.type === type) }));
-  }, [data.accounts]);
+      .filter(type => filtered.some(a => a.type === type))
+      .map(type => ({ type, accounts: filtered.filter(a => a.type === type) }));
+  }, [data.accounts, search]);
 
   return (
     <div>
@@ -80,6 +85,23 @@ export default function AccountsPanel({ data, mutate }) {
         action={<Button onClick={openNew} icon={Plus}>New Account</Button>}>
         Chart of Accounts
       </SectionTitle>
+
+      <div style={{ marginBottom: 18, position: 'relative' }}>
+        <Search size={16} color="var(--muted)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search accounts by code or name..."
+          style={{ ...inputStyle, paddingLeft: 36, width: '100%', maxWidth: 420 }}
+        />
+      </div>
+
+      {grouped.length === 0 && search.trim() && (
+        <Card style={{ textAlign: 'center', padding: '32px 20px', marginBottom: 20 }}>
+          <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK, marginBottom: 6 }}>No accounts found</div>
+          <div style={{ fontSize: 13, color: MUTED }}>Try adjusting your search term.</div>
+        </Card>
+      )}
 
       {grouped.map(g => (
         <div key={g.type} style={{ marginBottom: 20 }}>
