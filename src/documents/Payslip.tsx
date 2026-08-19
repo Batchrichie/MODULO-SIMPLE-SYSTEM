@@ -48,7 +48,7 @@ export default function Payslip({ data, run, r }: PayslipProps) {
           min-height: 297mm;
           margin: 0 auto;
           box-sizing: border-box;
-          padding: 0;
+          padding: 0 0 55pt 0;
           position: relative;
         }
         .ps-gold-bar { height: 4pt; background: #B8860B; }
@@ -205,7 +205,7 @@ export default function Payslip({ data, run, r }: PayslipProps) {
           color: #1a1a1a; margin-top: 1pt;
         }
         .ps-ytd-section {
-          margin: 0 24pt 12pt;
+          margin: 0 24pt 16pt;
           padding: 10pt 14pt;
           background: #fff;
           border: 1px solid #E8E2D6;
@@ -216,7 +216,7 @@ export default function Payslip({ data, run, r }: PayslipProps) {
         .ps-ytd-item-label { font-size: 7.5pt; color: #6B6B6B; }
         .ps-ytd-item-value {
           font-size: 10pt; font-weight: 700; font-family: ${FONT_MONO};
-          color: #1a1a1a; margin-top: 1pt;
+          color: #1a1a1a; margin-top: 1pt; word-break: break-word;
         }
         .ps-footer {
           padding: 12pt 24pt 16pt;
