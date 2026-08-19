@@ -146,7 +146,7 @@ export default function EmployeesPanel({ data, mutate }) {
     }
     setInvitingId(employee.id);
     try {
-      const result = await db.inviteEmployee(employee.id, employee.email);
+      const result = await db.inviteEmployee(employee.id, employee.email, "https://modulo-accounts.vercel.app/complete-onboarding");
       mutate((d) => ({
         ...d,
         employees: d.employees.map((e) =>

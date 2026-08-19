@@ -274,16 +274,8 @@ export default function App() {
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Loading your ledger…</div>;
   }
   if (profile?.onboardingStatus === "invited") {
-    return (
-      <PasswordChangeModal
-        employeeId={profile.employeeId}
-        employeeName={profile.employeeName}
-        isDark={theme === "dark"}
-        onComplete={() =>
-          setProfile((p) => (p ? { ...p, onboardingStatus: "active" } : p))
-        }
-      />
-    );
+    window.location.href = "/complete-onboarding";
+    return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Redirecting to set up your account…</div>;
   }
 
   const brandInitial = (data.companyName || "M").trim().charAt(0).toUpperCase();
@@ -316,7 +308,7 @@ export default function App() {
             <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{profile.employeeName}</div>
             <div style={{ fontSize: 10.5, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1, fontWeight: 500 }}>{profile.positionTitle || "User"}</div>
           </div>
-          <div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: 'rgba(47,82,51,0.06)', color: 'var(--green)' }}>Online</div>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: 'rgba(47,82,51,0.06)', color: 'var(--green)' }}>Online</div>
         </div>
       )}
 
@@ -468,8 +460,8 @@ export default function App() {
           {effectiveTab === "pm-dashboard" && !adminFlag && !ceoFlag && <PMDashboard />}
 
           {/* Shared portal panels — visible to non-admin with relevant tokens */}
-          {effectiveTab === "my-payslips" && !adminFlag && !ceoFlag && <MyPayslipsPanel />}
-          {effectiveTab === "my-statement" && !adminFlag && !ceoFlag && <MyStatementPanel />}
+          {effectiveTab === "my-payslips" && !adminFlag && !ceoFlag && profile && <MyPayslipsPanel data={data} profile={profile} />}
+          {effectiveTab === "my-statement" && !adminFlag && !ceoFlag && profile && <MyStatementPanel data={data} profile={profile} />}
           {effectiveTab === "media-library" && !adminFlag && !ceoFlag && <MediaLibraryWrapper />}
 
           {/* Non-admin limited dashboard — shows projects list */}

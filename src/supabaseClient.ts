@@ -1077,9 +1077,10 @@ export const db: Db = {
     }
   },
   
-  inviteEmployee: async (employeeId, email) => {
+  inviteEmployee: async (employeeId, email, redirectTo) => {
     const body: Record<string, unknown> = { employeeId };
     if (email) body.email = email;
+    if (redirectTo) body.redirectTo = redirectTo;
     const { data, error } = await supabase.functions.invoke('invite-employee', {
       body,
     });
