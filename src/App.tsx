@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import {
   BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
   Briefcase, Receipt, TrendingUp, X, Sun, Moon, LayoutDashboard,
-  ArrowUpRight, FileText, MoreHorizontal, Landmark,
+  ArrowUpRight, FileText, MoreHorizontal, Landmark, LogOut,
 } from "lucide-react";
 import {
   loadLedgerState, loadTaxConfig, saveSettings,
@@ -77,7 +77,6 @@ export default function App() {
       return "dashboard";
     }
   });
-  const [companyNameDraft, setCompanyNameDraft] = useState("");
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") return "light";
     try {
@@ -164,7 +163,6 @@ export default function App() {
           // Admin or CEO: full data load
           const remote = await loadLedgerState();
           if (remote) {
-            setCompanyNameDraft(remote.companyName || "");
             setData({
               ...DEFAULT_DATA,
               ...remote,
@@ -178,7 +176,6 @@ export default function App() {
               brackets: tax.brackets,
             });
           } else {
-            setCompanyNameDraft("");
             setData((prev) => ({ ...prev,
               ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
               ssnitEmployerRate: tax.rates.ssnitEmployerRate,
@@ -192,7 +189,6 @@ export default function App() {
           try {
             const remote = await loadLedgerState();
             if (remote) {
-              setCompanyNameDraft(remote.companyName || "");
               setData((prev) => ({ ...prev,
                 companyName: remote.companyName || "",
                 company: remote.company || COMPANY_TEMPLATE,
@@ -206,7 +202,6 @@ export default function App() {
                 brackets: tax.brackets,
               }));
             } else {
-              setCompanyNameDraft("");
               setData((prev) => ({ ...prev,
                 ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
                 ssnitEmployerRate: tax.rates.ssnitEmployerRate,
@@ -217,7 +212,6 @@ export default function App() {
             }
           } catch (err) {
             console.error("Failed to load portal data:", err);
-            setCompanyNameDraft("");
             setData((prev) => ({ ...prev,
               ssnitEmployeeRate: tax.rates.ssnitEmployeeRate,
               ssnitEmployerRate: tax.rates.ssnitEmployerRate,
@@ -232,7 +226,6 @@ export default function App() {
           ? `${err.name}: ${err.message}\n${err.stack ?? ''}`
           : `Non-Error thrown: ${JSON.stringify(err, null, 2)}`;
         console.error("Failed to load profile/data — " + msg);
-        setCompanyNameDraft("");
       }
       setLoaded(true);
     })();
@@ -273,10 +266,6 @@ export default function App() {
     finally { setLoggingOut(false); }
   }, []);
 
-  function saveCompanyName() {
-    mutate((d) => ({ ...d, companyName: companyNameDraft || d.companyName }));
-  }
-
   if (!authChecked) {
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Checking authentication…</div>;
   }
@@ -297,34 +286,44 @@ export default function App() {
     );
   }
 
-  const brandInitial = (companyNameDraft || data.companyName || "M").trim().charAt(0).toUpperCase();
+  const brandInitial = (data.companyName || "M").trim().charAt(0).toUpperCase();
 
   const sidebarContent = (
     <>
-      {/* TOP: Sticky header with logo and theme toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${RULE}`, flexShrink: 0 }}>
-        <div style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: PAPER_RAISED }}>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: GREEN }}>{brandInitial}</div>
+      {/* TOP: Brand header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${RULE}`, flexShrink: 0 }}>
+        <div style={{ position: 'relative', width: 40, height: 40, borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'linear-gradient(135deg, var(--green), var(--green-deep))', boxShadow: '0 2px 6px rgba(47,82,51,0.2)' }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 17, color: '#FFFFFF', zIndex: 0 }}>{brandInitial}</div>
           <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          {adminFlag && (
-            <input style={{ ...inputStyle, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, border: "none", padding: "2px 0", background: "transparent" }} value={companyNameDraft} onChange={(e) => setCompanyNameDraft(e.target.value)} onBlur={saveCompanyName} />
-          )}
-          {!adminFlag && <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15 }}>{data.companyName}</div>}
-          <div style={{ fontSize: 10.5, color: MUTED, letterSpacing: 0.6, textTransform: "uppercase" }}>
-            {profile?.positionTitle || "Ledger"} · GHS
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{data.companyName || "Modulo"}</div>
+            <div style={{ fontSize: 10.5, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2, fontWeight: 500 }}>{profile?.positionTitle || "Ledger"} · GHS</div>
           </div>
-        </div>
-        <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Toggle Theme" aria-label="Toggle theme" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, cursor: "pointer", flexShrink: 0, transition: "all 0.2s ease" }}>
-          {theme === "light" ? <Sun size={16} color={INK as any} strokeWidth={2} /> : <Moon size={16} color={INK as any} strokeWidth={2} />}
+        <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Toggle Theme" aria-label="Toggle theme" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, cursor: "pointer", flexShrink: 0, transition: "all 0.2s ease" }}>
+          {theme === "light" ? <Sun size={15} color={INK as any} strokeWidth={2} /> : <Moon size={15} color={INK as any} strokeWidth={2} />}
         </button>
       </div>
 
+      {/* User Profile Card */}
+      {profile && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", marginBottom: 16, borderRadius: 10, background: PAPER, border: `1px solid ${RULE}`, flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg, var(--green), var(--green-deep))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, color: '#FFFFFF', flexShrink: 0 }}>
+            {(profile.employeeName || "?").charAt(0).toUpperCase()}
+            <span style={{ position: 'absolute', bottom: -1, right: -1, width: 10, height: 10, borderRadius: "50%", background: '#4CAF50', border: "2px solid " + PAPER }} />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{profile.employeeName}</div>
+            <div style={{ fontSize: 10.5, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1, fontWeight: 500 }}>{profile.positionTitle || "User"}</div>
+          </div>
+          <div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: 'rgba(47,82,51,0.06)', color: 'var(--green)' }}>Online</div>
+        </div>
+      )}
+
       {/* MIDDLE: Scrollable navigation items */}
       <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-        {navGroups.map((group) => (
-          <div key={group.label} style={{ marginBottom: 18 }}>
+        {navGroups.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < navGroups.length - 1 ? 20 : 0 }}>
             <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", padding: "0 9px", marginBottom: 6 }}>{group.label}</div>
             <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {group.keys.filter((k) => k !== "logout").map((k) => {
@@ -336,10 +335,15 @@ export default function App() {
         ))}
       </div>
 
-      {/* BOTTOM: Sticky logout button */}
-      <div style={{ paddingTop: 12, borderTop: `1px solid ${RULE}`, flexShrink: 0 }}>
+      {/* BOTTOM: Modern logout button */}
+      <div style={{ paddingTop: 12, borderTop: `1px solid ${RULE}`, flexShrink: 0, marginTop: 16 }}>
         {navGroups.flatMap((group) => group.keys).includes("logout") && (
-          <NavItem icon={X} label="Logout" active={effectiveTab === "logout"} onClick={() => setTab("logout")} />
+          <button onClick={() => setTab("logout")} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${RULE}`, background: PAPER, color: ALERT, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", transition: "all 0.2s ease" }}>
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: 'rgba(166, 61, 64, 0.08)' }}>
+              <LogOut size={15} strokeWidth={2} />
+            </span>
+            <span>Logout</span>
+          </button>
         )}
       </div>
     </>
@@ -417,21 +421,26 @@ export default function App() {
 
       <div className="no-print" style={{ display: "contents" }}>
         {isMobile ? (
-          <div style={{ borderBottom: `1px solid ${RULE}`, padding: "10px 16px", display: "flex", alignItems: "center", gap: 10, background: PAPER_RAISED, position: "sticky", top: 0, zIndex: 10 }}>
-            {/* Logo — left, fixed width */}
-            <div style={{ position: 'relative', flexShrink: 0, width: 30, height: 30, borderRadius: 7, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: PAPER_RAISED }}>
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, color: GREEN }}>{brandInitial}</div>
+          <div style={{ borderBottom: `1px solid ${RULE}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, background: PAPER_RAISED, position: "sticky", top: 0, zIndex: 10 }}>
+            {/* Logo — left */}
+            <div style={{ position: 'relative', flexShrink: 0, width: 30, height: 30, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, var(--green), var(--green-deep))' }}>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, color: '#FFFFFF' }}>{brandInitial}</div>
               <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             </div>
-            {/* Company name — center, flex: 1 with ellipsis */}
-            <div style={{ flex: 1, minWidth: 0, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, color: INK }}>{data.companyName || "Modulo"}</div>
-            {/* Theme toggle — right, fixed width */}
-            <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Toggle Theme" aria-label="Toggle dark mode" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, cursor: "pointer", flexShrink: 0 }}>
-              {theme === "light" ? <Moon size={18} color={INK as any} strokeWidth={2} /> : <Sun size={18} color={INK as any} strokeWidth={2} />}
+            {/* Company name and user — center */}
+            <div style={{ flex: 1, minWidth: 0, textAlign: "center", overflow: "hidden" }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{data.companyName || "Modulo"}</div>
+              {profile?.employeeName && (
+                <div style={{ fontSize: 9.5, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1, fontWeight: 500 }}>{profile.employeeName}</div>
+              )}
+            </div>
+            {/* Theme toggle — right */}
+            <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Toggle Theme" aria-label="Toggle dark mode" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, cursor: "pointer", flexShrink: 0 }}>
+              {theme === "light" ? <Moon size={17} color={INK as any} strokeWidth={2} /> : <Sun size={17} color={INK as any} strokeWidth={2} />}
             </button>
           </div>
         ) : (
-          <aside style={{ width: 240, borderRight: `1px solid ${RULE}`, padding: "24px 14px", flexShrink: 0, background: PAPER_RAISED, boxShadow: "1px 0 20px rgba(0,0,0,0.04)", position: "sticky", top: 0, height: "100vh", overflowY: "hidden", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+          <aside style={{ width: 250, borderRight: `1px solid ${RULE}`, padding: "22px 12px", flexShrink: 0, background: PAPER_RAISED, boxShadow: "1px 0 24px rgba(0,0,0,0.05)", position: "sticky", top: 0, height: "100vh", overflowY: "hidden", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
             {sidebarContent}
           </aside>
         )}
@@ -467,12 +476,22 @@ export default function App() {
           {effectiveTab === "dashboard" && !adminFlag && !ceoFlag && <ProjectsBasicList />}
 
           {effectiveTab === "logout" && (
-            <div>
+            <div style={{ maxWidth: 520 }}>
               <SectionTitle sub="End your session securely.">Logout</SectionTitle>
-              <Card style={{ marginBottom: 16, maxWidth: 560 }}>
-                <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, marginBottom: 18 }}>When you log out, your Supabase session will be cleared and you will return to the login screen.</p>
-                {logoutError && <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 14, borderRadius: 8, marginBottom: 18 }}>{logoutError}</div>}
-                <Button onClick={handleLogout} icon={X} variant="danger" disabled={loggingOut}>{loggingOut ? "Signing out…" : "Sign out"}</Button>
+              <Card style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(166, 61, 64, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                    <LogOut size={20} color={ALERT} strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, margin: 0, lineHeight: 1.6 }}>When you log out, your Supabase session will be cleared and you will return to the login screen.</p>
+                    {logoutError && <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 12, borderRadius: 8, marginTop: 12, fontSize: 13 }}>{logoutError}</div>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setTab("dashboard")} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "all 0.2s ease" }}>Cancel</button>
+                  <Button onClick={handleLogout} variant="danger" disabled={loggingOut}>{loggingOut ? "Signing out…" : "Sign out"}</Button>
+                </div>
               </Card>
             </div>
           )}

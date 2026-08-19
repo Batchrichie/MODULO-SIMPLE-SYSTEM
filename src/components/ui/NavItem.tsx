@@ -18,10 +18,10 @@ export default function NavItem({ icon: Icon, label, active = false, onClick }: 
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 10,
         width: "100%",
-        padding: "10px 12px 10px 11px",
-        borderRadius: 10,
+        padding: "9px 10px 9px 9px",
+        borderRadius: 9,
         border: "none",
         borderLeft: active ? `3px solid ${GREEN}` : "3px solid transparent",
         background: active
@@ -32,10 +32,10 @@ export default function NavItem({ icon: Icon, label, active = false, onClick }: 
         color: active ? "#FFFFFF" : INK,
         fontFamily: FONT_BODY,
         fontSize: 13.5,
-        fontWeight: active ? 700 : 500,
+        fontWeight: active ? 600 : 500,
         cursor: "pointer",
         textAlign: "left",
-        transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
+        transition: "all 0.18s cubic-bezier(0.16,1,0.3,1)",
         transform: hover && !active ? "translateX(2px)" : "translateX(0)",
         boxShadow: active ? "0 2px 8px rgba(47,82,51,0.25)" : "none",
         position: "relative",
@@ -50,10 +50,10 @@ export default function NavItem({ icon: Icon, label, active = false, onClick }: 
             top: "50%",
             transform: "translateY(-50%)",
             width: 3,
-            height: 20,
+            height: 18,
             borderRadius: "0px 3px 3px 0px",
             background: GREEN,
-            opacity: 0.5,
+            opacity: 0.45,
             transition: "opacity 0.2s ease",
           }}
         />
@@ -69,15 +69,16 @@ export default function NavItem({ icon: Icon, label, active = false, onClick }: 
           flexShrink: 0,
           background: active ? "rgba(255,255,255,0.18)" : hover ? "rgba(47,82,51,0.08)" : "transparent",
           color: active ? "#FFFFFF" : hover ? GREEN : MUTED,
-          transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
+          transition: "all 0.18s cubic-bezier(0.16,1,0.3,1)",
         }}
       >
         <Icon size={15} strokeWidth={active ? 2.4 : 2} />
       </span>
       <span
         style={{
-          transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
+          transition: "all 0.18s cubic-bezier(0.16,1,0.3,1)",
           letterSpacing: "0.01em",
+          lineHeight: 1.2,
         }}
       >
         {label}
