@@ -1,6 +1,8 @@
 import React from "react";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 import { LOGO_SRC } from "../theme/tokens";
+import { normalizePrintCompany, printCompanyContact, printCompanyName } from "./FinancialShared";
+import DocumentHeader from "./DocumentHeader";
 import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
 import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
@@ -87,7 +89,7 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
   const t = readInvoiceTotals(inv);
   const cur = inv.currency;
   const sym = cur;
-  const company = data.company || COMPANY_TEMPLATE;
+  const company = normalizePrintCompany(data.company || COMPANY_TEMPLATE, data.companyName);
   const due = getDueStatus(inv, t.totalGhs || t.total);
 
   const formatDate = (value?: string | null) => {
@@ -118,20 +120,20 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
     header: {
       display: "flex",
       justifyContent: "space-between",
-      alignItems: "center",
-      padding: "26px 32px 20px",
+      alignItems: "flex-start",
+      padding: "14px 32px 18px",
       gap: 16,
     },
-    headerLeft: { display: "flex", alignItems: "center", gap: 16 },
+    headerLeft: { display: "flex", alignItems: "center", gap: 10, minWidth: 0 },
     companyBlock: { display: "flex", flexDirection: "column" as const, justifyContent: "center" },
-    logo: { height: 58, width: "auto", objectFit: "contain" as const },
+    logo: { height: 54, width: "auto", objectFit: "contain" as const },
     company: {
       fontFamily: FONT_DISPLAY,
-      fontSize: "17pt",
+      fontSize: "16pt",
       fontWeight: 700,
       color: INK,
       letterSpacing: "-0.3px",
-      lineHeight: 1.2,
+      lineHeight: 1.1,
     },
     tagline: {
       fontSize: "7.5pt",
@@ -235,27 +237,7 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
 
   return (
     <div style={s.container}>
-      <div style={s.goldBar} />
-
-      <div style={{ padding: "0 32px" }}>
-        <div style={s.header}>
-          <div style={s.headerLeft}>
-            <img src={LOGO_SRC} alt={`${company.name} logo`} style={s.logo} />
-            <div style={s.companyBlock}>
-              <div style={s.company}>{company.name}</div>
-              <div style={s.tagline}>Design · Build · Deliver</div>
-            </div>
-          </div>
-          <div style={s.companyContact}>
-            <div>{company.addressLine} · {company.cityLine} · {company.poBox}</div>
-            <div>Phone: {company.phone} · Telephone: {company.telephone} · {company.email}</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={s.docTitle}>Invoice</div>
-            <div style={s.docSub}>{inv.invoiceNumber}</div>
-          </div>
-        </div>
-      </div>
+      <DocumentHeader docTitle="Invoice" docNumber={inv.invoiceNumber} company={company} />
 
       {/* Hero — the amount owed and its urgency lead the document */}
       <div style={s.hero}>
@@ -470,9 +452,9 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
         <br />
         <span style={{ color: RULE }}>—</span>
         <br />
-        {company.addressLine} · {company.cityLine} · {company.poBox}
+        {[company.addressLine, company.cityLine, company.poBox].filter(Boolean).join(" · ")}
         <br />
-        Phone: {company.phone} · Telephone: {company.telephone} · {company.email}
+        {[company.phone && `Phone: ${company.phone}`, company.telephone && `Telephone: ${company.telephone}`, company.email].filter(Boolean).join(" · ")}
       </div>
     </div>
   );

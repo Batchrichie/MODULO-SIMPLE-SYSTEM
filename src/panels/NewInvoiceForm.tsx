@@ -95,11 +95,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       alert(err);
       return;
     }
-    const year = date.slice(0, 4);
-    const invoiceNumber = `SP/${year}/${String(data.nextInvoiceNum).padStart(
-      4,
-      "0"
-    )}`;
+    const temporaryInvoiceId = `TEMP-INVOICE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const cleanItems = items
       .filter((it) => it.description.trim())
       .map((it) => ({
@@ -127,8 +123,8 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
     };
     const normalizedProject = project === "GEN" ? null : project;
     const inv = {
-      id: invoiceNumber,
-      invoiceNumber,
+      id: temporaryInvoiceId,
+      invoiceNumber: "Pending number",
       date,
       dueDate: dueDate || date,
       billTo: billTo.trim(),
@@ -160,7 +156,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       id: entryNumber,
       entryNumber,
       date,
-      description: `Invoice ${invoiceNumber} — ${billTo.trim()}`,
+      description: `Invoice pending number — ${billTo.trim()}`,
       period: date.slice(0, 7),
       project,
       lines: [
@@ -181,13 +177,11 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       ...d,
       invoices: [inv, ...d.invoices],
       journal: [entry, ...d.journal],
-      nextInvoiceNum: d.nextInvoiceNum + 1,
+      nextInvoiceNum: d.nextInvoiceNum,
     }));
     try {
       // post_invoice creates its own GL posting internally; do not call postJournalEntry() here
-      const { data: newEntryId, error: rpcError } = await supabase.rpc('post_invoice', {
-        p_invoice_id: invoiceNumber,
-        p_invoice_number: invoiceNumber,
+      const { data: postResult, error: rpcError } = await supabase.rpc('post_invoice', {
         p_date: date,
         p_due_date: dueDate || null,
         p_bill_to: billTo.trim() || null,
@@ -199,6 +193,8 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         p_exchange_rate: rate,
         p_discount_pct: parseFloat(discountPct) || 0,
         p_revenue_account: revenueAccount,
+        p_charge_nhil: chargeNhil,
+        p_charge_vat: chargeVat,
         p_items: cleanItems.map((item) => ({
           line_type: item.lineType,
           description: item.description,
@@ -211,9 +207,9 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       if (rpcError) {
         mutate((d) => ({
           ...d,
-          invoices: d.invoices.filter((item) => item.id !== inv.id),
+          invoices: d.invoices.filter((item) => item.id !== temporaryInvoiceId),
           journal: d.journal.filter((item) => item.id !== entry.id),
-          nextInvoiceNum: Math.max(1, d.nextInvoiceNum - 1),
+          nextInvoiceNum: d.nextInvoiceNum,
         }));
         console.error("Failed to post invoice:", rpcError);
         const errorMsg = rpcError?.message || rpcError?.toString?.() || "Unknown error occurred";
@@ -221,25 +217,46 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         return;
       }
 
-      const realJournalEntryId = newEntryId as string | null;
-      if (realJournalEntryId) {
-        inv.journalEntryId = realJournalEntryId;
-        mutate((d) => ({
-          ...d,
-          invoices: d.invoices.map((item) =>
-            item.id === inv.id ? { ...item, journalEntryId: realJournalEntryId } : item
-          ),
-        }));
+      const result = postResult as {
+        invoice_id: string;
+        invoice_number: string;
+        journal_entry_id: string | null;
+      };
+      if (!result?.invoice_id || !result.invoice_number) {
+        throw new Error("post_invoice returned no backend invoice identity.");
       }
+      inv.id = result.invoice_id;
+      inv.invoiceNumber = result.invoice_number;
+      inv.journalEntryId = result.journal_entry_id;
+      mutate((d) => ({
+        ...d,
+        invoices: d.invoices.map((item) =>
+          item.id === temporaryInvoiceId
+            ? { ...item, id: result.invoice_id, invoiceNumber: result.invoice_number, journalEntryId: result.journal_entry_id }
+            : item
+        ),
+        journal: result.journal_entry_id
+          ? d.journal.map((item) =>
+              item.id === entry.id
+                ? {
+                    ...item,
+                    id: result.journal_entry_id,
+                    entryNumber: result.journal_entry_id,
+                    description: `Invoice ${result.invoice_number} — ${billTo.trim()}`,
+                  }
+                : item
+            )
+          : d.journal,
+      }));
 
       // RPC handles the full invoice creation — no need for separate db.saveInvoice()
       // Optimistic UI update via mutate() above will show temp data until next journal reload
     } catch (err: any) {
       mutate((d) => ({
         ...d,
-        invoices: d.invoices.filter((item) => item.id !== inv.id),
+        invoices: d.invoices.filter((item) => item.id !== temporaryInvoiceId),
         journal: d.journal.filter((item) => item.id !== entry.id),
-        nextInvoiceNum: Math.max(1, d.nextInvoiceNum - 1),
+        nextInvoiceNum: d.nextInvoiceNum,
       }));
       console.error("Failed to persist invoice:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

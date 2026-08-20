@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Invoice SP/2026/0004 — Modulo Development Limited</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #1c2331;
+    background: #eef0f3;
+    margin: 0;
+    padding: 40px 0;
+  }
+  .sheet {
+    width: 720px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 0 0 40px 0;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.08);
+  }
+  .topbar { height: 6px; background: linear-gradient(90deg, #b5892b, #d9b45c, #b5892b); }
+
+  /* ---- Header: logo + company grouped as one unit ---- */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 32px 44px 24px 44px;
+    border-bottom: 1px solid #e6e2d8;
+  }
+  .brand-block { display: flex; gap: 16px; align-items: flex-start; }
+  .logo-mark {
+    width: 56px; height: 56px; flex-shrink: 0;
+    background: #14161a;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: #c9a227; font-size: 26px; font-weight: 700;
+  }
+  .brand-text .company-name {
+    font-size: 18px; font-weight: 700; color: #14213d;
+    line-height: 1.25; margin: 0 0 2px 0;
+  }
+  .brand-text .tagline {
+    font-size: 10px; letter-spacing: 1.5px; color: #b5892b;
+    font-weight: 600; margin: 0 0 8px 0;
+  }
+  .brand-text .contact-line {
+    font-size: 11px; color: #6b6f78; line-height: 1.6; margin: 0;
+  }
+  .brand-text .contact-line a { color: #6b6f78; text-decoration: none; }
+
+  .doc-meta { text-align: right; flex-shrink: 0; padding-top: 4px; }
+  .doc-meta .doc-title {
+    font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #14213d; margin: 0;
+  }
+  .doc-meta .doc-number {
+    font-size: 13px; color: #b5892b; font-weight: 600; margin-top: 4px;
+  }
+
+  /* ---- Balance due banner ---- */
+  .balance-banner {
+    margin: 24px 44px 0 44px;
+    background: #14213d;
+    border-radius: 8px;
+    padding: 18px 24px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .balance-banner .label { font-size: 11px; letter-spacing: 1px; color: #9fb0d1; font-weight: 600; margin: 0 0 4px 0; }
+  .balance-banner .amount { font-size: 26px; font-weight: 700; color: #ffffff; margin: 0; font-family: 'Courier New', monospace; }
+  .due-pill { background: #c9a227; color: #14213d; font-size: 11px; font-weight: 700; padding: 6px 14px; border-radius: 999px; }
+
+  /* ---- Bill-to / details ---- */
+  .info-grid { display: flex; gap: 16px; margin: 20px 44px 0 44px; }
+  .info-card { flex: 1; background: #faf9f6; border: 1px solid #ece8dd; border-radius: 8px; padding: 16px 18px; }
+  .info-card .info-label { font-size: 10px; letter-spacing: 1px; color: #b5892b; font-weight: 700; margin: 0 0 8px 0; }
+  .info-card .bill-name { font-size: 14px; font-weight: 700; color: #14213d; margin: 0 0 4px 0; }
+  .info-card p.small { font-size: 12px; color: #5c6270; margin: 2px 0; line-height: 1.5; }
+  .kv-row { display: flex; justify-content: space-between; font-size: 12px; margin: 6px 0; }
+  .kv-row .k { color: #8a8f99; }
+  .kv-row .v { color: #14213d; font-weight: 600; text-align: right; }
+
+  /* ---- Line items ---- */
+  table.items { width: calc(100% - 88px); margin: 24px 44px 0 44px; border-collapse: collapse; }
+  table.items thead th {
+    background: #14213d; color: #ffffff; font-size: 10px; letter-spacing: 0.5px;
+    text-transform: uppercase; text-align: left; padding: 10px 12px; font-weight: 600;
+  }
+  table.items thead th.num { text-align: right; }
+  table.items tbody td {
+    font-size: 12.5px; color: #2a3040; padding: 10px 12px; border-bottom: 1px solid #eee;
+  }
+  table.items tbody td.num { text-align: right; font-family: 'Courier New', monospace; }
+  table.items tbody tr:nth-child(even) { background: #fafafa; }
+
+  .totals-wrap { display: flex; justify-content: flex-end; margin: 0 44px; }
+  .totals { width: 260px; margin-top: 12px; }
+  .totals .row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 6px 12px; }
+  .totals .row.total { background: #14213d; color: #fff; font-weight: 700; border-radius: 6px; font-size: 14px; padding: 10px 12px; margin-top: 4px; }
+  .totals .row.total .v { color: #c9a227; }
+
+  .tax-box {
+    margin: 20px 44px 0 44px; background: #faf9f6; border: 1px solid #ece8dd;
+    border-radius: 8px; padding: 14px 18px;
+  }
+  .tax-box .tax-title { font-size: 10px; letter-spacing: 1px; color: #b5892b; font-weight: 700; margin: 0 0 10px 0; }
+  .tax-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 12px; }
+  .tax-grid .k { color: #8a8f99; }
+  .tax-grid .v { text-align: right; color: #14213d; font-weight: 600; }
+  .fx-note { font-size: 10px; color: #b5892b; margin: 10px 0 0 0; }
+
+  /* ---- Signature / authorization footer ---- */
+  .sign-block { display: flex; gap: 40px; margin: 32px 44px 0 44px; }
+  .sign-col { flex: 1; }
+  .sign-line { border-top: 1px solid #14213d; margin-top: 36px; padding-top: 6px; }
+  .sign-col .role { font-size: 11px; color: #8a8f99; }
+  .sign-col .name { font-size: 12.5px; font-weight: 600; color: #14213d; }
+
+  .footer-note {
+    margin: 32px 44px 0 44px; padding-top: 16px; border-top: 1px solid #e6e2d8;
+    text-align: center; font-size: 10px; color: #9a9d a6; color: #9a9da6; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="topbar"></div>
+
+  <div class="header">
+    <div class="brand-block">
+      <div class="logo-mark">M</div>
+      <div class="brand-text">
+        <p class="company-name">Modulo Development Limited</p>
+        <p class="tagline">DESIGN · BUILD · DELIVER</p>
+        <p class="contact-line">Spintex Road, Next to Cassa Trassaco · Accra, Ghana</p>
+        <p class="contact-line">P.O. Box 1189 &nbsp;·&nbsp; +233 59 550 9721 &nbsp;·&nbsp; (030) 33971657</p>
+        <p class="contact-line"><a href="mailto:modulodevelopmentltd@gmail.com">modulodevelopmentltd@gmail.com</a> &nbsp;·&nbsp; modulodevelopmentltd.com</p>
+      </div>
+    </div>
+    <div class="doc-meta">
+      <p class="doc-title">INVOICE</p>
+      <p class="doc-number">SP/2026/0004</p>
+    </div>
+  </div>
+
+  <div class="balance-banner">
+    <div>
+      <p class="label">BALANCE DUE</p>
+      <p class="amount">GHS 10,000.00</p>
+    </div>
+    <div class="due-pill">DUE IN 1 DAY</div>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-card">
+      <p class="info-label">BILL TO</p>
+      <p class="bill-name">Mr Kaledzi</p>
+      <p class="small">Demolition Cost Estimate</p>
+      <p class="small">Ablekuma West Municipal Assembly</p>
+      <p class="small">Dansoman Project</p>
+    </div>
+    <div class="info-card">
+      <p class="info-label">INVOICE DETAILS</p>
+      <div class="kv-row"><span class="k">Date</span><span class="v">20 Aug 2026</span></div>
+      <div class="kv-row"><span class="k">Due date</span><span class="v">21 Aug 2026</span></div>
+      <div class="kv-row"><span class="k">Location</span><span class="v">Ablekuma West</span></div>
+      <div class="kv-row"><span class="k">Currency</span><span class="v">GHS</span></div>
+    </div>
+  </div>
+
+  <table class="items">
+    <thead>
+      <tr><th>Description</th><th>Unit</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Jacket</td><td>—</td><td class="num">1</td><td class="num">800.00</td><td class="num">800.00</td></tr>
+      <tr><td>Processing fee</td><td>—</td><td class="num">1</td><td class="num">600.00</td><td class="num">600.00</td></tr>
+      <tr><td>Demolition permit</td><td>—</td><td class="num">1</td><td class="num">5,600.00</td><td class="num">5,600.00</td></tr>
+      <tr><td>Technical assistance</td><td>—</td><td class="num">1</td><td class="num">3,000.00</td><td class="num">3,000.00</td></tr>
+    </tbody>
+  </table>
+
+  <div class="totals-wrap">
+    <div class="totals">
+      <div class="row"><span class="k">Subtotal</span><span class="v">GHS 10,000.00</span></div>
+      <div class="row total"><span>TOTAL</span><span class="v">GHS 10,000.00</span></div>
+    </div>
+  </div>
+
+  <div class="tax-box">
+    <p class="tax-title">GHS EQUIVALENT</p>
+    <div class="tax-grid">
+      <span class="k">Subtotal</span><span class="v">GHS 10,000.00</span>
+      <span class="k">Taxable value</span><span class="v">GHS 10,000.00</span>
+      <span class="k">VAT</span><span class="v">GHS 0.00</span>
+      <span class="k">NHIL</span><span class="v">GHS 0.00</span>
+      <span class="k">GETFund</span><span class="v">GHS 0.00</span>
+      <span class="k">Total</span><span class="v">GHS 10,000.00</span>
+    </div>
+    <p class="fx-note">Exchange rate: GHS 1 = GHS 1.00</p>
+  </div>
+
+  <div class="sign-block">
+    <div class="sign-col">
+      <div class="sign-line">
+        <p class="name">Prepared by</p>
+        <p class="role">Name &amp; signature</p>
+      </div>
+    </div>
+    <div class="sign-col">
+      <div class="sign-line">
+        <p class="name">Authorised by</p>
+        <p class="role">Name &amp; signature</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    We execute the best designs with utmost empathy and professionalism.<br>
+    Thank you for entrusting to us your dreams — we will help make it a reality.
+  </div>
+</div>
+</body>
+</html>

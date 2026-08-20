@@ -1,6 +1,8 @@
 import React from "react";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 import { LOGO_SRC } from "../theme/tokens";
+import { normalizePrintCompany, printCompanyName } from "./FinancialShared";
+import DocumentHeader from "./DocumentHeader";
 import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
 import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
@@ -16,7 +18,7 @@ interface PayslipProps {
 }
 
 export default function Payslip({ data, run, r }: PayslipProps) {
-  const company = data.company || COMPANY_TEMPLATE;
+  const company = normalizePrintCompany(data.company || COMPANY_TEMPLATE, data.companyName);
   const emp = data.employees.find((e) => e.id === r.employeeId) || ({} as any);
   const [year, month] = run.period.split("-");
   const monthName = new Date(Number(year), Number(month) - 1, 1)
@@ -55,21 +57,22 @@ export default function Payslip({ data, run, r }: PayslipProps) {
         .ps-header {
           background: ${NAVY};
           color: #fff;
-          padding: 18pt 24pt;
+          padding: 14pt 24pt 16pt;
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           gap: 16pt;
         }
-        .ps-header-left { display: flex; align-items: center; gap: 12pt; }
-        .ps-logo { height: 42pt; width: auto; object-fit: contain; }
+        .ps-header-left { display: flex; align-items: center; gap: 8pt; min-width: 0; }
+        .ps-logo { height: 46pt; width: auto; object-fit: contain; flex-shrink: 0; }
         .ps-company-name {
           font-family: ${FONT_DISPLAY};
-          font-size: 14pt;
+          font-size: 16pt;
           font-weight: 700;
           letter-spacing: -0.3px;
-          line-height: 1.2;
+          line-height: 1.1;
         }
+        .ps-company-rule { width: 32pt; height: 2pt; background: #D4AF37; margin: 5pt 0 4pt; }
         .ps-tagline {
           font-size: 7pt;
           color: #C9A84C;
@@ -240,21 +243,7 @@ export default function Payslip({ data, run, r }: PayslipProps) {
         }
       `}</style>
 
-      <div className="ps-gold-bar" />
-
-      <div className="ps-header">
-        <div className="ps-header-left">
-          <img src={LOGO_SRC} alt={`${company.name} logo`} className="ps-logo" />
-          <div>
-            <div className="ps-company-name">{company.name || "MODULO DEVELOPMENT"}</div>
-            <div className="ps-tagline">Design · Build · Deliver</div>
-          </div>
-        </div>
-        <div className="ps-header-right">
-          <div className="ps-title">Payslip</div>
-          <div className="ps-period">{monthName} {year}</div>
-        </div>
-      </div>
+      <DocumentHeader docTitle="Payslip" subtitle={`${monthName} ${year}`} company={company} variant="navy" />
 
       <div className="ps-meta-banner">
         <div className="ps-meta-group">
@@ -432,9 +421,9 @@ export default function Payslip({ data, run, r }: PayslipProps) {
           This is a computer-generated payslip and does not require a physical signature.
         </div>
         <div className="ps-footer-contact">
-          {company.name} · {company.addressLine} · {company.cityLine} · {company.poBox}
+          {[company.name, company.addressLine, company.cityLine, company.poBox].filter(Boolean).join(" · ")}
           <br />
-          Phone: {company.phone} · Email: {company.email}
+          {[company.phone && `Phone: ${company.phone}`, company.email && `Email: ${company.email}`].filter(Boolean).join(" · ")}
         </div>
       </div>
     </div>

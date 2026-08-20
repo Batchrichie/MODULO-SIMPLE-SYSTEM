@@ -1,6 +1,8 @@
 import React from "react";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 import { LOGO_SRC } from "../theme/tokens";
+import { normalizePrintCompany, printCompanyContact, printCompanyName } from "./FinancialShared";
+import DocumentHeader from "./DocumentHeader";
 import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
 import { amountInWords } from "../utils/numberToWords";
 import { fmt } from "../utils/format";
@@ -86,7 +88,7 @@ function PaidStamp() {
 }
 
 export default function ReceiptDocument({ data, inv, payment, receiptNo }: ReceiptDocumentProps) {
-  const company = data.company || COMPANY_TEMPLATE;
+  const company = normalizePrintCompany(data.company || COMPANY_TEMPLATE, data.companyName);
   const invoicePayments = Array.isArray(inv.payments) ? inv.payments : [];
   const idx = invoicePayments.findIndex((p) => p.id === payment.id);
   const paymentIndex = idx >= 0 ? idx : invoicePayments.length;
@@ -123,19 +125,19 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
       position: "relative" as const,
       display: "flex",
       justifyContent: "space-between",
-      alignItems: "center",
-      padding: "26px 32px 22px",
+      alignItems: "flex-start",
+      padding: "14px 32px 18px",
       gap: 16,
     },
-    headerLeft: { display: "flex", alignItems: "center", gap: 16 },
-    logo: { height: 58, width: "auto", objectFit: "contain" as const },
+    headerLeft: { display: "flex", alignItems: "center", gap: 10, minWidth: 0 },
+    logo: { height: 54, width: "auto", objectFit: "contain" as const },
     company: {
       fontFamily: FONT_DISPLAY,
-      fontSize: "17pt",
+      fontSize: "16pt",
       fontWeight: 700,
       color: INK,
       letterSpacing: "-0.3px",
-      lineHeight: 1.2,
+      lineHeight: 1.1,
     },
     tagline: {
       fontSize: "8pt",
@@ -318,21 +320,9 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
 
   return (
     <div style={s.container}>
-      <div style={s.goldBar} />
-
-      <div style={s.header}>
+      <div style={{ position: "relative" }}>
         <PaidStamp />
-        <div style={s.headerLeft}>
-          <img src={LOGO_SRC} alt={`${company.name} logo`} style={s.logo} />
-          <div>
-            <div style={s.company}>{company.name}</div>
-            <div style={s.tagline}>Design · Build · Deliver</div>
-          </div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={s.docTitle}>Official Receipt</div>
-          <div style={s.docSub}>{receiptNo}</div>
-        </div>
+        <DocumentHeader docTitle="Official Receipt" docNumber={receiptNo} company={company} />
       </div>
 
       {/* Hero — amount is the thesis of a receipt, so it comes first */}
@@ -422,9 +412,9 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
       <div style={s.footerNote}>
         Thank you for your business.
         <br />
-        {company.name} · {company.addressLine} · {company.cityLine}
+        {[company.name, company.addressLine, company.cityLine].filter(Boolean).join(" · ")}
         <br />
-        Phone: {company.phone} · Telephone: {company.telephone} · Mail: {company.email}
+        {printCompanyContact(company).join(" · ")}
       </div>
     </div>
   );
