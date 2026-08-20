@@ -309,6 +309,7 @@ export interface ProjectStats {
   id: string;
   name: string;
   status?: string | null;
+  recognitionMethod?: string | null;
   contractValue: number;
   revenueBilled: number;
   actualCost: number;

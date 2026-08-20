@@ -226,6 +226,7 @@ export function projectStatsFn(data: AppData): ProjectStats[] {
     id: p.id,
     name: p.name,
     status: p.status,
+    recognitionMethod: p.recognitionMethod,
     contractValue: p.contractValue ?? 0,
     revenueBilled,
     actualCost,

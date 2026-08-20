@@ -428,7 +428,7 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                   }}
                 >
                   {p.projectType} • {" "}
-                  {p.recognitionMethod === "POC"
+                  {String(p.recognitionMethod || "POINT_IN_TIME").trim().toUpperCase() === "POC"
                     ? "Percentage of Completion"
                     : "Point-in-Time"}
                 </div>
