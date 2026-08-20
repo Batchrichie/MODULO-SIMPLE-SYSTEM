@@ -74,8 +74,8 @@ export function assertEmployee(data: {
   baseSalary: number;
 }): string | null {
   if (!data.name?.trim()) return 'Employee name is required.';
-  if (!data.baseSalary || data.baseSalary <= 0)
-    return 'Base salary must be greater than 0.';
+  if (!Number.isFinite(data.baseSalary) || data.baseSalary < 0)
+    return 'Base salary must be zero or greater.';
   return null;
 }
 

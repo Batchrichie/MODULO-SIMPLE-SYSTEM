@@ -66,7 +66,7 @@ export default function EmployeesPanel({ data, mutate }) {
       name: employee.name || "",
       email: employee.email || "",
       phone: employee.phone || "",
-      baseSalary: String(employee.baseSalary || ""),
+      baseSalary: String(employee.baseSalary ?? ""),
       ssnitNo: employee.ssnitNo || "",
       niaCard: employee.niaCard || "",
       designation: employee.designation || "",
