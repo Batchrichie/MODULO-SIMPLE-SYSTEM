@@ -35,6 +35,8 @@ export const PAYROLL_SELF = "payroll:self";
 export const PAYROLL_STATEMENT = "payroll:statement";
 export const FIELD_ACTIVITY_VIEW = "field-activity:view";
 export const LOANS_SELF = "loans:self";
+export const LOANS_APPROVE = "loans:approve";
+const LOAN_APPROVAL_TOKENS = new Set([LOANS_APPROVE, "director", "director:access"]);
 
 /** Tokens exclusive to non-admin portal users (hidden from CEO) */
 const PORTAL_ONLY_TOKENS: ReadonlySet<string> = new Set([
@@ -50,7 +52,7 @@ export const SCOPED_TOKENS = [
   CEO_EMPLOYEES_WRITE, CEO_PAYROLL_WRITE,
   DASHBOARD_OPS, DASHBOARD_LIMITED, PROJECTS_VIEW,
   PROGRESS_WRITE, SITE_REPORTS_WRITE, ISSUES_WRITE, MEDIA_WRITE,
-  PAYROLL_SELF, PAYROLL_STATEMENT, FIELD_ACTIVITY_VIEW, LOANS_SELF,
+  PAYROLL_SELF, PAYROLL_STATEMENT, FIELD_ACTIVITY_VIEW, LOANS_SELF, LOANS_APPROVE,
 ] as const;
 
 /* ------------------------------------------------------------------ */
@@ -90,10 +92,16 @@ export function canAccess(
   // CEO: passes for all tokens (CEO_HIDDEN_KEYS handles visibility filtering)
   if (permissions.includes(CEO)) return true;
 
+  if (requiredToken === LOANS_APPROVE && permissions.some((permission) => LOAN_APPROVAL_TOKENS.has(permission))) return true;
+
   // Non-admin portal users: portal pages auto-visible
   if (PORTAL_ONLY_TOKENS.has(requiredToken)) return true;
 
   return permissions.includes(requiredToken);
+}
+
+export function canApproveLoans(permissions: string[]): boolean {
+  return permissions.includes(ALL) || permissions.includes(CEO) || permissions.some((permission) => LOAN_APPROVAL_TOKENS.has(permission));
 }
 
 /**
@@ -142,7 +150,7 @@ export const NAV_CONFIG: NavItemConfig[] = [
   { key: "bank-reconciliation",  label: "Bank Rec",          icon: Landmark,        token: ALL,                                         group: "Operations" },
   { key: "reports",              label: "Reports",           icon: FileText,        token: ALL,                                         group: "Operations" },
   { key: "field-activity",       label: "Field Activity",    icon: Radio,           token: FIELD_ACTIVITY_VIEW,                         group: "Operations" },
-  { key: "loans",                label: "Loans",             icon: Banknote,         token: CEO,                                         group: "Operations" },
+  { key: "loans",                label: "Loans",             icon: Banknote,         token: LOANS_APPROVE,                                group: "Operations" },
 
   // ── Setup (admin only — hidden from CEO) ──
   { key: "accounts",             label: "Chart of Accounts", icon: BookOpen,        token: ALL,                                         group: "Setup" },

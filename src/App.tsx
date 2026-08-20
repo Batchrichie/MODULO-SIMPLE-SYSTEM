@@ -10,7 +10,7 @@ import {
   getSession, onAuthStateChange, signOut
 } from "./supabaseClient";
 import { loadMyProfile, type UserProfile } from "./supabase/profile";
-import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite, ALL } from "./lib/permissions";
+import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite, canApproveLoans, ALL } from "./lib/permissions";
 import PMDashboard from "./portals/pm/PMDashboard";
 import ProjectsBasicList from "./portals/shared/ProjectsBasicList";
 import MyPayslipsPanel from "./portals/shared/MyPayslipsPanel";
@@ -68,6 +68,7 @@ export default function App() {
   const adminFlag = useMemo(() => isAdmin(permissions), [permissions]);
   const ceoFlag = useMemo(() => isCeo(permissions), [permissions]);
   const canEdit = adminFlag && !ceoFlag; // CEO is never allowed to write
+  const canManageLoans = canApproveLoans(permissions);
 
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
@@ -456,7 +457,7 @@ export default function App() {
           {effectiveTab === "bank-reconciliation" && canEdit && <BankReconciliationPanel data={data} mutate={mutate} />}
           {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
           {effectiveTab === "field-activity" && <FieldActivityFeed />}
-          {effectiveTab === "loans" && (adminFlag || ceoFlag) && profile && <LoansPanel profile={profile} />}
+          {effectiveTab === "loans" && canManageLoans && profile && <LoansPanel profile={profile} />}
           {effectiveTab === "export" && canEdit && <ExportPanel data={data} isMobile={isMobile} />}
 
           {/* PM Portal */}
