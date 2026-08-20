@@ -456,7 +456,7 @@ export default function App() {
           {effectiveTab === "bank-reconciliation" && canEdit && <BankReconciliationPanel data={data} mutate={mutate} />}
           {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
           {effectiveTab === "field-activity" && <FieldActivityFeed />}
-          {effectiveTab === "loans" && (adminFlag || ceoFlag) && <LoansPanel />}
+          {effectiveTab === "loans" && (adminFlag || ceoFlag) && profile && <LoansPanel profile={profile} />}
           {effectiveTab === "export" && canEdit && <ExportPanel data={data} isMobile={isMobile} />}
 
           {/* PM Portal */}

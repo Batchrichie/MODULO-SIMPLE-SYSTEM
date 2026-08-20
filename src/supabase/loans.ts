@@ -14,6 +14,9 @@ export interface Loan {
   rejection_reason: string | null;
   created_at: string;
   updated_at: string | null;
+  balance_remaining?: number | null;
+  void_reason?: string | null;
+  voided_at?: string | null;
   employee?: { name: string } | null;
   approver?: { name: string } | null;
 }
