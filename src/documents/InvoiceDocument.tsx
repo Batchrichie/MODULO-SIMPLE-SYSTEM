@@ -266,6 +266,7 @@ export default function InvoiceDocument({ data, inv }: InvoiceDocumentProps) {
               {inv.forText ? <div>{inv.forText}</div> : null}
               {inv.location ? <div>{inv.location}</div> : null}
               {inv.projectLabel ? <div>{inv.projectLabel}</div> : null}
+              {inv.clientPhone ? <div>Phone: {inv.clientPhone}</div> : null}
             </div>
           </div>
 

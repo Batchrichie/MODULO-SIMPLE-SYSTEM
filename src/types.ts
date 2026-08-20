@@ -139,6 +139,7 @@ export interface Invoice {
   date: string;
   dueDate?: string | null;
   billTo: string;
+  clientPhone?: string | null;
   forText?: string | null;
   location?: string | null;
   project?: string | null;

@@ -348,7 +348,10 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
           <div style={{ fontSize: "11.5pt", fontWeight: 700, color: INK, marginBottom: 4 }}>
             {inv.billTo}
           </div>
-          <div style={s.contactLine}>{inv.forText || inv.projectLabel || "—"}</div>
+          <div style={s.contactLine}>
+            {inv.forText || inv.projectLabel || "—"}
+            {inv.clientPhone && <div>Phone: {inv.clientPhone}</div>}
+          </div>
         </div>
         <div style={s.card}>
           <div style={s.cardTitle}>Receipt Details</div>

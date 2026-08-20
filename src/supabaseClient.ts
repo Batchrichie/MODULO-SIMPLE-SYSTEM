@@ -289,6 +289,7 @@ interface InvoiceRow {
   date: string;
   due_date?: string | null;
   bill_to?: string | null;
+  client_phone?: string | null;
   for_text?: string | null;
   location?: string | null;
   project?: string | null;
@@ -310,6 +311,7 @@ function invoiceFromRow(r: InvoiceRow): Invoice {
     date: r.date,
     dueDate: r.due_date,
     billTo: r.bill_to ?? '',
+    clientPhone: r.client_phone ?? null,
     forText: r.for_text,
     location: r.location,
     project: r.project,
@@ -332,6 +334,7 @@ function invoiceToRow(inv: Invoice): InvoiceRow {
     date: inv.date,
     due_date: inv.dueDate ?? null,
     bill_to: inv.billTo ?? null,
+    client_phone: inv.clientPhone ?? null,
     for_text: inv.forText ?? null,
     location: inv.location ?? null,
     project: inv.project ?? null,
