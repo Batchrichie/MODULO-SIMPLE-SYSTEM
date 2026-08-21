@@ -470,7 +470,9 @@ export default function App() {
           ) : (
             <>
               {/* Admin panels */}
-              {effectiveTab === "dashboard" && (adminFlag || ceoFlag) && <DashboardPanel data={data} setTab={setTab} />}
+              {effectiveTab === "dashboard" && (adminFlag || ceoFlag) && (
+                <DashboardPanel data={data} setTab={setTab} profile={profile} />
+              )}
               {effectiveTab === "accounts" && canEdit && <AccountsPanel data={data} mutate={mutate} />}
               {effectiveTab === "journal" && (adminFlag || ceoFlag) && (
                 <JournalPanel
