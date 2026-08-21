@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Eye, EyeOff, ArrowRight, Lock, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Lock, RefreshCw, ShieldCheck, Wallet, Users } from "lucide-react";
 import { supabase, getSession } from "../supabaseClient";
 import { loadMyProfile } from "../supabase/profile";
 import type { UserProfile } from "../supabase/profile";
@@ -148,9 +148,10 @@ export default function CompleteOnboardingPage() {
       formTitle="Create your password"
       formSubtitle={`Welcome, ${profile?.employeeName || "team member"}. Set a secure password to activate your account.`}
       features={[
-        { icon: Lock, text: "Set up your secure account", sub: "Create your password to continue" },
+        { icon: ShieldCheck, text: "Secure account activation", sub: "End-to-end encrypted credentials" },
+        { icon: Wallet, text: "Project & payroll access", sub: "View payslips, statements & loans" },
+        { icon: Users, text: "Team-wide role permissions", sub: "CEO, PM, Accounts & staff portals" },
       ]}
-      badges={[]}
     >
       {error && <AuthErrorBanner message={error} />}
 

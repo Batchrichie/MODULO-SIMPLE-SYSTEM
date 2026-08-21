@@ -310,7 +310,7 @@ export default function App() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${RULE}`, flexShrink: 0 }}>
         <div style={{ position: 'relative', width: 40, height: 40, borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'linear-gradient(135deg, var(--green), var(--green-deep))', boxShadow: '0 2px 6px rgba(47,82,51,0.2)' }}>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 17, color: '#FFFFFF', zIndex: 0 }}>{brandInitial}</div>
-          <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 4, position: 'relative', zIndex: 1, background: PAPER_RAISED }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{data.companyName || "Modulo"}</div>
@@ -444,7 +444,7 @@ export default function App() {
             {/* Logo — left */}
             <div style={{ position: 'relative', flexShrink: 0, width: 30, height: 30, borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, var(--green), var(--green-deep))' }}>
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, color: '#FFFFFF' }}>{brandInitial}</div>
-              <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <img src={LOGO_SRC} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3, position: 'relative', zIndex: 1, background: PAPER_RAISED }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             </div>
             {/* Company name and user — center */}
             <div style={{ flex: 1, minWidth: 0, textAlign: "center", overflow: "hidden" }}>

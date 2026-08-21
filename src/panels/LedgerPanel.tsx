@@ -8,7 +8,7 @@ import {
   ArrowUpRight, ArrowDownRight, FileText, MoreHorizontal, Landmark,
 } from "lucide-react";
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
-         FONT_DISPLAY, FONT_BODY, FONT_MONO, LOGO_SRC } from "../theme/tokens";
+         FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
 import TableScroll from "../components/ui/TableScroll";

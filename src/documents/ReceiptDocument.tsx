@@ -1,6 +1,5 @@
 import React from "react";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
-import { LOGO_SRC } from "../theme/tokens";
 import { normalizePrintCompany, printCompanyContact, printCompanyName } from "./FinancialShared";
 import DocumentHeader from "./DocumentHeader";
 import { NAVY, INVOICE_GOLD } from "../utils/invoiceUtils";
