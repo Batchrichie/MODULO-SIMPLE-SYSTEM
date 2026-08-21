@@ -7,6 +7,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { inputStyle, labelStyle } from '../../components/ui/styles';
 import { loadMilestones, confirmMilestone, type MilestoneRow } from '../../supabase/fieldOps';
+import { confirmAsync } from '../../components/ui/Notifications';
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
@@ -53,7 +54,7 @@ export default function StageConfirmationPanel({ projectId, projectName, onRefre
     setError('');
     try {
       const ok = await confirmAsync('Confirm stage completion?');
-      if (!ok) { setSaving(false); return; }
+      if (!ok) { setConfirmingId(null); return; }
       await confirmMilestone(selectedMilestone.id, confirmNotes);
       setShowModal(false);
       setSelectedMilestone(null);
