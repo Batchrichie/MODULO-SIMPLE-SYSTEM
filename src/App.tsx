@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
   Briefcase, Receipt, TrendingUp, X, Sun, Moon, LayoutDashboard,
@@ -20,6 +21,8 @@ import MediaLibraryWrapper from "./portals/shared/MediaLibraryWrapper";
 import FieldActivityFeed from "./portals/ceo/FieldActivityFeed";
 import Login from "./Login";
 import PasswordChangeModal from "./components/PasswordChangeModal";
+import CompleteOnboardingPage from "./pages/CompleteOnboardingPage";
+import LedgerPage from "./pages/LedgerPage";
 
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
          FONT_DISPLAY, FONT_BODY, LOGO_SRC } from "./theme/tokens";
@@ -62,6 +65,8 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Derive permissions from profile (default to [] = no access)
   const permissions = useMemo(() => profile?.permissions ?? [], [profile]);
@@ -69,6 +74,8 @@ export default function App() {
   const ceoFlag = useMemo(() => isCeo(permissions), [permissions]);
   const canEdit = adminFlag && !ceoFlag; // CEO is never allowed to write
   const canManageLoans = canApproveLoans(permissions);
+  const onLedgerRoute = location.pathname.startsWith("/ledger/");
+  const [openJournalEntryId, setOpenJournalEntryId] = useState<string | null>(null);
 
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
@@ -139,6 +146,20 @@ export default function App() {
   useEffect(() => {
     try { window.localStorage.setItem("modulo_tab", tab); } catch {}
   }, [tab]);
+
+  useEffect(() => {
+    const state = location.state as { openJournalEntry?: string } | null;
+    if (state?.openJournalEntry) {
+      setTab("journal");
+      setOpenJournalEntryId(state.openJournalEntry);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!loaded || !onLedgerRoute) return;
+    if (!adminFlag && !ceoFlag) navigate("/", { replace: true });
+  }, [loaded, onLedgerRoute, adminFlag, ceoFlag, navigate]);
 
   // Auth: check session
   useEffect(() => {
@@ -277,7 +298,7 @@ export default function App() {
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Loading your ledger…</div>;
   }
   if (profile?.onboardingStatus === "invited") {
-    window.location.href = "/complete-onboarding";
+    navigate("/complete-onboarding");
     return <div style={{ padding: 40, fontFamily: FONT_BODY, color: MUTED }}>Redirecting to set up your account…</div>;
   }
 
@@ -346,7 +367,10 @@ export default function App() {
 
   return (
     <NotificationsProvider>
-    <div className="app-root" style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: isMobile ? "auto" : "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
+    {location.pathname === "/complete-onboarding" ? (
+      <CompleteOnboardingPage />
+    ) : (
+      <div className="app-root" style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", overflow: isMobile ? "auto" : "hidden", background: PAPER, fontFamily: FONT_BODY, color: INK }}>
       <style>{`
         :root {
           --ink: #1F2A24; --paper: #F7F4EE; --paper-raised: #FFFFFF; --rule: #DCD5C4;
@@ -441,56 +465,70 @@ export default function App() {
         )}
 
         <main style={{ flex: 1, padding: isMobile ? "20px 16px 20px" : "32px 40px", width: "100%", margin: 0, height: isMobile ? "auto" : "100vh", overflowY: isMobile ? "visible" : "auto", overflowX: "hidden", minWidth: 0, boxSizing: "border-box", position: "relative" }}>
-          {/* Admin panels */}
-          {effectiveTab === "dashboard" && (adminFlag || ceoFlag) && <DashboardPanel data={data} setTab={setTab} />}
-          {effectiveTab === "accounts" && canEdit && <AccountsPanel data={data} mutate={mutate} />}
-          {effectiveTab === "journal" && (adminFlag || ceoFlag) && <JournalPanel data={data} mutate={canEdit ? mutate : undefined} readOnly={ceoFlag} />}
-          {effectiveTab === "ledger" && (adminFlag || ceoFlag) && <LedgerPanel data={data} />}
-          {effectiveTab === "financials" && (adminFlag || ceoFlag) && <FinancialsPanel data={data} setPrintContent={queuePrint} />}
-          {effectiveTab === "projects" && <ProjectsPanel data={data} mutate={canEdit ? mutate : undefined} />}
-          {effectiveTab === "invoicing" && (adminFlag || ceoFlag) && <InvoicingPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
-          {effectiveTab === "employees" && (adminFlag || ceoFlag) && <EmployeesPanel data={data} mutate={canEdit ? mutate : undefined} />}
-          {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
-          {effectiveTab === "bills" && (adminFlag || ceoFlag) && <BillsPanel data={data} mutate={canEdit ? mutate : undefined} />}
-          {effectiveTab === "expenses" && canEdit && <ExpensesPanel data={data} mutate={mutate} />}
-          {effectiveTab === "aged-payables" && (adminFlag || ceoFlag) && <AgedPayablesPanel data={data} />}
-          {effectiveTab === "bank-reconciliation" && canEdit && <BankReconciliationPanel data={data} mutate={mutate} />}
-          {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
-          {effectiveTab === "field-activity" && <FieldActivityFeed />}
-          {effectiveTab === "loans" && canManageLoans && profile && <LoansPanel profile={profile} />}
-          {effectiveTab === "export" && canEdit && <ExportPanel data={data} isMobile={isMobile} />}
+          {onLedgerRoute && (adminFlag || ceoFlag) ? (
+            <LedgerPage data={data} setTab={setTab} setPrintContent={queuePrint} />
+          ) : (
+            <>
+              {/* Admin panels */}
+              {effectiveTab === "dashboard" && (adminFlag || ceoFlag) && <DashboardPanel data={data} setTab={setTab} />}
+              {effectiveTab === "accounts" && canEdit && <AccountsPanel data={data} mutate={mutate} />}
+              {effectiveTab === "journal" && (adminFlag || ceoFlag) && (
+                <JournalPanel
+                  data={data}
+                  mutate={canEdit ? mutate : undefined}
+                  readOnly={ceoFlag}
+                  initialEntryId={openJournalEntryId}
+                  onEntryViewed={() => setOpenJournalEntryId(null)}
+                />
+              )}
+              {effectiveTab === "ledger" && (adminFlag || ceoFlag) && <LedgerPanel data={data} />}
+              {effectiveTab === "financials" && (adminFlag || ceoFlag) && <FinancialsPanel data={data} setPrintContent={queuePrint} />}
+              {effectiveTab === "projects" && <ProjectsPanel data={data} mutate={canEdit ? mutate : undefined} />}
+              {effectiveTab === "invoicing" && (adminFlag || ceoFlag) && <InvoicingPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
+              {effectiveTab === "employees" && (adminFlag || ceoFlag) && <EmployeesPanel data={data} mutate={canEdit ? mutate : undefined} />}
+              {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
+              {effectiveTab === "bills" && (adminFlag || ceoFlag) && <BillsPanel data={data} mutate={canEdit ? mutate : undefined} />}
+              {effectiveTab === "expenses" && canEdit && <ExpensesPanel data={data} mutate={mutate} />}
+              {effectiveTab === "aged-payables" && (adminFlag || ceoFlag) && <AgedPayablesPanel data={data} />}
+              {effectiveTab === "bank-reconciliation" && canEdit && <BankReconciliationPanel data={data} mutate={mutate} />}
+              {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
+              {effectiveTab === "field-activity" && <FieldActivityFeed />}
+              {effectiveTab === "loans" && canManageLoans && profile && <LoansPanel profile={profile} />}
+              {effectiveTab === "export" && canEdit && <ExportPanel data={data} isMobile={isMobile} />}
 
-          {/* PM Portal */}
-          {effectiveTab === "pm-dashboard" && !adminFlag && !ceoFlag && <PMDashboard />}
+              {/* PM Portal */}
+              {effectiveTab === "pm-dashboard" && !adminFlag && !ceoFlag && <PMDashboard />}
 
-          {/* Shared portal panels — visible to non-admin with relevant tokens */}
-          {effectiveTab === "my-payslips" && !adminFlag && !ceoFlag && profile && <MyPayslipsPanel data={data} profile={profile} />}
-          {effectiveTab === "my-statement" && !adminFlag && !ceoFlag && profile && <MyStatementPanel data={data} profile={profile} />}
-          {effectiveTab === "my-loans" && !adminFlag && !ceoFlag && profile && <MyLoansPanel profile={profile} />}
-          {effectiveTab === "media-library" && !adminFlag && !ceoFlag && <MediaLibraryWrapper />}
+              {/* Shared portal panels — visible to non-admin with relevant tokens */}
+              {effectiveTab === "my-payslips" && !adminFlag && !ceoFlag && profile && <MyPayslipsPanel data={data} profile={profile} />}
+              {effectiveTab === "my-statement" && !adminFlag && !ceoFlag && profile && <MyStatementPanel data={data} profile={profile} />}
+              {effectiveTab === "my-loans" && !adminFlag && !ceoFlag && profile && <MyLoansPanel profile={profile} />}
+              {effectiveTab === "media-library" && !adminFlag && !ceoFlag && <MediaLibraryWrapper />}
 
-          {/* Non-admin limited dashboard — shows projects list */}
-          {effectiveTab === "dashboard" && !adminFlag && !ceoFlag && <ProjectsBasicList />}
+              {/* Non-admin limited dashboard — shows projects list */}
+              {effectiveTab === "dashboard" && !adminFlag && !ceoFlag && <ProjectsBasicList />}
 
-          {effectiveTab === "logout" && (
-            <div style={{ maxWidth: 520 }}>
-              <SectionTitle sub="End your session securely.">Logout</SectionTitle>
-              <Card style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(166, 61, 64, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
-                    <LogOut size={20} color={ALERT} strokeWidth={2} />
-                  </div>
-                  <div>
-                    <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, margin: 0, lineHeight: 1.6 }}>When you log out, your Supabase session will be cleared and you will return to the login screen.</p>
-                    {logoutError && <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 12, borderRadius: 8, marginTop: 12, fontSize: 13 }}>{logoutError}</div>}
-                  </div>
+              {effectiveTab === "logout" && (
+                <div style={{ maxWidth: 520 }}>
+                  <SectionTitle sub="End your session securely.">Logout</SectionTitle>
+                  <Card style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(166, 61, 64, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                        <LogOut size={20} color={ALERT} strokeWidth={2} />
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: MUTED, margin: 0, lineHeight: 1.6 }}>When you log out, your Supabase session will be cleared and you will return to the login screen.</p>
+                        {logoutError && <div style={{ background: "#FFEBEE", color: "#A63D40", padding: 12, borderRadius: 8, marginTop: 12, fontSize: 13 }}>{logoutError}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                      <button onClick={() => setTab("dashboard")} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "all 0.2s ease" }}>Cancel</button>
+                      <Button onClick={handleLogout} variant="danger" disabled={loggingOut}>{loggingOut ? "Signing out…" : "Sign out"}</Button>
+                    </div>
+                  </Card>
                 </div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                  <button onClick={() => setTab("dashboard")} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "all 0.2s ease" }}>Cancel</button>
-                  <Button onClick={handleLogout} variant="danger" disabled={loggingOut}>{loggingOut ? "Signing out…" : "Sign out"}</Button>
-                </div>
-              </Card>
-            </div>
+              )}
+            </>
           )}
         </main>
 
@@ -541,6 +579,7 @@ export default function App() {
         )}
       </div>
     </div>
+    )}
     <div className="print-only">{printContent}</div>
     </NotificationsProvider>
   );

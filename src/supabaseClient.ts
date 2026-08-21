@@ -598,6 +598,33 @@ export async function getTrialBalance(): Promise<TrialBalanceRow[]> {
   return (data ?? []) as TrialBalanceRow[];
 }
 
+export interface LedgerRow {
+  entry_id: string | null;
+  entry_number: string | null;
+  entry_date: string;
+  description: string | null;
+  project: string | null;
+  reversed: boolean;
+  reversal_of: string | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  is_opening_balance: boolean;
+}
+
+export async function getAccountLedger(accountCode: string, startDate?: string | null, endDate?: string | null): Promise<LedgerRow[]> {
+  const { data, error } = await supabase.rpc('get_account_ledger', {
+    p_account_code: accountCode,
+    p_start_date: startDate ?? null,
+    p_end_date: endDate ?? null,
+  });
+  if (error) {
+    console.error('Error fetching account ledger:', error);
+    throw new Error(error.message);
+  }
+  return (data ?? []) as LedgerRow[];
+}
+
 export async function getBalanceSheet(): Promise<TrialBalanceRow[]> {
   const { data, error } = await supabase.from('vw_balance_sheet').select('*');
   if (error) {

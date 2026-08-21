@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import {
   BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
@@ -41,6 +42,7 @@ import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelPr
              ReceiptDocumentProps, PayslipProps, ProjectStats } from "../types";
 
 export default function LedgerPanel({ data }) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loadingTb, setLoadingTb] = useState(true);
 
@@ -125,9 +127,17 @@ export default function LedgerPanel({ data }) {
                         mono
                         bold
                         label="Balance"
-                        style={{ color: isPaymentAbnormal ? ALERT : balance >= 0 ? INK : ALERT }}
+                        style={{
+                          color: isPaymentAbnormal ? ALERT : balance >= 0 ? INK : ALERT,
+                        }}
                       >
-                        {signedBalance > 0 ? `${balanceSide} ${fmt(signedBalance)}` : "—"}
+                        <span
+                          onClick={() => navigate(`/ledger/${r.code}`)}
+                          title={`View ledger for ${r.code} · ${r.name}`}
+                          style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" }}
+                        >
+                          {signedBalance > 0 ? `${balanceSide} ${fmt(signedBalance)}` : "—"}
+                        </span>
                       </Td>
                     </tr>
                   );

@@ -22,6 +22,7 @@ export const CEO_INVOICING_WRITE = "ceo:invoicing:write";
 export const CEO_BILLS_WRITE = "ceo:bills:write";
 export const CEO_EMPLOYEES_WRITE = "ceo:employees:write";
 export const CEO_PAYROLL_WRITE = "ceo:payroll:write";
+export const CEO_LOANS_WRITE = "ceo:loans:write";
 
 // Non-admin portal tokens
 export const DASHBOARD_OPS = "dashboard:ops";
@@ -36,7 +37,7 @@ export const PAYROLL_STATEMENT = "payroll:statement";
 export const FIELD_ACTIVITY_VIEW = "field-activity:view";
 export const LOANS_SELF = "loans:self";
 export const LOANS_APPROVE = "loans:approve";
-const LOAN_APPROVAL_TOKENS = new Set([LOANS_APPROVE, "director", "director:access"]);
+const LOAN_APPROVAL_TOKENS = new Set([LOANS_APPROVE, CEO_LOANS_WRITE]);
 
 /** Tokens exclusive to non-admin portal users (hidden from CEO) */
 const PORTAL_ONLY_TOKENS: ReadonlySet<string> = new Set([
@@ -49,7 +50,7 @@ const PORTAL_ONLY_TOKENS: ReadonlySet<string> = new Set([
 export const SCOPED_TOKENS = [
   CEO_JOURNAL_READ, CEO_JOURNAL_WRITE,
   CEO_PROJECTS_WRITE, CEO_INVOICING_WRITE, CEO_BILLS_WRITE,
-  CEO_EMPLOYEES_WRITE, CEO_PAYROLL_WRITE,
+  CEO_EMPLOYEES_WRITE, CEO_PAYROLL_WRITE, CEO_LOANS_WRITE,
   DASHBOARD_OPS, DASHBOARD_LIMITED, PROJECTS_VIEW,
   PROGRESS_WRITE, SITE_REPORTS_WRITE, ISSUES_WRITE, MEDIA_WRITE,
   PAYROLL_SELF, PAYROLL_STATEMENT, FIELD_ACTIVITY_VIEW, LOANS_SELF, LOANS_APPROVE,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Plus } from "lucide-react";
 import {
   MUTED,
@@ -91,9 +91,21 @@ function prettyGroupKey(key, groupBy) {
   return key;
 }
 
-export default function JournalPanel({ data, mutate, readOnly, setPrintContent }: { data: any; mutate?: any; readOnly?: boolean; setPrintContent?: (c: any) => void }) {
+export default function JournalPanel({
+  data, mutate, readOnly, setPrintContent, initialEntryId, onEntryViewed,
+}: {
+  data: any; mutate?: any; readOnly?: boolean; setPrintContent?: (c: any) => void;
+  initialEntryId?: string | null; onEntryViewed?: () => void;
+}) {
   const [showModal, setShowModal] = useState(false);
   const [viewingEntry, setViewingEntry] = useState(null);
+
+  useEffect(() => {
+    if (!initialEntryId) return;
+    const entry = (data.journal || []).find((e: { id: string }) => e.id === initialEntryId);
+    if (entry) setViewingEntry(entry);
+    onEntryViewed?.();
+  }, [initialEntryId, data.journal, onEntryViewed]);
   const [filter, setFilter] = useState("all");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");

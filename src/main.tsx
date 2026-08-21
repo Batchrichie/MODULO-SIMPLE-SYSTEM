@@ -1,19 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
-import CompleteOnboardingPage from './pages/CompleteOnboardingPage';
 import './index.css';
-
-function Router() {
-  const path = typeof window !== 'undefined' ? window.location.pathname : '/';
-  if (path === '/complete-onboarding') {
-    return <CompleteOnboardingPage />;
-  }
-  return <App />;
-}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Router />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>
 );

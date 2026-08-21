@@ -306,6 +306,20 @@ export interface PayslipProps {
   r: PayrollLine;
 }
 
+export interface LedgerRow {
+  entry_id: string | null;
+  entry_number: string | null;
+  entry_date: string;
+  description: string | null;
+  project: string | null;
+  reversed: boolean;
+  reversal_of: string | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  is_opening_balance: boolean;
+}
+
 export interface ProjectStats {
   id: string;
   name: string;
