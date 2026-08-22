@@ -252,7 +252,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
           <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <Th>Bill #</Th>
+                <Th>Project Type</Th>
                 <Th>Vendor</Th>
                 <Th>Due Date</Th>
                 <Th right>Amount</Th>
@@ -266,9 +266,10 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
               {data.bills.map((bill) => {
                 const paid = bill.payments.reduce((s, p) => s + p.amount, 0);
                 const balance = bill.amount - paid;
+                const billProject = bill.project ? data.projects.find((p) => p.id === bill.project) : null;
                 return (
                   <tr key={bill.id} className="row-hover">
-                    <Td mono label="Bill #">{bill.billNumber}</Td>
+                    <Td label="Project Type">{billProject?.projectType || "—"}</Td>
                     <Td label="Vendor">{bill.vendor}</Td>
                     <Td label="Due Date">{bill.dueDate || "—"}</Td>
                     <Td right mono label="Amount">GHS {fmt(bill.amount)}</Td>
