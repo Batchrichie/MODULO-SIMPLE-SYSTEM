@@ -102,9 +102,14 @@ export default function ReportsPanel({ data }: { data: AppData }) {
   /* ---------- Project Profitability ---------- */
   const projReport = useMemo(() => {
     return data.projects.map((p) => {
-      const revenue = data.invoices
-        .filter((inv) => inv.project === p.id && inv.status !== 'Void')
-        .reduce((s, inv) => s + (inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0), 0);
+      const revenue = data.journal
+        .filter((je) => je.project === p.id)
+        .flatMap((je) => je.lines)
+        .filter((l) => {
+          const acc = data.accounts.find((a) => a.code === l.account);
+          return acc && acc.type === 'Income';
+        })
+        .reduce((s, l) => s + (l.credit - l.debit), 0);
       const costs = data.journal
         .filter((je) => je.project === p.id)
         .flatMap((je) => je.lines)

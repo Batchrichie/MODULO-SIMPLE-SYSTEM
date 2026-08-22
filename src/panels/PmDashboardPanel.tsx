@@ -18,68 +18,6 @@ interface PmDashboardPanelProps {
   profile: UserProfile;
 }
 
-function resolveTaxRatePm(value: unknown, fallback: number): number {
-  if (value === null || value === undefined || value === '') return 0;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return n > 1 ? n / 100 : n;
-}
-
-function extractRevenueBilledGHS(inv: {
-  totals?: {
-    subtotal_ghs?: number; taxable_value_ghs?: number;
-    newSubtotalGHS?: number; newSubtotal?: number;
-    total_ghs?: number; grandTotalGHS?: number; total?: number; grandTotal?: number;
-    vat_ghs?: number; nhil_ghs?: number; getfund_ghs?: number;
-    charge_vat?: boolean; charge_nhil?: boolean;
-    chargeVat?: boolean; chargeNhil?: boolean;
-    vat_rate?: number | string; nhil_getfund_rate?: number | string; getfund_rate?: number | string;
-    vatRate?: number | string; nhilGetfundRate?: number | string;
-  } | null;
-  currency?: string; exchangeRate?: number;
-  fallbackVatRate?: number; fallbackNhilGetfundRate?: number;
-}): number {
-  const t = inv.totals ?? ({} as NonNullable<typeof inv.totals>);
-
-  // Tier 1: direct pre-tax fields — snake_case DB-backed first.
-  // NOTE: newSubtotalGHS/newSubtotal are dead for RPC-persisted invoices;
-  // subtotal_ghs/taxable_value_ghs are canonical keys from post_invoice RPC.
-  const direct = t.subtotal_ghs ?? t.taxable_value_ghs ?? t.newSubtotalGHS ?? t.newSubtotal;
-  if (typeof direct === 'number' && Number.isFinite(direct) && direct >= 0) return direct;
-
-  // Tier 2: reverse tax out of grand total using THIS INVOICE'S stored rates/flags.
-  const grand = t.total_ghs ?? t.grandTotalGHS ?? t.total ?? t.grandTotal;
-  if (typeof grand !== 'number' || !Number.isFinite(grand) || grand <= 0) return 0;
-
-  // Read ACTUAL stored keys from the invoice totals JSONB.
-  // PRODUCTION CASING CONVENTION (verified on SP/2026/0001 persisted totals JSONB):
-  //   chargeVat / chargeNhil = camelCase  (NOT charge_vat / charge_nhil snake_case)
-  //   vat_rate  / nhil_getfund_rate = snake_case
-  // We ??-check both casings defensively but camelCase flags + snake_case rates is the live format.
-  const cv = Boolean(t.chargeVat ?? (t as Record<string, unknown>).charge_vat);
-  const cn = Boolean(t.chargeNhil ?? (t as Record<string, unknown>).charge_nhil);
-
-  // Rate fields: snake_case confirmed in prod. Hardcoded defaults only reached if:
-  //   (a) stored rate is missing AND (b) caller fallback also missing.
-  const vatR_raw: unknown = (t as Record<string, unknown>).vat_rate
-    ?? (t as Record<string, unknown>).vatRate
-    ?? inv.fallbackVatRate;
-  const nhilR_raw: unknown = (t as Record<string, unknown>).nhil_getfund_rate
-    ?? (t as Record<string, unknown>).nhilGetfundRate
-    ?? inv.fallbackNhilGetfundRate;
-
-  const vatR = resolveTaxRatePm(vatR_raw, 0.15);
-  const nhilR = resolveTaxRatePm(nhilR_raw, 0.025);
-
-  if (!cv && !cn) return grand;
-  const divisor = 1 + (cv ? vatR : 0) + (cn ? nhilR : 0);
-  if (divisor <= 1 || !Number.isFinite(divisor)) return grand;
-
-  const reversed = grand / divisor;
-  if (Number.isFinite(reversed) && reversed > 0) return reversed;
-  return grand;
-}
-
 /** Status badge colors */
 function statusBadge(status: string | null | undefined) {
   if (!status) return { color: MUTED, bg: PAPER, label: "Unknown" };
@@ -123,21 +61,20 @@ export default function PmDashboardPanel({ data, profile }: PmDashboardPanelProp
     return costs;
   }, [data.journal, data.accounts]);
 
-  // Revenue billed per project from invoices (pre-tax, matches 4xxx revenue account credit)
+  // Revenue billed per project from journal (credit on Revenue/Income accounts — matches actualCost ledger pattern)
   const projectRevenue = useMemo(() => {
     const rev: Record<string, number> = {};
-    data.invoices.forEach(inv => {
-      if (!inv.project || inv.project === "GEN" || inv.status === "Void") return;
-      rev[inv.project] = (rev[inv.project] || 0) + extractRevenueBilledGHS({
-        totals: inv.totals,
-        currency: inv.currency,
-        exchangeRate: inv.exchangeRate,
-        fallbackVatRate: data.vatRate,
-        fallbackNhilGetfundRate: data.nhilGetfundRate,
+    data.journal.forEach(e => {
+      if (!e.project || e.project === "GEN") return;
+      e.lines.forEach(l => {
+        const acc = data.accounts.find(a => a.code === l.account);
+        if (acc && acc.type === "Income") {
+          rev[e.project] = (rev[e.project] || 0) + (l.credit - l.debit);
+        }
       });
     });
     return rev;
-  }, [data.invoices, data.vatRate, data.nhilGetfundRate]);
+  }, [data.journal, data.accounts]);
 
   // Recent journal entries across all active projects
   const recentEntries = useMemo(() => {

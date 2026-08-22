@@ -77,7 +77,7 @@ export function getDashboardMetrics(data: AppData) {
   data.journal.forEach(e => e.lines.forEach(l => {
     const acc = data.accounts.find(a => a.code === l.account);
     if (!acc) return;
-    if (acc.type === 'Revenue' || acc.type === 'Income') {
+    if (acc.type === 'Income') {
       totalRevenue += (l.credit - l.debit);
     }
     if (acc.type === 'Expense') {
@@ -126,7 +126,7 @@ export function getDashboardMetrics(data: AppData) {
     e.lines.forEach(l => {
       const acc = data.accounts.find(a => a.code === l.account);
       if (!acc) return;
-      if (acc.type === 'Revenue' || acc.type === 'Income') monthlyData[month].revenue += (l.credit - l.debit);
+      if (acc.type === 'Income') monthlyData[month].revenue += (l.credit - l.debit);
       if (acc.type === 'Expense') monthlyData[month].expense += (l.debit - l.credit);
     });
   });
@@ -204,7 +204,7 @@ export function getPrioritizedProjects(data: AppData, stats: ProjectStats[]) {
   });
 }
 
-function extractRevenueBilledGHS(inv: {
+export function extractRevenueBilledGHS(inv: {
   totals?: {
     subtotal_ghs?: number; taxable_value_ghs?: number;
     newSubtotalGHS?: number; newSubtotal?: number;
@@ -264,7 +264,7 @@ function extractRevenueBilledGHS(inv: {
   return grand;
 }
 
-function resolveTaxRate(value: unknown, fallback: number): number {
+export function resolveTaxRate(value: unknown, fallback: number): number {
   if (value === null || value === undefined || value === '') return 0;
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -274,15 +274,14 @@ function resolveTaxRate(value: unknown, fallback: number): number {
 /** Per-project financial summary */
 export function projectStatsFn(data: AppData): ProjectStats[] {
   return data.projects.map((p) => {
-    const revenueBilled = data.invoices
-      .filter((inv) => inv.project === p.id && inv.status !== 'Void')
-      .reduce((s, inv) => s + extractRevenueBilledGHS({
-        totals: inv.totals,
-        currency: inv.currency,
-        exchangeRate: inv.exchangeRate,
-        fallbackVatRate: data.vatRate,
-        fallbackNhilGetfundRate: data.nhilGetfundRate,
-      }), 0);
+    const revenueBilled = data.journal
+      .filter((je) => je.project === p.id)
+      .flatMap((je) => je.lines)
+      .filter((l) => {
+        const acc = data.accounts.find((a) => a.code === l.account);
+        return acc && acc.type === 'Income';
+      })
+      .reduce((s, l) => s + (l.credit - l.debit), 0);
     const actualCost = data.journal
       .filter((je) => je.project === p.id)
       .flatMap((je) => je.lines)
