@@ -1,13 +1,6 @@
-import React, { useState, useMemo, useCallback } from "react";
-import * as XLSX from "xlsx";
-import {
-  BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
-  Plus, Trash2, Printer, Check, AlertTriangle, Settings2, Briefcase,
-  Receipt, TrendingUp, X, Sun, Moon, LayoutDashboard,
-  ArrowUpRight, ArrowDownRight, FileText, MoreHorizontal, Landmark,
-} from "lucide-react";
-import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP, GOLD, ALERT, MUTED,
-         FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
+import React, { useState } from "react";
+import { Plus, Banknote, Check } from "lucide-react";
+import { INK, GREEN, ALERT, MUTED, FONT_BODY } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
 import TableScroll from "../components/ui/TableScroll";
@@ -16,30 +9,11 @@ import Td from "../components/ui/Td";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
-import MiniTable from "../components/ui/MiniTable";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
-import KpiCard from "../components/charts/KpiCard";
-import LineChart from "../components/charts/LineChart";
-import BarChart from "../components/charts/BarChart";
-import DonutChart from "../components/charts/DonutChart";
 import { fmt, projectName } from "../utils/format";
-import { amountInWords } from "../utils/numberToWords";
-import { computeInvoiceTotals, NAVY, INVOICE_GOLD, invTdLabel, invTdVal } from "../utils/invoiceUtils";
-import { COMPANY_TEMPLATE, GENERAL_PROJECT } from "../constants/defaults";
-import {
-  assertJournalEntry, assertInvoice, assertAccount, assertEmployee,
-  assertProject, assertPayment
-} from "../validation";
-import {
-  db, loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates,
-  savePayeBrackets, getTrialBalance, getBalanceSheet, getProfitAndLoss,
-  getSession, onAuthStateChange, signOut, runPayrollAndFetch,
-  findAccountByRole, findDefaultPaymentAccount, postJournalEntry
-} from "../supabaseClient";
-import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelProps,
-             NewInvoiceFormProps, RecordPaymentFormProps, InvoiceDocumentProps,
-             ReceiptDocumentProps, PayslipProps, ProjectStats } from "../types";
+import { db, findAccountByRole, findDefaultPaymentAccount, postJournalEntry } from "../supabaseClient";
+import type { PanelProps } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
   const [showNew, setShowNew] = useState(false);
@@ -51,26 +25,17 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [dueDate, setDueDate] = useState("");
   const [project, setProject] = useState("GEN");
   const [expenseAccount, setExpenseAccount] = useState("");
-  const [paymentAccount, setPaymentAccount] = useState<string>("");
+  const [paymentAccount, setPaymentAccount] = useState("");
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
-  const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
+  const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
   const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   async function createBill() {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) {
-      window.alert("Please enter a valid amount.");
-      return;
-    }
-    if (!vendor.trim()) {
-      window.alert("Please enter a vendor name.");
-      return;
-    }
-    if (!expenseAccount) {
-      window.alert("Please select an expense account.");
-      return;
-    }
+    if (!amt || amt <= 0) return window.alert("Please enter a valid amount.");
+    if (!vendor.trim()) return window.alert("Please enter a vendor name.");
+    if (!expenseAccount) return window.alert("Please select an expense account.");
 
     const billNumber = makeTempId("BL");
     const bill: Bill = {
@@ -87,10 +52,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     };
 
     const apAccount = findAccountByRole(data.accounts, "ap");
-    if (!apAccount) {
-      window.alert("Accounts Payable account not configured. Please contact your admin.");
-      return;
-    }
+    if (!apAccount) return window.alert("Accounts Payable account not configured. Please contact your admin.");
 
     const entryNumber = makeTempId("JE");
     const entry: JournalEntry = {
@@ -99,91 +61,40 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       date,
       description: `Bill ${billNumber} — ${vendor.trim()}`,
       period: date.slice(0, 7),
-      project: project === "GEN" ? null : project,
+      project: bill.project,
       lines: [
         { account: expenseAccount, debit: amt, credit: 0 },
         { account: apAccount.code, debit: 0, credit: amt },
       ],
     };
 
-    mutate((d) => ({
-      ...d,
-      bills: [bill, ...d.bills],
-      journal: [entry, ...d.journal],
-    }));
-
+    mutate((d) => ({ ...d, bills: [bill, ...d.bills], journal: [entry, ...d.journal] }));
     try {
       await db.saveBill(bill);
-      await postJournalEntry(
-        entry.date,
-        entry.description ?? null,
-        entry.project ?? null,
-        entry.lines.map((line) => ({
-          account: line.account,
-          debit: Number(line.debit) || 0,
-          credit: Number(line.credit) || 0,
-        }))
-      );
+      await postJournalEntry(entry.date, entry.description ?? null, entry.project ?? null, entry.lines.map((line) => ({ account: line.account, debit: Number(line.debit) || 0, credit: Number(line.credit) || 0 })));
     } catch (err: any) {
-      mutate((d) => ({
-        ...d,
-        bills: d.bills.filter((item) => item.id !== bill.id),
-        journal: d.journal.filter((item) => item.id !== entry.id),
-      }));
-      console.error("Failed to save bill:", err);
-      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
-      window.alert(`Failed to save bill: ${errorMsg}`);
+      mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id), journal: d.journal.filter((item) => item.id !== entry.id) }));
+      window.alert(`Failed to save bill: ${err?.message || err?.toString?.() || "Unknown error occurred"}`);
       return;
     }
 
-    setVendor("");
-    setDescription("");
-    setAmount("");
-    setDueDate("");
-    setExpenseAccount("");
-    setShowNew(false);
+    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setShowNew(false);
   }
 
   async function recordPayment(bill: Bill) {
     if (!payingBill) return;
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) {
-      window.alert("Please enter a valid payment amount.");
-      return;
-    }
-    if (!paymentAccount) {
-      window.alert("Please select a payment account.");
-      return;
-    }
-
-    const paymentId = "BPT-" + Date.now();
-    const payment: BillPayment = {
-      id: paymentId,
-      date,
-      amount: amt,
-      method: "Bank",
-      reference: "",
-    };
-
-    const paidSoFar = bill.payments.reduce((s, p) => s + p.amount, 0) + amt;
-    const newStatus: Bill['status'] =
-      paidSoFar >= bill.amount - 0.01 ? "Paid" : "Partially Paid";
-
-    const updatedBill = { ...bill, payments: [...bill.payments, payment], status: newStatus };
+    if (!amt || amt <= 0) return window.alert("Please enter a valid payment amount.");
+    if (!paymentAccount) return window.alert("Please select a payment account.");
 
     const apAccount = findAccountByRole(data.accounts, "ap");
-    if (!apAccount) {
-      window.alert("Accounts Payable account not configured. Please contact your admin.");
-      return;
-    }
-    // Validate the user-chosen payment account actually exists and is a payment account.
-    // (Should always be true because the dropdown only shows isPaymentAccount, but guard anyway.)
-    const resolvedCashAccount = data.accounts.find(a => a.code === paymentAccount && a.isPaymentAccount);
-    if (!resolvedCashAccount) {
-      window.alert("The selected payment account is invalid or no payment accounts are configured. Go to Chart of Accounts and mark at least one bank/cash account as 'Payment Account'.");
-      return;
-    }
+    const resolvedCashAccount = data.accounts.find((a) => a.code === paymentAccount && a.isPaymentAccount);
+    if (!apAccount || !resolvedCashAccount) return window.alert("The selected payment account is invalid.");
 
+    const payment: BillPayment = { id: `BPT-${Date.now()}`, date, amount: amt, method: "Bank", reference: "" };
+    const paidSoFar = bill.payments.reduce((s, p) => s + p.amount, 0) + amt;
+    const newStatus: Bill["status"] = paidSoFar >= bill.amount - 0.01 ? "Paid" : "Partially Paid";
+    const updatedBill = { ...bill, payments: [...bill.payments, payment], status: newStatus };
     const entryNumber = makeTempId("JE");
     const entry: JournalEntry = {
       id: entryNumber,
@@ -198,51 +109,23 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       ],
     };
 
-    mutate((d) => ({
-      ...d,
-      bills: d.bills.map((b) => (b.id === bill.id ? updatedBill : b)),
-      journal: [entry, ...d.journal],
-    }));
-
+    mutate((d) => ({ ...d, bills: d.bills.map((b) => b.id === bill.id ? updatedBill : b), journal: [entry, ...d.journal] }));
     try {
       await db.saveBill(updatedBill);
-      await postJournalEntry(
-        entry.date,
-        entry.description ?? null,
-        entry.project ?? null,
-        entry.lines.map((line) => ({
-          account: line.account,
-          debit: Number(line.debit) || 0,
-          credit: Number(line.credit) || 0,
-        }))
-      );
+      await postJournalEntry(entry.date, entry.description ?? null, entry.project ?? null, entry.lines.map((line) => ({ account: line.account, debit: Number(line.debit) || 0, credit: Number(line.credit) || 0 })));
     } catch (err: any) {
-      mutate((d) => ({
-        ...d,
-        bills: d.bills.map((item) => item.id === bill.id ? bill : item),
-        journal: d.journal.filter((item) => item.id !== entry.id),
-      }));
-      console.error("Failed to record bill payment:", err);
-      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
-      window.alert(`Failed to record payment: ${errorMsg}`);
+      mutate((d) => ({ ...d, bills: d.bills.map((item) => item.id === bill.id ? bill : item), journal: d.journal.filter((item) => item.id !== entry.id) }));
+      window.alert(`Failed to record payment: ${err?.message || err?.toString?.() || "Unknown error occurred"}`);
       return;
     }
-
-    setPayingBill(null);
-    setAmount("");
+    setPayingBill(null); setAmount("");
   }
 
   return (
     <div>
       <SectionTitle
         sub="Record vendor bills and track what you owe. Payments post automatically to the ledger."
-        action={
-          mutate ? (
-            <Button onClick={() => setShowNew(true)} icon={Plus}>
-              New bill
-            </Button>
-          ) : undefined
-        }
+        action={mutate ? <Button onClick={() => setShowNew(true)} icon={Plus}>New bill</Button> : undefined}
       >
         Bills & Payables
       </SectionTitle>
@@ -250,134 +133,61 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       <Card>
         <TableScroll>
           <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <Th>Project Type</Th>
-                <Th>Vendor</Th>
-                <Th>Due Date</Th>
-                <Th right>Amount</Th>
-                <Th right>Paid</Th>
-                <Th right>Balance</Th>
-                <Th>Status</Th>
-                <Th right>&nbsp;</Th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <Th>Project</Th>
+              <Th>Vendor</Th>
+              <Th>Due Date</Th>
+              <Th right>Amount</Th>
+              <Th right>Paid</Th>
+              <Th right>Balance</Th>
+              <Th>Status</Th>
+              <Th right>&nbsp;</Th>
+            </tr></thead>
             <tbody>
               {data.bills.map((bill) => {
                 const paid = bill.payments.reduce((s, p) => s + p.amount, 0);
                 const balance = bill.amount - paid;
-                const billProject = bill.project ? data.projects.find((p) => p.id === bill.project) : null;
-                return (
-                  <tr key={bill.id} className="row-hover">
-                    <Td label="Project Type">{billProject?.projectType || "—"}</Td>
-                    <Td label="Vendor">{bill.vendor}</Td>
-                    <Td label="Due Date">{bill.dueDate || "—"}</Td>
-                    <Td right mono label="Amount">GHS {fmt(bill.amount)}</Td>
-                    <Td right mono label="Paid">GHS {fmt(paid)}</Td>
-                    <Td right mono bold label="Balance" style={{ color: balance > 0.01 ? ALERT : GREEN }}>
-                      GHS {fmt(balance)}
-                    </Td>
-                    <Td label="Status">{bill.status}</Td>
-                    <Td right label="Action">
-                      {mutate && balance > 0.01 && (
-                        <Button variant="ghost" icon={Banknote} onClick={() => {
-                          setPayingBill(bill);
-                          setDate(new Date().toISOString().slice(0, 10));
-                          const def = findDefaultPaymentAccount(data.accounts);
-                          setPaymentAccount(def?.code || "");
-                        }}>
-                          Pay
-                        </Button>
-                      )}
-                    </Td>
-                  </tr>
-                );
+                return <tr key={bill.id} className="row-hover">
+                  <Td label="Project">{projectName(data.projects, bill.project)}</Td>
+                  <Td label="Vendor">{bill.vendor}</Td>
+                  <Td label="Due Date">{bill.dueDate || "—"}</Td>
+                  <Td right mono label="Amount">GHS {fmt(bill.amount)}</Td>
+                  <Td right mono label="Paid">GHS {fmt(paid)}</Td>
+                  <Td right mono bold label="Balance" style={{ color: balance > 0.01 ? ALERT : GREEN }}>GHS {fmt(balance)}</Td>
+                  <Td label="Status">{bill.status}</Td>
+                  <Td right label="Action">{mutate && balance > 0.01 && <Button variant="ghost" icon={Banknote} onClick={() => { setPayingBill(bill); setDate(new Date().toISOString().slice(0, 10)); setPaymentAccount(findDefaultPaymentAccount(data.accounts)?.code || ""); }}>Pay</Button>}</Td>
+                </tr>;
               })}
-              {data.bills.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ color: MUTED, padding: 10 }}>
-                    No bills recorded yet.
-                  </td>
-                </tr>
-              )}
+              {data.bills.length === 0 && <tr><td colSpan={8} style={{ color: MUTED, padding: 10 }}>No bills recorded yet.</td></tr>}
             </tbody>
           </table>
         </TableScroll>
       </Card>
 
-      {showNew && (
-        <Modal title="New Vendor Bill" sub="Record what you owe a vendor." onClose={() => setShowNew(false)}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            <div style={{ flex: "1 1 150px" }}>
-              <label style={labelStyle}>Vendor</label>
-              <input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" />
-            </div>
-            <div style={{ flex: "2 1 200px" }}>
-              <label style={labelStyle}>Description</label>
-              <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Diesel for generators" />
-            </div>
-            <div style={{ flex: "1 1 120px" }}>
-              <label style={labelStyle}>Amount (GHS)</label>
-              <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
-            </div>
-            <div style={{ flex: "1 1 120px" }}>
-              <label style={labelStyle}>Date</label>
-              <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div style={{ flex: "1 1 120px" }}>
-              <label style={labelStyle}>Due Date</label>
-              <input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </div>
-            <div style={{ flex: "1 1 150px" }}>
-              <label style={labelStyle}>Expense Account</label>
-              <AccountSelect
-                value={expenseAccount}
-                onChange={setExpenseAccount}
-                accounts={expenseAccounts}
-                placeholder="Search expense account…"
-              />
-            </div>
-            <div style={{ flex: "1 1 150px" }}>
-              <label style={labelStyle}>Project</label>
-              <ProjectSelect value={project} onChange={setProject} projects={data.projects} />
-            </div>
-            <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
-          </div>
-        </Modal>
-      )}
+      {showNew && <Modal title="New Vendor Bill" sub="Record what you owe a vendor." onClose={() => setShowNew(false)}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Vendor</label><input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" /></div>
+          <div style={{ flex: "2 1 200px" }}><label style={labelStyle}>Description</label><input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Diesel for generators" /></div>
+          <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Amount (GHS)</label><input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" /></div>
+          <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Date</label><input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Due Date</label><input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
+          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
+          <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
+        </div>
+      </Modal>}
 
-      {payingBill && (
-        <Modal title={`Pay bill — ${payingBill.billNumber}`} onClose={() => setPayingBill(null)}>
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: MUTED }}>
-              Outstanding: <b style={{ color: INK }}>GHS {fmt(payingBill.amount - payingBill.payments.reduce((s, p) => s + p.amount, 0))}</b>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              <div style={{ flex: "1 1 150px" }}>
-                <label style={labelStyle}>Payment Date</label>
-                <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
-              </div>
-              <div style={{ flex: "1 1 150px" }}>
-                <label style={labelStyle}>Amount (GHS)</label>
-                <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
-              </div>
-              <div style={{ flex: "1 1 200px" }}>
-                <label style={labelStyle}>Paid from *</label>
-                <AccountSelect
-                  value={paymentAccount}
-                  onChange={setPaymentAccount}
-                  accounts={paymentAccounts}
-                  placeholder="Search payment account…"
-                />
-                {paymentAccounts.length === 0 && (
-                  <div style={{ fontSize: 11, color: ALERT, marginTop: 4 }}>No payment accounts found. Go to Chart of Accounts and mark accounts as "Payment Account".</div>
-                )}
-              </div>
-            </div>
-            <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth>Record payment</Button>
+      {payingBill && <Modal title={`Pay bill — ${payingBill.billNumber}`} onClose={() => setPayingBill(null)}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: MUTED }}>Outstanding: <b style={{ color: INK }}>GHS {fmt(payingBill.amount - payingBill.payments.reduce((s, p) => s + p.amount, 0))}</b></div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Payment Date</label><input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Amount (GHS)</label><input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" /></div>
+            <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>Paid from *</label><AccountSelect value={paymentAccount} onChange={setPaymentAccount} accounts={paymentAccounts} placeholder="Search payment account…" /></div>
           </div>
-        </Modal>
-      )}
+          <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth>Record payment</Button>
+        </div>
+      </Modal>}
     </div>
   );
 }
