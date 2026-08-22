@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Trash2, PenLine, Check, Landmark, Search } from "lucide-react";
+import { Plus, Trash2, PenLine, Check, Landmark, Search, Star } from "lucide-react";
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GOLD, ALERT, MUTED,
          FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
 import Card from "../components/ui/Card";
@@ -20,13 +20,13 @@ export default function AccountsPanel({ data, mutate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, role: null as string | null });
+  const [form, setForm] = useState({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, isDefault: false, role: null as string | null });
   const usedCodes = editingCode
     ? new Set(data.accounts.filter(a => a.code !== editingCode).map(a => a.code))
     : new Set(data.accounts.map(a => a.code));
 
   function resetForm() {
-    setForm({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, role: null });
+    setForm({ code: "", name: "", type: "Asset", normal: "Debit", isPaymentAccount: false, isDefault: false, role: null });
     setEditingCode(null);
   }
 
@@ -34,7 +34,7 @@ export default function AccountsPanel({ data, mutate }) {
 
   function openEdit(acct) {
     setEditingCode(acct.code);
-    setForm({ code: acct.code, name: acct.name, type: acct.type, normal: acct.normal || "Debit", isPaymentAccount: acct.isPaymentAccount || false, role: acct.role ?? null });
+    setForm({ code: acct.code, name: acct.name, type: acct.type, normal: acct.normal || "Debit", isPaymentAccount: acct.isPaymentAccount || false, isDefault: acct.isDefault || false, role: acct.role ?? null });
     setShowModal(true);
   }
 
@@ -44,13 +44,46 @@ export default function AccountsPanel({ data, mutate }) {
     const err = assertAccount(form, usedCodes);
     if (err) { window.alert(err); return; }
     const newAccount = { ...form, code: form.code.trim(), reportingGroup: null, role: form.role ?? null };
-    if (editingCode) {
-      mutate(d => ({ ...d, accounts: d.accounts.map(a => a.code === editingCode ? newAccount : a) }));
-    } else {
-      mutate(d => ({ ...d, accounts: [...d.accounts, newAccount] }));
+
+    // Single-default enforcement: if this account is being set to isDefault=true AND it's a
+    // payment account, clear isDefault on ALL OTHER payment accounts. Critically, this does
+    // NOT touch rows where isPaymentAccount=false (preserves AP 2100 / AR 1130 / revenue 4100
+    // defaults which share the same general-purpose is_default column for their own categories).
+    const beingSetAsDefaultPaymentAccount = Boolean(newAccount.isDefault && newAccount.isPaymentAccount);
+
+    // Build full updated account list for mutate + batch save
+    const updatedAccounts = data.accounts.map((a) => {
+      // The account being saved/created
+      if ((editingCode && a.code === editingCode) || (!editingCode && a.code === newAccount.code)) {
+        return newAccount;
+      }
+      // All sibling payment accounts: clear isDefault IF we're setting a new default
+      if (beingSetAsDefaultPaymentAccount && a.isPaymentAccount) {
+        return { ...a, isDefault: false };
+      }
+      return a;
+    });
+
+    // If the account is NEW (no editingCode), add it to the end (unless duplicate code,
+    // caught by assertAccount already). Existing entry replaces via code match above.
+    const finalAccounts = editingCode
+      ? updatedAccounts
+      : [...updatedAccounts, newAccount];
+
+    mutate(d => ({ ...d, accounts: finalAccounts }));
+
+    // Persist: save the target account + any sibling payment accounts that lost their flag.
+    const accountsToSave = beingSetAsDefaultPaymentAccount
+      ? [newAccount, ...finalAccounts.filter(a => a.isPaymentAccount && a.code !== newAccount.code && a.isDefault === false)]
+      : [newAccount];
+    // De-dupe by code
+    const seenCodes = new Set<string>();
+    const dedupedToSave: typeof accountsToSave = [];
+    for (const acct of accountsToSave) {
+      if (!seenCodes.has(acct.code)) { seenCodes.add(acct.code); dedupedToSave.push(acct); }
     }
-    db.saveAccounts([newAccount]).catch(err => {
-      console.error("Failed to save account:", err);
+    db.saveAccounts(dedupedToSave).catch(err => {
+      console.error("Failed to save account(s):", err);
       window.alert("Failed to persist account to server.");
     });
     closeModal();
@@ -118,6 +151,7 @@ export default function AccountsPanel({ data, mutate }) {
                     <Th>Normal</Th>
                     <Th>Role</Th>
                     <Th>Payment Acct</Th>
+                    <Th>Default</Th>
                     <Th right>Actions</Th>
                   </tr>
                 </thead>
@@ -132,6 +166,15 @@ export default function AccountsPanel({ data, mutate }) {
                         {a.isPaymentAccount ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: GREEN, background: 'var(--success-bg)', padding: '2px 8px', borderRadius: 6 }}>
                             <Landmark size={11} /> Yes
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: MUTED }}>—</span>
+                        )}
+                      </Td>
+                      <Td label="Default">
+                        {a.isPaymentAccount && a.isDefault ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: GOLD, background: 'var(--gold-bg, rgba(217,159,42,0.10))', padding: '2px 8px', borderRadius: 6 }}>
+                            <Star size={11} fill={GOLD as string} /> Payment Default
                           </span>
                         ) : (
                           <span style={{ fontSize: 12, color: MUTED }}>—</span>
@@ -224,10 +267,19 @@ export default function AccountsPanel({ data, mutate }) {
             {form.type === 'Asset' && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, fontFamily: FONT_BODY }}>
                 <input type='checkbox' checked={form.isPaymentAccount}
-                  onChange={e => setForm({ ...form, isPaymentAccount: e.target.checked })}
+                  onChange={e => setForm({ ...form, isPaymentAccount: e.target.checked, isDefault: e.target.checked ? form.isDefault : false })}
                   style={{ width: 18, height: 18, accent: GREEN as string }} />
                 <span>Mark as <b>Payment / Bank Account</b></span>
                 <span style={{ fontSize: 12, color: MUTED }}>(enables bank reconciliation)</span>
+              </label>
+            )}
+            {form.isPaymentAccount && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, fontFamily: FONT_BODY, paddingLeft: 2 }}>
+                <input type='checkbox' checked={form.isDefault}
+                  onChange={e => setForm({ ...form, isDefault: e.target.checked })}
+                  style={{ width: 18, height: 18, accent: GOLD as string }} />
+                <span>Set as <b>Default Payment Account</b></span>
+                <span style={{ fontSize: 12, color: MUTED }}>(pre-selected on bill payments, expenses, receipts)</span>
               </label>
             )}
             <Button onClick={saveAccount} icon={editingCode ? Check : Plus} fullWidth>

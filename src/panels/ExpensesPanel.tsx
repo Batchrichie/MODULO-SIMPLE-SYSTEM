@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
 import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
-import { postJournalEntry } from '../supabaseClient';
+import { postJournalEntry, findDefaultPaymentAccount } from '../supabaseClient';
 import type { AppData, PanelProps, JournalEntry } from '../types';
 
 export default function ExpensesPanel({ data, mutate }: PanelProps) {
@@ -33,7 +33,9 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
   function resetForm() {
     setDate(new Date().toISOString().slice(0, 10));
     setVendor(""); setDescription(""); setAmount("");
-    setPaymentAccount(""); setAccount(""); setProject("GEN");
+    const def = findDefaultPaymentAccount(data.accounts);
+    setPaymentAccount(def?.code || "");
+    setAccount(""); setProject("GEN");
   }
 
   async function postExpense() {
@@ -125,7 +127,7 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
         sub="Record day-to-day costs without touching the double-entry journal."
         action={
           mutate ? (
-            <Button onClick={() => setShowNewModal(true)} icon={Plus}>
+            <Button onClick={() => { resetForm(); setShowNewModal(true); }} icon={Plus}>
               New Expense
             </Button>
           ) : undefined

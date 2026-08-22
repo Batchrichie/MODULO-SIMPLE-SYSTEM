@@ -45,6 +45,7 @@ interface AccountRow {
   reporting_group?: string | null;
   normal?: string | null;
   is_payment_account?: boolean | null;
+  is_default?: boolean | null;
   role?: string | null;
 }
 
@@ -56,6 +57,7 @@ function accountFromRow(r: AccountRow): Account {
     reportingGroup: r.reporting_group,
     normal: r.normal,
     isPaymentAccount: r.is_payment_account ?? false,
+    isDefault: r.is_default ?? false,
     role: r.role ?? null,
   };
 }
@@ -68,6 +70,7 @@ function accountToRow(a: Account): AccountRow {
     reporting_group: a.reportingGroup ?? null,
     normal: a.normal ?? null,
     is_payment_account: a.isPaymentAccount ?? false,
+    is_default: a.isDefault ?? false,
     role: a.role ?? null,
   };
 }
@@ -98,6 +101,22 @@ export function getCurrentAssets(accounts: Account[]): Account[] {
     throw new Error('Current asset accounts are not configured. Please contact your admin.');
   }
   return byRole;
+}
+
+/**
+ * Helper to find the default payment account.
+ * Combines two predicates: is_payment_account = true AND is_default = true.
+ * Falls back to the first is_payment_account if no explicit default is set.
+ *
+ * NOTE: `is_default` is shared across ALL account categories (AP, AR, revenue, etc).
+ * This helper only scopes to WHERE is_payment_account = true, so 2100 AP / 1130 AR / 4100 revenue
+ * defaults are intentionally LEFT UNTOUCHED by callers who use this helper.
+ */
+export function findDefaultPaymentAccount(accounts: Account[]): Account | undefined {
+  const paymentAccounts = accounts.filter(a => a.isPaymentAccount);
+  if (paymentAccounts.length === 0) return undefined;
+  const explicit = paymentAccounts.find(a => a.isDefault);
+  return explicit ?? paymentAccounts[0];
 }
 
 interface ProjectRow {

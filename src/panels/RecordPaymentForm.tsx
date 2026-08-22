@@ -6,7 +6,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { getInvoiceBalance, getInvoicePaidAmount } from "../utils/invoiceUtils";
-import { db, postJournalEntry, findAccountByRole } from "../supabaseClient";
+import { db, postJournalEntry, findAccountByRole, findDefaultPaymentAccount } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
 import type { RecordPaymentFormProps } from "../types";
@@ -14,7 +14,10 @@ import type { RecordPaymentFormProps } from "../types";
 export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }: RecordPaymentFormProps) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
-  const [paymentAccount, setPaymentAccount] = useState("");
+  const [paymentAccount, setPaymentAccount] = useState(() => {
+    const def = findDefaultPaymentAccount(data.accounts);
+    return def?.code || "";
+  });
   const [reference, setReference] = useState("");
 
   const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);

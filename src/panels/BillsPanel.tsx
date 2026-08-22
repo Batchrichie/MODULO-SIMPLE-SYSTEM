@@ -35,7 +35,7 @@ import {
   db, loadLedgerState, loadTaxConfig, saveSettings, saveTaxRates,
   savePayeBrackets, getTrialBalance, getBalanceSheet, getProfitAndLoss,
   getSession, onAuthStateChange, signOut, runPayrollAndFetch,
-  findAccountByRole, postJournalEntry
+  findAccountByRole, findDefaultPaymentAccount, postJournalEntry
 } from "../supabaseClient";
 import type { AppData, MutateFn, PanelProps, InvoicingPanelProps, PayrollPanelProps,
              NewInvoiceFormProps, RecordPaymentFormProps, InvoiceDocumentProps,
@@ -51,8 +51,10 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [dueDate, setDueDate] = useState("");
   const [project, setProject] = useState("GEN");
   const [expenseAccount, setExpenseAccount] = useState("");
+  const [paymentAccount, setPaymentAccount] = useState<string>("");
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+  const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
   const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   async function createBill() {
@@ -149,6 +151,10 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       window.alert("Please enter a valid payment amount.");
       return;
     }
+    if (!paymentAccount) {
+      window.alert("Please select a payment account.");
+      return;
+    }
 
     const paymentId = "BPT-" + Date.now();
     const payment: BillPayment = {
@@ -166,9 +172,15 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     const updatedBill = { ...bill, payments: [...bill.payments, payment], status: newStatus };
 
     const apAccount = findAccountByRole(data.accounts, "ap");
-    const cashAccount = findAccountByRole(data.accounts, "cash");
-    if (!apAccount || !cashAccount) {
-      window.alert("Accounts Payable or Cash account not configured. Please contact your admin.");
+    if (!apAccount) {
+      window.alert("Accounts Payable account not configured. Please contact your admin.");
+      return;
+    }
+    // Validate the user-chosen payment account actually exists and is a payment account.
+    // (Should always be true because the dropdown only shows isPaymentAccount, but guard anyway.)
+    const resolvedCashAccount = data.accounts.find(a => a.code === paymentAccount && a.isPaymentAccount);
+    if (!resolvedCashAccount) {
+      window.alert("The selected payment account is invalid or no payment accounts are configured. Go to Chart of Accounts and mark at least one bank/cash account as 'Payment Account'.");
       return;
     }
 
@@ -182,7 +194,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       project: bill.project,
       lines: [
         { account: apAccount.code, debit: amt, credit: 0 },
-        { account: cashAccount.code, debit: 0, credit: amt },
+        { account: resolvedCashAccount.code, debit: 0, credit: amt },
       ],
     };
 
@@ -267,7 +279,12 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
                     <Td label="Status">{bill.status}</Td>
                     <Td right label="Action">
                       {mutate && balance > 0.01 && (
-                        <Button variant="ghost" icon={Banknote} onClick={() => { setPayingBill(bill); setDate(new Date().toISOString().slice(0, 10)); }}>
+                        <Button variant="ghost" icon={Banknote} onClick={() => {
+                          setPayingBill(bill);
+                          setDate(new Date().toISOString().slice(0, 10));
+                          const def = findDefaultPaymentAccount(data.accounts);
+                          setPaymentAccount(def?.code || "");
+                        }}>
                           Pay
                         </Button>
                       )}
@@ -342,6 +359,18 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
               <div style={{ flex: "1 1 150px" }}>
                 <label style={labelStyle}>Amount (GHS)</label>
                 <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
+              </div>
+              <div style={{ flex: "1 1 200px" }}>
+                <label style={labelStyle}>Paid from *</label>
+                <AccountSelect
+                  value={paymentAccount}
+                  onChange={setPaymentAccount}
+                  accounts={paymentAccounts}
+                  placeholder="Search payment account…"
+                />
+                {paymentAccounts.length === 0 && (
+                  <div style={{ fontSize: 11, color: ALERT, marginTop: 4 }}>No payment accounts found. Go to Chart of Accounts and mark accounts as "Payment Account".</div>
+                )}
               </div>
             </div>
             <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth>Record payment</Button>
