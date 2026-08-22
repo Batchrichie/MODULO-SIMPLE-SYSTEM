@@ -27,7 +27,7 @@ export default function TrialBalanceDocument({ company, genDate, tbData }: { com
   const totalCredit = rows.reduce((s, r) => s + r.creditBalance, 0);
 
   return (
-    <PrintPageWrapper>
+    <PrintPageWrapper firstPage>
       <div style={finStyles.pageWrap}>
         <PageHeader title="TRIAL BALANCE" subtitle={`As at ${genDate}`} company={company} />
         <table style={{ width: tblWidth, margin: "0 32px", borderCollapse: "collapse" }}>

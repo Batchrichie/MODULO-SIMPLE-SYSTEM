@@ -11,7 +11,7 @@ interface BSData {
 export default function BalanceSheetDocument({ company, genDate, bs }: { company: any; genDate: string; bs: BSData }) {
   const tblWidth = "calc(100% - 64px)";
   return (
-    <PrintPageWrapper>
+    <PrintPageWrapper firstPage>
       <div style={finStyles.pageWrap}>
         <PageHeader title="BALANCE SHEET" subtitle={`As at ${genDate}`} company={company} />
         <table style={{ width: tblWidth, margin: "0 32px", borderCollapse: "collapse" }}>

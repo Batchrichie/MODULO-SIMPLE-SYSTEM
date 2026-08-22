@@ -31,7 +31,7 @@ export default function AccountLedgerDocument({
   const tblWidth = "calc(100% - 64px)";
 
   return (
-    <PrintPageWrapper>
+    <PrintPageWrapper firstPage>
       <div style={finStyles.pageWrap}>
         <PageHeader
           title="ACCOUNT LEDGER"

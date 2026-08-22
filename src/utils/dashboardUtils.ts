@@ -204,12 +204,85 @@ export function getPrioritizedProjects(data: AppData, stats: ProjectStats[]) {
   });
 }
 
+function extractRevenueBilledGHS(inv: {
+  totals?: {
+    subtotal_ghs?: number; taxable_value_ghs?: number;
+    newSubtotalGHS?: number; newSubtotal?: number;
+    total_ghs?: number; grandTotalGHS?: number; total?: number; grandTotal?: number;
+    vat_ghs?: number; nhil_ghs?: number; getfund_ghs?: number;
+    charge_vat?: boolean; charge_nhil?: boolean;
+    chargeVat?: boolean; chargeNhil?: boolean;
+    vat_rate?: number | string; nhil_getfund_rate?: number | string; getfund_rate?: number | string;
+    vatRate?: number | string; nhilGetfundRate?: number | string;
+  } | null;
+  currency?: string; exchangeRate?: number;
+  fallbackVatRate?: number; fallbackNhilGetfundRate?: number;
+}): number {
+  const t = inv.totals ?? ({} as NonNullable<typeof inv.totals>);
+
+  // -- Tier 1: direct pre-tax fields (snake_case DB-backed first; camelCase legacy after) --
+  // PRODUCTION NOTE: newSubtotalGHS/newSubtotal are dead for RPC-persisted invoices;
+  // subtotal_ghs and taxable_value_ghs are the canonical keys from post_invoice RPC.
+  const direct = t.subtotal_ghs ?? t.taxable_value_ghs ?? t.newSubtotalGHS ?? t.newSubtotal;
+  if (typeof direct === 'number' && Number.isFinite(direct) && direct >= 0) return direct;
+
+  // -- Tier 2: recover pre-tax from grand total by reversing tax application. --
+  // This is the de-facto primary path if Tier 1 fields are missing for any reason,
+  // so it MUST use real stored keys/snake_case and not silently fall to hardcoded constants.
+  const grand = t.total_ghs ?? t.grandTotalGHS ?? t.total ?? t.grandTotal;
+  if (typeof grand !== 'number' || !Number.isFinite(grand) || grand <= 0) return 0;
+
+  // Pull ACTUAL charge flags from stored totals.
+  // PRODUCTION CASING (verified against real persisted invoice totals JSONB, SP/2026/0001):
+  //   chargeVat / chargeNhil = camelCase  (NOT charge_vat / charge_nhil snake_case)
+  //   vat_rate  / nhil_getfund_rate = snake_case
+  // We ??-check both casings for safety but the documented live format is camelCase flags + snake_case rates.
+  const cv = Boolean(t.chargeVat ?? (t as Record<string, unknown>).charge_vat);
+  const cn = Boolean(t.chargeNhil ?? (t as Record<string, unknown>).charge_nhil);
+
+  // Pull ACTUAL recorded rates from THIS INVOICE'S stored totals (snake_case confirmed in prod).
+  // Only fall to the caller-provided global/fallback rate if the invoice truly stored none.
+  const vatR_raw: unknown = (t as Record<string, unknown>).vat_rate
+    ?? (t as Record<string, unknown>).vatRate
+    ?? inv.fallbackVatRate;
+  // nhil_getfund_rate is the COMBINED NHIL 2.5% + GETFund 2.5% = 5% rate (see computeInvoiceTotals).
+  const nhilR_raw: unknown = (t as Record<string, unknown>).nhil_getfund_rate
+    ?? (t as Record<string, unknown>).nhilGetfundRate
+    ?? inv.fallbackNhilGetfundRate;
+
+  const vatR = resolveTaxRate(vatR_raw, 0.15);
+  const nhilR = resolveTaxRate(nhilR_raw, 0.025);
+
+  // If NO tax flags are set, grand total is already pre-tax.
+  if (!cv && !cn) return grand;
+
+  const divisor = 1 + (cv ? vatR : 0) + (cn ? nhilR : 0);
+  if (divisor <= 1 || !Number.isFinite(divisor)) return grand;
+
+  const reversed = grand / divisor;
+  if (Number.isFinite(reversed) && reversed > 0) return reversed;
+  return grand;
+}
+
+function resolveTaxRate(value: unknown, fallback: number): number {
+  if (value === null || value === undefined || value === '') return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n / 100 : n;
+}
+
 /** Per-project financial summary */
 export function projectStatsFn(data: AppData): ProjectStats[] {
   return data.projects.map((p) => {
     const revenueBilled = data.invoices
       .filter((inv) => inv.project === p.id && inv.status !== 'Void')
-      .reduce((s, inv) => s + (inv.totals.newSubtotalGHS ?? inv.totals.newSubtotal), 0);
+      .reduce((s, inv) => s + extractRevenueBilledGHS({
+        totals: inv.totals,
+        currency: inv.currency,
+        exchangeRate: inv.exchangeRate,
+        fallbackVatRate: data.vatRate,
+        fallbackNhilGetfundRate: data.nhilGetfundRate,
+      }), 0);
     const actualCost = data.journal
       .filter((je) => je.project === p.id)
       .flatMap((je) => je.lines)

@@ -27,7 +27,7 @@ export default function CashFlowDocument({ company, projName, data, startDate, e
   const sections = [statement.operating, statement.investing, statement.financing];
 
   return (
-    <PrintPageWrapper>
+    <PrintPageWrapper firstPage>
       <div style={finStyles.pageWrap}>
         <PageHeader title="CASH FLOW STATEMENT" subtitle={`${projName} · Year ended 31 December`} company={company} />
 
