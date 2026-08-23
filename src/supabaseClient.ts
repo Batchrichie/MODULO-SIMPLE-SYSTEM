@@ -21,6 +21,7 @@ import type {
   BillPayment,
   BankReconciliation,
   BankReconciliationItem,
+  ProjectPoc,
 } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -724,16 +725,40 @@ export interface ProfitLossRow {
   balance: number;
 }
 
-export async function getProfitAndLoss(startDate: string, endDate: string): Promise<ProfitLossRow[]> {
-  const { data, error } = await supabase.rpc('get_profit_and_loss', {
+export async function getProfitAndLoss(startDate: string, endDate: string, project?: string | null): Promise<ProfitLossRow[]> {
+  const params: Record<string, unknown> = {
     p_start_date: startDate,
     p_end_date: endDate,
-  });
+  };
+  if (project && project !== 'company') {
+    params.p_project = project;
+  }
+  const { data, error } = await supabase.rpc('get_profit_and_loss', params);
   if (error) {
     console.error('Error fetching P&L:', error);
     return [];
   }
   return (data ?? []) as ProfitLossRow[];
+}
+
+/**
+ * Fetch Percentage-of-Completion figures for a single project.
+ * Returns exactly one row sourced from public.get_project_poc(p_project) / public.vw_project_poc.
+ * Figures are NULL when poc_computable is false — the UI must NOT fabricate them.
+ */
+export async function getProjectPoc(projectId: string): Promise<ProjectPoc | null> {
+  if (!projectId || projectId === 'company') return null;
+  const { data, error } = await supabase.rpc('get_project_poc', {
+    p_project: projectId,
+  });
+  if (error) {
+    console.error('Error fetching project POC:', error);
+    return null;
+  }
+  const arr = data as ProjectPoc[] | ProjectPoc | null;
+  if (!arr) return null;
+  const row = Array.isArray(arr) ? arr[0] : arr;
+  return (row ?? null) as ProjectPoc | null;
 }
 
 /* ------------------------------------------------------------------ */

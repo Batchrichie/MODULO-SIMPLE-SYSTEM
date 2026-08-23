@@ -12,13 +12,13 @@ import MiniTable from "../components/ui/MiniTable";
 import { fmt } from "../utils/format";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 
-import { getTrialBalance, getBalanceSheet, getProfitAndLoss, getCurrentAssets } from "../supabaseClient";
+import { getTrialBalance, getBalanceSheet, getProfitAndLoss, getCurrentAssets, getProjectPoc } from "../supabaseClient";
 import { computeCashFlow } from "../utils/dashboardUtils";
 import IncomeStatementDocument from "../documents/IncomeStatementDocument";
 import BalanceSheetDocument from "../documents/BalanceSheetDocument";
 import CashFlowDocument from "../documents/CashFlowDocument";
 import TrialBalanceDocument from "../documents/TrialBalanceDocument";
-import type { AppData } from "../types";
+import type { AppData, ProjectPoc } from "../types";
 
 export default function FinancialsPanel({ data, setPrintContent }: { data: AppData; setPrintContent: (c: any) => void }) {
   const [view, setView] = useState("company");
@@ -27,6 +27,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
   const [tbData, setTbData] = useState([]);
   const [bsData, setBsData] = useState([]);
   const [plData, setPlData] = useState([]);
+  const [pocData, setPocData] = useState<ProjectPoc | null>(null);
   const [loadingFin, setLoadingFin] = useState(true);
 
   const startDate = "2026-01-01";
@@ -34,29 +35,55 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
 
   const cf = useMemo(() => computeCashFlow(data), [data.journal]);
 
+  const isProjectView = view !== "company";
+  const selectedProject = isProjectView
+    ? data.projects.find(p => p.id === view) || null
+    : null;
+
   useEffect(() => {
     async function fetchFinancials() {
       setLoadingFin(true);
+      setPocData(null);
       try {
-        const [tb, bs, pl] = await Promise.all([
-          getTrialBalance(),
-          getBalanceSheet(),
-          getProfitAndLoss(startDate, endDate),
-        ]);
+        const fetches: Promise<unknown>[] = [];
 
-        // The database Trial Balance view exposes total_debit/total_credit,
-        // while TrialBalanceDocument expects debit/credit. Normalize the
-        // database shape here so the PDF receives the actual balances.
-        setTbData(
-          (tb || []).map((r) => ({
-            code: r.code,
-            name: r.name,
-            debit: Number(r.total_debit) || 0,
-            credit: Number(r.total_credit) || 0,
-          }))
-        );
-        setBsData(bs || []);
-        setPlData(pl || []);
+        // When a project is selected, filter P&L by that project.
+        // TB / BS / CF are company-wide only (they only render for view==='company').
+        const plPromise = getProfitAndLoss(startDate, endDate, isProjectView ? view : null);
+        fetches.push(plPromise);
+
+        if (view === "company") {
+          fetches.push(getTrialBalance(), getBalanceSheet());
+        }
+
+        // Fetch POC data for project views only.
+        const pocPromise = isProjectView ? getProjectPoc(view) : Promise.resolve(null);
+        fetches.push(pocPromise);
+
+        const results = await Promise.all(fetches);
+
+        // Resolve in same order as pushed above.
+        const pl = (results[0] ?? []) as any[];
+        setPlData(pl);
+
+        if (view === "company") {
+          const tb = results[1] as any[];
+          const bs = results[2] as any[];
+          setTbData(
+            (tb || []).map((r) => ({
+              code: r.code,
+              name: r.name,
+              debit: Number(r.total_debit) || 0,
+              credit: Number(r.total_credit) || 0,
+            }))
+          );
+          setBsData(bs || []);
+          const poc = (results[3] ?? null) as ProjectPoc | null;
+          setPocData(poc);
+        } else {
+          const poc = (results[1] ?? null) as ProjectPoc | null;
+          setPocData(poc);
+        }
       } catch (err) {
         console.error("Error loading financials:", err);
       } finally {
@@ -64,7 +91,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
       }
     }
     fetchFinancials();
-  }, [view]);
+  }, [view, isProjectView, data.projects]);
 
   if (loadingFin) {
     return <Card><p>Loading financial data...</p></Card>;
@@ -251,6 +278,190 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
           <span>GHS {fmt(pl.netProfit)}</span>
         </div>
       </Card>
+
+      {isProjectView && selectedProject && (
+        <>
+          <SectionTitle
+            sub={
+              pocData?.poc_computable
+                ? "Percentage-of-Completion figures computed by the backend posting engine."
+                : "POC figures are not available for this project until estimated cost and contract value are configured."
+            }
+          >
+            Percentage of Completion
+          </SectionTitle>
+          <Card style={{ marginBottom: 16 }}>
+            {(() => {
+              const recognitionLabel =
+                (!pocData?.recognition_method
+                  ? selectedProject.recognitionMethod
+                  : pocData.recognition_method) || "Not set";
+              const prettyRecognition: Record<string, string> = {
+                percentage_of_completion: "Percentage of Completion (POC)",
+                point_in_time: "Point in Time",
+                completed_contract: "Completed Contract",
+                not_set: "Not set",
+              };
+              const recDisplay = prettyRecognition[recognitionLabel] || recognitionLabel;
+              const isPocMethod =
+                (pocData?.recognition_method || selectedProject.recognitionMethod) ===
+                "percentage_of_completion";
+              const computable = Boolean(pocData?.poc_computable) && isPocMethod;
+              const statStyle = (bg: string, color: string): React.CSSProperties => ({
+                display: "inline-block",
+                padding: "2px 10px",
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 700,
+                background: bg,
+                color,
+              });
+              const kpiRow = (label: string, value: string, meta?: React.CSSProperties): React.ReactNode => (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "8px 0",
+                    borderBottom: `1px dashed ${RULE}`,
+                    ...meta,
+                  }}
+                >
+                  <span style={{ color: MUTED, fontSize: 13 }}>{label}</span>
+                  <span style={{ fontFamily: FONT_MONO, fontWeight: 700, color: INK }}>{value}</span>
+                </div>
+              );
+              return (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 12,
+                      justifyContent: "space-between",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
+                        Recognition method
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: INK }}>
+                        {recDisplay}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
+                        POC status
+                      </div>
+                      {computable ? (
+                        <span style={statStyle("rgba(22,163,74,0.10)", GREEN)}>
+                          Computable
+                        </span>
+                      ) : (
+                        <span
+                          style={statStyle(
+                            "rgba(234,179,8,0.12)",
+                            "rgb(161,98,7)"
+                          )}
+                        >
+                          Not configured
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isPocMethod && (
+                    <div
+                      style={{
+                        background: "rgba(234,179,8,0.08)",
+                        border: `1px solid rgba(234,179,8,0.30)`,
+                        borderRadius: 6,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        color: "rgb(133,77,14)",
+                        marginBottom: 12,
+                      }}
+                    >
+                      This project uses <strong>{recDisplay}</strong> — no POC-based revenue
+                      recognition calculation applies. Figures below reflect the project-level
+                      contract configuration only.
+                    </div>
+                  )}
+
+                  {isPocMethod && !computable && (
+                    <div
+                      style={{
+                        background: "rgba(239,68,68,0.06)",
+                        border: `1px solid rgba(239,68,68,0.25)`,
+                        borderRadius: 6,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        color: "rgb(153,27,27)",
+                        marginBottom: 12,
+                      }}
+                    >
+                      {pocData?.not_configured_reason
+                        ? `POC not configured: ${pocData.not_configured_reason}`
+                        : "POC is not computable because the project does not have both a contract value and a positive estimated cost configured. Contact the project administrator to complete project setup before recognising POC revenue."}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 4 }}>
+                    {computable && typeof pocData?.poc_percent === "number" && (
+                      <>
+                        {kpiRow("POC %", `${(pocData!.poc_percent! * 100).toFixed(2)}%`)}
+                      </>
+                    )}
+                    {kpiRow(
+                      "Contract value",
+                      pocData?.contract_value != null
+                        ? `GHS ${fmt(pocData.contract_value)}`
+                        : "— Not configured"
+                    )}
+                    {kpiRow(
+                      "Estimated cost",
+                      pocData?.estimated_cost != null
+                        ? `GHS ${fmt(pocData.estimated_cost)}`
+                        : "— Not configured"
+                    )}
+                    {kpiRow(
+                      "Actual project cost",
+                      pocData?.actual_project_cost != null
+                        ? `GHS ${fmt(pocData.actual_project_cost)}`
+                        : "— Not configured"
+                    )}
+                    {kpiRow(
+                      "Revenue billed",
+                      pocData?.revenue_billed != null
+                        ? `GHS ${fmt(pocData.revenue_billed)}`
+                        : "— Not configured"
+                    )}
+                    {computable && (
+                      <>
+                        {kpiRow(
+                          "Revenue recognized (POC)",
+                          pocData?.revenue_recognized != null
+                            ? `GHS ${fmt(pocData.revenue_recognized)}`
+                            : "— Not configured"
+                        )}
+                        {kpiRow(
+                          "Gross profit recognized",
+                          pocData?.gross_profit_recognized != null
+                            ? `GHS ${fmt(pocData.gross_profit_recognized)}`
+                            : "— Not configured",
+                          { borderBottom: "none" }
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </Card>
+        </>
+      )}
 
       {view === "company" && (
         <>

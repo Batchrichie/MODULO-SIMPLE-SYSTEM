@@ -335,6 +335,21 @@ export interface ProjectStats {
   wipMargin: number;
 }
 
+export interface ProjectPoc {
+  project_id: string;
+  project_name: string;
+  recognition_method: string | null;
+  poc_computable: boolean;
+  poc_percent: number | null;
+  contract_value: number | null;
+  estimated_cost: number | null;
+  actual_project_cost: number | null;
+  revenue_billed: number | null;
+  revenue_recognized: number | null;
+  gross_profit_recognized: number | null;
+  not_configured_reason: string | null;
+}
+
 export interface NavItem {
   key: string;
   label: string;
