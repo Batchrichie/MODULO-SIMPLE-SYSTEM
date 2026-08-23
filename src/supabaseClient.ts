@@ -595,6 +595,68 @@ export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promis
   return reversalEntryId as string;
 }
 
+/**
+ * Post a vendor bill atomically: inserts the bills row AND creates the matching
+ * journal entry (Dr Expense / Cr AP) in a single guarded transaction.
+ * Use this instead of direct .from('bills').upsert() which is blocked by
+ * lock_bill_payments_writes trigger.
+ */
+export async function postBill(params: {
+  bill_id: string;
+  bill_number: string;
+  date: string;
+  due_date: string | null;
+  vendor: string;
+  description: string | null;
+  project: string | null;
+  amount: number;
+  expense_account_code: string;
+}): Promise<{ bill_id: string; journal_entry_id: string }> {
+  const { data, error } = await supabase.rpc('post_bill', {
+    p_bill_id: params.bill_id,
+    p_bill_number: params.bill_number,
+    p_date: params.date,
+    p_due_date: params.due_date,
+    p_vendor: params.vendor,
+    p_description: params.description,
+    p_project: params.project,
+    p_amount: params.amount,
+    p_expense_account_code: params.expense_account_code,
+  });
+  if (error) throw error;
+  return (data ?? { bill_id: params.bill_id, journal_entry_id: '' }) as { bill_id: string; journal_entry_id: string };
+}
+
+/**
+ * Post a bill payment atomically: inserts the bill_payments row AND creates
+ * the matching journal entry (Dr AP / Cr Cash/Bank) in a single guarded
+ * transaction. Use this instead of direct .from('bill_payments').insert()
+ * which is blocked by lock_bill_payments_writes trigger.
+ */
+export async function postBillPayment(params: {
+  bill_id: string;
+  date: string;
+  amount: number;
+  method: string;
+  reference: string | null;
+  payment_account_code: string;
+}): Promise<{ bill_payment_id: string; journal_entry_id: string; bill_status: string }> {
+  const { data, error } = await supabase.rpc('post_bill_payment', {
+    p_bill_id: params.bill_id,
+    p_date: params.date,
+    p_amount: params.amount,
+    p_method: params.method,
+    p_reference: params.reference,
+    p_payment_account_code: params.payment_account_code,
+  });
+  if (error) throw error;
+  return (data ?? { bill_payment_id: '', journal_entry_id: '', bill_status: 'Partially Paid' }) as {
+    bill_payment_id: string;
+    journal_entry_id: string;
+    bill_status: string;
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Financial views / RPC                                               */
 /* ------------------------------------------------------------------ */
