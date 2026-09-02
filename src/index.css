@@ -29,3 +29,30 @@ button {
   font-family: inherit;
   cursor: pointer;
 }
+
+/* ------------------------------------------------------------------ */
+/* Dark-mode accessibility                                              */
+/* ------------------------------------------------------------------ */
+/*
+ * Several status badges intentionally use the shared --success-bg token
+ * together with GREEN_DEEP for their text. GREEN_DEEP is a dark brand
+ * colour, so that combination becomes low-contrast on the dark theme.
+ * Keep the existing component styling, but promote success/status text to
+ * a light green when the dark theme is active. This applies system-wide to
+ * Current / Open / Active / Yes and other success-state badges that use the
+ * shared success background token, including inline-styled components.
+ */
+.dark [style*="var(--success-bg)"] {
+  color: #86efac !important;
+}
+
+.dark [style*="var(--success-bg)"] svg {
+  color: #86efac !important;
+}
+
+/* Success indicators/dots nested inside a success badge should remain
+ * bright enough to distinguish them from the dark badge background. */
+.dark [style*="var(--success-bg)"] [style*="background: GREEN_DEEP"],
+.dark [style*="var(--success-bg)"] [style*="background: var(--green-deep)"] {
+  background: #86efac !important;
+}
