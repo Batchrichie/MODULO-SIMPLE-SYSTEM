@@ -814,6 +814,7 @@ export function normalizePeriodRow(raw: Record<string, unknown>): AccountingPeri
     derivedYear || (rawFyId as string) || '';
 
   return {
+    ...raw,
     id:
       (raw.id as string) ??
       (raw.period_id as string) ??
@@ -853,7 +854,6 @@ export function normalizePeriodRow(raw: Record<string, unknown>): AccountingPeri
     reopen_reason: (raw.reopen_reason as string) ?? null,
     updated_at: (raw.updated_at as string) ?? null,
     created_at: (raw.created_at as string) ?? null,
-    ...raw,
   };
 }
 
