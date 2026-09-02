@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { CalendarDays, Lock, Unlock, AlertTriangle } from "lucide-react";
+import { CalendarDays, Lock, Unlock, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react";
 import {
   INK, PAPER, PAPER_RAISED, RULE, GREEN, GREEN_DEEP,
   ALERT, MUTED, GOLD, FONT_DISPLAY, FONT_BODY,
@@ -178,6 +178,41 @@ export default function PeriodsPanel({ data, mutate }: PeriodsPanelProps) {
   const [reopenReason, setReopenReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [jeCounts] = useState(() => new Map<string, number>());
+  const [expandedFys, setExpandedFys] = useState<Set<string | number>>(() => {
+    const periods = data.accountingPeriods || [];
+    if (periods.length === 0) return new Set();
+    const currentP = periods.find((p) => p.is_current);
+    let initial: string | number | undefined;
+    if (currentP) {
+      const fy = currentP.financial_year;
+      initial = typeof fy === "number" ? fy : String(fy || "Unknown");
+    } else {
+      const byFy = new Map<string | number, AccountingPeriod[]>();
+      for (const p of periods) {
+        const fy = p.financial_year;
+        const k = typeof fy === "number" ? fy : String(fy || "Unknown");
+        if (!byFy.has(k)) byFy.set(k, []);
+        byFy.get(k)!.push(p);
+      }
+      const keys = Array.from(byFy.keys()).sort((a, b) => {
+        const an = typeof a === "number" ? a : NaN;
+        const bn = typeof b === "number" ? b : NaN;
+        if (!Number.isNaN(an) && !Number.isNaN(bn)) return bn - an;
+        return String(a).localeCompare(String(b));
+      });
+      initial = keys[0];
+    }
+    return initial !== undefined ? new Set([initial]) : new Set();
+  });
+
+  function toggleFy(fy: string | number) {
+    setExpandedFys((prev) => {
+      const next = new Set(prev);
+      if (next.has(fy)) next.delete(fy);
+      else next.add(fy);
+      return next;
+    });
+  }
 
   // Compute JE counts per period (optional column, derived from AppData.journal)
   const jeCountByPeriodId = useMemo(() => {
@@ -348,189 +383,245 @@ export default function PeriodsPanel({ data, mutate }: PeriodsPanelProps) {
         Accounting Periods
       </SectionTitle>
 
-      {grouped.map((g) => (
-        <div key={String(g.fy)} style={{ marginBottom: 22 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: 10,
-              marginBottom: 10,
-              paddingLeft: 4,
-            }}
-          >
+      {grouped.map((g) => {
+        const isExpanded = expandedFys.has(g.fy);
+        const sectionId = `fy-section-${String(g.fy).replace(/\s+/g, "-")}`;
+        return (
+          <div key={String(g.fy)} style={{ marginBottom: 22 }}>
             <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={isExpanded}
+              aria-controls={sectionId}
+              onClick={() => toggleFy(g.fy)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleFy(g.fy);
+                }
+              }}
               style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: MUTED,
-                textTransform: "uppercase",
-                letterSpacing: 0.8,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: isExpanded ? 10 : 0,
+                padding: "8px 10px 8px 6px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid transparent`,
+                userSelect: "none",
+                transition: "background 120ms ease, border-color 120ms ease",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLDivElement).style.background = "rgba(107,98,85,0.05)";
+                (e.currentTarget as HTMLDivElement).style.borderColor = `${RULE}`;
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
               }}
             >
-              Financial Year
-            </div>
-            <div
-              style={{
-                fontFamily: FONT_DISPLAY,
-                fontWeight: 700,
-                fontSize: 17,
-                color: INK,
-              }}
-            >
-              {g.fy}
-            </div>
-            {g.hasCurrent && (
-              <span
+              {isExpanded ? (
+                <ChevronDown size={18} color={MUTED as string} style={{ flexShrink: 0 }} />
+              ) : (
+                <ChevronRight size={18} color={MUTED as string} style={{ flexShrink: 0 }} />
+              )}
+              <div
                 style={{
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  color: GREEN_DEEP,
-                  background: "var(--success-bg)",
-                  padding: "2px 8px",
-                  borderRadius: 6,
-                  border: `1px solid ${GREEN}33`,
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 10,
+                  flex: 1,
+                  flexWrap: "wrap",
                 }}
               >
-                Current
-              </span>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: MUTED,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  Financial Year
+                </div>
+                <div
+                  style={{
+                    fontFamily: FONT_DISPLAY,
+                    fontWeight: 700,
+                    fontSize: 17,
+                    color: INK,
+                  }}
+                >
+                  {g.fy}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: MUTED,
+                    fontFamily: "ui-monospace, monospace",
+                  }}
+                >
+                  ({g.periods.length} {g.periods.length === 1 ? "period" : "periods"})
+                </div>
+                {g.hasCurrent && (
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                      color: GREEN_DEEP,
+                      background: "var(--success-bg)",
+                      padding: "2px 8px",
+                      borderRadius: 6,
+                      border: `1px solid ${GREEN}33`,
+                    }}
+                  >
+                    Current
+                  </span>
+                )}
+              </div>
+            </div>
+            {isExpanded && (
+              <div id={sectionId}>
+                <Card>
+                  <TableScroll>
+                    <table
+                      className="table-card"
+                      style={{ width: "100%", borderCollapse: "collapse" }}
+                    >
+                      <thead>
+                        <tr>
+                          <Th>Period</Th>
+                          <Th>Start Date</Th>
+                          <Th>End Date</Th>
+                          <Th>Status</Th>
+                          <Th>Current</Th>
+                          <Th>FY</Th>
+                          <Th>Journal Entries</Th>
+                          <Th>Closed By</Th>
+                          <Th right>Actions</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.periods.map((p) => {
+                          const status = String(p.status).toLowerCase();
+                          const isOpen = status === "open";
+                          const isClosed = status === "closed";
+                          const showActions = isOpen || isClosed;
+                          return (
+                            <tr key={p.id} className="row-hover">
+                              <Td label="Period" style={{ fontWeight: 600 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <CalendarDays size={14} color={MUTED as string} />
+                                  <div>
+                                    <div style={{ color: INK }}>{p.name}</div>
+                                    <div
+                                      style={{
+                                        fontSize: 11,
+                                        color: MUTED,
+                                        fontFamily: "ui-monospace, monospace",
+                                        marginTop: 1,
+                                      }}
+                                    >
+                                      {p.period}
+                                    </div>
+                                  </div>
+                                </div>
+                              </Td>
+                              <Td label="Start Date" style={{ fontFamily: FONT_BODY, color: MUTED }}>
+                                {p.start_date?.slice(0, 10) || "—"}
+                              </Td>
+                              <Td label="End Date" style={{ fontFamily: FONT_BODY, color: MUTED }}>
+                                {p.end_date?.slice(0, 10) || "—"}
+                              </Td>
+                              <Td label="Status">{statusPill(p.status)}</Td>
+                              <Td label="Current">
+                                {p.is_current ? (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      color: GREEN_DEEP,
+                                      background: "var(--success-bg)",
+                                      padding: "2px 8px",
+                                      borderRadius: 6,
+                                    }}
+                                  >
+                                    YES
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 12, color: MUTED }}>—</span>
+                                )}
+                              </Td>
+                              <Td label="FY" style={{ color: MUTED }}>
+                                {String(p.financial_year)}
+                              </Td>
+                              <Td label="Journal Entries" style={{ color: MUTED }}>
+                                {jeCountByPeriodId.get(p.id) ?? 0}
+                              </Td>
+                              <Td label="Closed By" style={{ color: MUTED, fontSize: 12 }}>
+                                {p.closed_at
+                                  ? (
+                                    <div>
+                                      <div>{p.closed_by || "Unknown"}</div>
+                                      <div style={{ fontSize: 10.5, opacity: 0.75 }}>
+                                        {p.closed_at.slice(0, 10)}
+                                      </div>
+                                    </div>
+                                  )
+                                  : "—"}
+                              </Td>
+                              <Td right label="Actions">
+                                {showActions && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: 6,
+                                      justifyContent: "flex-end",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    {isOpen && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        icon={Lock}
+                                        onClick={() => openClose(p)}
+                                      >
+                                        Close Period
+                                      </Button>
+                                    )}
+                                    {isClosed && (
+                                      <Button
+                                        size="sm"
+                                        variant="danger"
+                                        icon={Unlock}
+                                        onClick={() => openReopen(p)}
+                                      >
+                                        Reopen
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+                              </Td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </TableScroll>
+                </Card>
+              </div>
             )}
           </div>
-          <Card>
-            <TableScroll>
-              <table
-                className="table-card"
-                style={{ width: "100%", borderCollapse: "collapse" }}
-              >
-                <thead>
-                  <tr>
-                    <Th>Period</Th>
-                    <Th>Start Date</Th>
-                    <Th>End Date</Th>
-                    <Th>Status</Th>
-                    <Th>Current</Th>
-                    <Th>FY</Th>
-                    <Th>Journal Entries</Th>
-                    <Th>Closed By</Th>
-                    <Th right>Actions</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {g.periods.map((p) => {
-                    const status = String(p.status).toLowerCase();
-                    const isOpen = status === "open";
-                    const isClosed = status === "closed";
-                    const showActions = isOpen || isClosed;
-                    return (
-                      <tr key={p.id} className="row-hover">
-                        <Td label="Period" style={{ fontWeight: 600 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <CalendarDays size={14} color={MUTED as string} />
-                            <div>
-                              <div style={{ color: INK }}>{p.name}</div>
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  color: MUTED,
-                                  fontFamily: "ui-monospace, monospace",
-                                  marginTop: 1,
-                                }}
-                              >
-                                {p.period}
-                              </div>
-                            </div>
-                          </div>
-                        </Td>
-                        <Td label="Start Date" style={{ fontFamily: FONT_BODY, color: MUTED }}>
-                          {p.start_date?.slice(0, 10) || "—"}
-                        </Td>
-                        <Td label="End Date" style={{ fontFamily: FONT_BODY, color: MUTED }}>
-                          {p.end_date?.slice(0, 10) || "—"}
-                        </Td>
-                        <Td label="Status">{statusPill(p.status)}</Td>
-                        <Td label="Current">
-                          {p.is_current ? (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 4,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: GREEN_DEEP,
-                                background: "var(--success-bg)",
-                                padding: "2px 8px",
-                                borderRadius: 6,
-                              }}
-                            >
-                              YES
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 12, color: MUTED }}>—</span>
-                          )}
-                        </Td>
-                        <Td label="FY" style={{ color: MUTED }}>
-                          {String(p.financial_year)}
-                        </Td>
-                        <Td label="Journal Entries" style={{ color: MUTED }}>
-                          {jeCountByPeriodId.get(p.id) ?? 0}
-                        </Td>
-                        <Td label="Closed By" style={{ color: MUTED, fontSize: 12 }}>
-                          {p.closed_at
-                            ? (
-                              <div>
-                                <div>{p.closed_by || "Unknown"}</div>
-                                <div style={{ fontSize: 10.5, opacity: 0.75 }}>
-                                  {p.closed_at.slice(0, 10)}
-                                </div>
-                              </div>
-                            )
-                            : "—"}
-                        </Td>
-                        <Td right label="Actions">
-                          {showActions && (
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 6,
-                                justifyContent: "flex-end",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              {isOpen && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  icon={Lock}
-                                  onClick={() => openClose(p)}
-                                >
-                                  Close Period
-                                </Button>
-                              )}
-                              {isClosed && (
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  icon={Unlock}
-                                  onClick={() => openReopen(p)}
-                                >
-                                  Reopen
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </TableScroll>
-          </Card>
-        </div>
-      ))}
+        );
+      })}
 
       {/* ── Close Period Modal ── */}
       {closePeriod && (
