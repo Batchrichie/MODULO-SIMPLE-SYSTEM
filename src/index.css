@@ -31,17 +31,20 @@ button {
 }
 
 /* ------------------------------------------------------------------ */
-/* Dark-mode accessibility                                              */
+/* Dark-mode accessibility / contrast                                  */
 /* ------------------------------------------------------------------ */
 /*
- * Several status badges intentionally use the shared --success-bg token
- * together with GREEN_DEEP for their text. GREEN_DEEP is a dark brand
- * colour, so that combination becomes low-contrast on the dark theme.
- * Keep the existing component styling, but promote success/status text to
- * a light green when the dark theme is active. This applies system-wide to
- * Current / Open / Active / Yes and other success-state badges that use the
- * shared success background token, including inline-styled components.
+ * The application uses inline styles extensively. Some components use
+ * semantic CSS variables while others still use fixed light-theme status
+ * colours. Keep the light theme unchanged and provide a system-wide dark
+ * theme safety net here so status labels, icons and tiles remain readable.
  */
+.dark {
+  color-scheme: dark;
+}
+
+/* Success/status badges: GREEN_DEEP is intentionally dark for light mode,
+ * but is not readable against the dark success background. */
 .dark [style*="var(--success-bg)"] {
   color: #86efac !important;
 }
@@ -50,9 +53,50 @@ button {
   color: #86efac !important;
 }
 
-/* Success indicators/dots nested inside a success badge should remain
- * bright enough to distinguish them from the dark badge background. */
 .dark [style*="var(--success-bg)"] [style*="background: GREEN_DEEP"],
 .dark [style*="var(--success-bg)"] [style*="background: var(--green-deep)"] {
   background: #86efac !important;
+}
+
+/* Any component explicitly using the dark green token as foreground text
+ * must use the light success foreground in dark mode. This catches badges
+ * such as CURRENT/ACTIVE/Portal Active even when their background is not the
+ * shared success token. */
+.dark [style*="color: var(--green-deep)"] {
+  color: #86efac !important;
+}
+
+/* Blue status tiles were authored with a light-theme background. Convert
+ * them to a dark blue surface while retaining a readable blue foreground. */
+.dark [style*="#EFF6FF"] {
+  background: #172033 !important;
+}
+
+.dark [style*="#EFF6FF"] svg,
+.dark [style*="color: #3B82F6"] {
+  color: #93c5fd !important;
+}
+
+/* Gold/amber status tiles also use a light-theme background in a few
+ * dashboard/portal components. Keep the brand gold but use a dark surface. */
+.dark [style*="#FFFBEB"] {
+  background: #2A2412 !important;
+}
+
+/* Native form controls should follow the dark theme instead of the browser's
+ * default light colour scheme. */
+.dark input,
+.dark select,
+.dark textarea,
+.dark button {
+  color-scheme: dark;
+}
+
+/* Ensure disabled controls remain distinguishable without becoming black on
+ * the dark surface. */
+.dark input:disabled,
+.dark select:disabled,
+.dark textarea:disabled,
+.dark button:disabled {
+  opacity: 0.7;
 }
