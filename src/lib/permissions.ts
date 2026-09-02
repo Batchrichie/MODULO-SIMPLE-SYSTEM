@@ -3,7 +3,7 @@ import {
   BookOpen, PenLine, Scale, Users, Banknote, FileSpreadsheet,
   Plus, X, Sun, Moon, LayoutDashboard,
   ArrowUpRight, FileText, Landmark,
-  Briefcase, Receipt, Radio, Camera,
+  Briefcase, Receipt, Radio, Camera, CalendarDays,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -155,6 +155,7 @@ export const NAV_CONFIG: NavItemConfig[] = [
 
   // ── Setup (admin only — hidden from CEO) ──
   { key: "accounts",             label: "Chart of Accounts", icon: BookOpen,        token: ALL,                                         group: "Setup" },
+  { key: "accounting-periods",   label: "Accounting Periods", icon: CalendarDays,    token: ALL,                                         group: "Setup" },
   { key: "export",               label: "Export",            icon: FileSpreadsheet,  token: ALL,                                         group: "Setup" },
 
   // ── Portal tabs (non-admin) ──
@@ -183,7 +184,7 @@ const ADMIN_HIDDEN_KEYS = new Set([
  * Media Library, Field Activity).
  */
 const CEO_HIDDEN_KEYS = new Set([
-  "expenses", "bank-reconciliation", "accounts", "export",
+  "expenses", "bank-reconciliation", "accounts", "accounting-periods", "export",
   "pm-dashboard", "my-payslips", "my-statement", "media-library", "my-loans", "field-activity",
 ]);
 

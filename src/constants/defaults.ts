@@ -51,6 +51,7 @@ export const DEFAULT_DATA = {
   projects: DEFAULT_PROJECTS,
   invoices: [],
   bankReconciliations: [],
+  accountingPeriods: [],
   nextEntryNum: 1,
   nextInvoiceNum: 1,
   ssnitEmployeeRate: 0.055,

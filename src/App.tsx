@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   loadLedgerState, loadTaxConfig, saveSettings,
-  getSession, onAuthStateChange, signOut
+  getSession, onAuthStateChange, signOut, getAccountingPeriods,
 } from "./supabaseClient";
 import { loadMyProfile, type UserProfile } from "./supabase/profile";
 import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite, canApproveLoans, ALL } from "./lib/permissions";
@@ -52,6 +52,7 @@ import BankReconciliationPanel from "./panels/BankReconciliationPanel";
 import ReportsPanel from "./panels/ReportsPanel";
 import ExportPanel from "./panels/ExportPanel";
 import LoansPanel from "./panels/LoansPanel";
+import PeriodsPanel from "./panels/PeriodsPanel";
 
 import type { AppData } from "./types";
 
@@ -181,11 +182,25 @@ export default function App() {
         setProfile(p);
 
         // 2. Load data based on permissions
+        // loadTaxConfig must complete before loadLedgerState (project_memory invariant)
         const tax = await loadTaxConfig();
 
+        const postingWriteTokens = [
+          "ceo:journal:write", "ceo:invoicing:write", "ceo:bills:write",
+          "ceo:payroll:write", "ceo:employees:write", "ceo:projects:write",
+        ];
+        const shouldLoadPeriods = p && (
+          p.permissions.includes(ALL) ||
+          p.permissions.includes("ceo:access") ||
+          postingWriteTokens.some((t) => p.permissions.includes(t))
+        );
+
         if (p && (p.permissions.includes(ALL) || p.permissions.includes("ceo:access"))) {
-          // Admin or CEO: full data load
-          const remote = await loadLedgerState();
+          // Admin or CEO: full data load + periods (in parallel with ledger, does not block)
+          const [remote, periods] = await Promise.all([
+            loadLedgerState(),
+            shouldLoadPeriods ? getAccountingPeriods() : Promise.resolve([]),
+          ]);
           if (remote) {
             setData({
               ...DEFAULT_DATA,
@@ -198,6 +213,7 @@ export default function App() {
               nhilGetfundRate: tax.rates.nhilGetfundRate,
               vatRate: tax.rates.vatRate,
               brackets: tax.brackets,
+              accountingPeriods: periods || [],
             });
           } else {
             setData((prev) => ({ ...prev,
@@ -206,12 +222,16 @@ export default function App() {
               nhilGetfundRate: tax.rates.nhilGetfundRate,
               vatRate: tax.rates.vatRate,
               brackets: tax.brackets,
+              accountingPeriods: periods || prev.accountingPeriods || [],
             }));
           }
-        } else {
-          // Non-admin: load read-only data needed for portal panels
+        } else if (p) {
+          // Non-admin posting user OR portal user
           try {
-            const remote = await loadLedgerState();
+            const [remote, periods] = await Promise.all([
+              loadLedgerState(),
+              shouldLoadPeriods ? getAccountingPeriods() : Promise.resolve([]),
+            ]);
             if (remote) {
               setData((prev) => ({ ...prev,
                 companyName: remote.companyName || "",
@@ -224,6 +244,7 @@ export default function App() {
                 nhilGetfundRate: tax.rates.nhilGetfundRate,
                 vatRate: tax.rates.vatRate,
                 brackets: tax.brackets,
+                accountingPeriods: periods || prev.accountingPeriods || [],
               }));
             } else {
               setData((prev) => ({ ...prev,
@@ -232,6 +253,7 @@ export default function App() {
                 nhilGetfundRate: tax.rates.nhilGetfundRate,
                 vatRate: tax.rates.vatRate,
                 brackets: tax.brackets,
+                accountingPeriods: shouldLoadPeriods ? (periods || []) : (prev.accountingPeriods || []),
               }));
             }
           } catch (err) {
@@ -474,6 +496,7 @@ export default function App() {
                 <DashboardPanel data={data} setTab={setTab} profile={profile} />
               )}
               {effectiveTab === "accounts" && canEdit && <AccountsPanel data={data} mutate={mutate} />}
+              {effectiveTab === "accounting-periods" && canEdit && <PeriodsPanel data={data} mutate={mutate} />}
               {effectiveTab === "journal" && (adminFlag || ceoFlag) && (
                 <JournalPanel
                   data={data}

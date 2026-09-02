@@ -242,6 +242,7 @@ export interface AppData {
   payrollRuns: PayrollRun[];
   bills: Bill[];
   bankReconciliations: BankReconciliation[];
+  accountingPeriods: AccountingPeriod[];
   nextEntryNum: number;
   nextInvoiceNum: number;
   ssnitEmployeeRate: number;
@@ -348,6 +349,30 @@ export interface ProjectPoc {
   revenue_recognized: number | null;
   gross_profit_recognized: number | null;
   not_configured_reason: string | null;
+}
+
+export interface AccountingPeriod {
+  id: string;
+  period: string;
+  year: number;
+  month: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  status: 'open' | 'closed' | 'future' | 'not_open' | string;
+  is_current: boolean;
+  financial_year: number | string;
+  financial_year_id?: string | null;
+  opened_at?: string | null;
+  opened_by?: string | null;
+  closed_at?: string | null;
+  closed_by?: string | null;
+  reopened_at?: string | null;
+  reopened_by?: string | null;
+  reopen_reason?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+  [key: string]: unknown;
 }
 
 export interface NavItem {

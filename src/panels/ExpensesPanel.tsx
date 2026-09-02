@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Receipt } from 'lucide-react';
+import { Plus, Receipt, AlertTriangle } from 'lucide-react';
 import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GOLD, ALERT, MUTED, FONT_DISPLAY, FONT_BODY, FONT_MONO } from '../theme/tokens';
 import Card from '../components/ui/Card';
 import SectionTitle from '../components/ui/SectionTitle';
@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
 import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
-import { postJournalEntry, findDefaultPaymentAccount } from '../supabaseClient';
+import { postJournalEntry, findDefaultPaymentAccount, findPeriodByDate } from '../supabaseClient';
 import type { AppData, PanelProps, JournalEntry } from '../types';
 
 export default function ExpensesPanel({ data, mutate }: PanelProps) {
@@ -29,6 +29,9 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
   const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
   const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const closedExpDatePeriod = findPeriodByDate(data.accountingPeriods, date);
+  const showExpDateClosedWarn = closedExpDatePeriod?.status === "closed";
 
   function resetForm() {
     setDate(new Date().toISOString().slice(0, 10));
@@ -203,6 +206,12 @@ export default function ExpensesPanel({ data, mutate }: PanelProps) {
               <div style={{ flex: '1 1 140px' }}>
                 <label style={labelStyle}>Date *</label>
                 <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+                {showExpDateClosedWarn && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+                    <AlertTriangle size={14} />
+                    <span><b>{closedExpDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+                  </div>
+                )}
               </div>
               <div style={{ flex: '1 1 120px' }}>
                 <label style={labelStyle}>Amount (GHS) *</label>

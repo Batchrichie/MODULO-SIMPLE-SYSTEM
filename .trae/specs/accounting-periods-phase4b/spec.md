@@ -3,7 +3,7 @@
 ## Overview
 - **Summary**: Frontend wiring for the Accounting Periods subsystem. Deliverables include: (a) a dedicated Accounting Periods management page accessible through the existing nav, (b) atomic Close Period / Reopen Period actions that route exclusively through `close_accounting_period()` and `reopen_accounting_period()` RPCs (no direct table writes), (c) UX help on posting screens (JournalEntryForm, NewInvoiceForm, BillsPanel, ExpensesPanel, RecordPaymentForm) that warns users when the chosen date lands in a CLOSED period, (d) pre-load of `accounting_periods` rows into AppData so any panel can look up a period by date or by id without hitting the DB twice.
 - **Purpose**: Give the accountant a single, obvious view of the period calendar (FY → months → OPEN/CLOSED/FUTURE), allow authorized close/reopen with confirmation, and block the most common user error (posting to a closed month by accident). Backend remains the authority for period enforcement.
-- **Target Users**: Admin/accountant (permission token `all`) views + executes close/reopen. CEO (permission token `ceo:access`) views the calendar if existing policy permits, but never sees close/reopen controls. Non-admin portal users never see the page at all.
+- **Target Users**: Admin/accountant (permission token `all`) views + executes close/reopen. CEO (permission token `ceo:access`) does NOT see the Accounting Periods page — existing `CEO_HIDDEN_KEYS` policy removes the entire Setup group. Non-admin portal users never see the page at all.
 
 ## Goals
 - G1: Admin can view all accounting periods grouped by their Financial Year, with each period's status (OPEN / CLOSED / FUTURE / NOT OPEN) and period metadata from the database, no hardcoded months.
@@ -12,7 +12,7 @@
 - G4: Backend errors from the RPCs are surfaced as accounting-friendly messages (not raw Postgres), covering already-closed, permission, not-found, missing-reason, etc.
 - G5: Posting screens (JournalEntryForm, NewInvoiceForm, BillsPanel bill creation + bill payment, ExpensesPanel new expense, RecordPaymentForm invoice payment) show a non-blocking UX warning when the chosen date maps to a CLOSED period. Backend enforcement remains authoritative and must still block the write.
 - G6: Post-page-refresh status correctness — all period status comes from a fresh backend fetch; the UI never "remembers" a close/reopen result after F5.
-- G7: Posting screens and LedgerPage filter hooks are prepared to consume `accounting_periods.id` as the canonical period identifier (not `journal_entries.period`) while keeping the legacy text field in place for a later migration.
+- G7: Posting screens and LedgerPage data hooks are prepared to consume `accounting_periods.id` as the canonical period identifier (not the legacy `journal_entries.period` text field) — but this phase only adds the data hook. NO Ledger UI or filtering changes are made in this phase; the migration away from the legacy field happens separately.
 
 ## Non-Goals
 (Explicitly not built in this phase. Per task requirements #15-26.)
@@ -20,16 +20,20 @@
 - NG2: Complex multi-step close-check workflows (pre-close report, pre-close validation wizard, retained earnings closing, year-end journals).
 - NG3: Financial statement locking beyond the period-level post-block that the backend already enforces.
 - NG4: Period deletion, financial year deletion.
-- NG5: New permission tokens for period management without explicit sign-off. Close/reopen are gated exclusively on the existing `all` (Admin) token for this phase. CEO is view-only if `ceo_hidden_keys` policy allows the Setup group.
+- NG5: New permission tokens for period management without explicit sign-off. Close/reopen are gated exclusively on the existing `all` (Admin) token for this phase. CEO does NOT have access to the Accounting Periods page (Setup group excluded from CEO view by existing policy — see task #24 correction).
 - NG6: Population of contract values, estimated costs, JE creation, revenue posting, invoice/bill/payroll modification, bypassing of existing backend posting functions (out of scope for this PRD by task #18, #21).
 - NG7: Ledger page UI redesign (task #23 — only prepare the data hook, do not redesign Ledger).
 
 ## Background & Context
-- **Backend Phase 4 completed and verified.** Database objects available for frontend use:
-  - `public.accounting_periods` table: id (uuid/pk), period (e.g. "2026-01"), year (int), month (int 1-12), name ("Jan 2026"), start_date, end_date, status text enum ('open'|'closed'|'future'|'not_open'), is_current boolean, financial_year text/int, closed_at timestamptz, closed_by uuid, close_reason text, reopen_reason text, updated_at, created_at, and whatever additional columns the backend places on the row.
-  - `public.vw_accounting_periods` (view, optional fallback if direct SELECT is needed).
-  - `public.close_accounting_period(p_period_id, p_reason?)` RPC: returns the period row or throws; enforces authorization, row lock, status transition, audit.
-  - `public.reopen_accounting_period(p_period_id, p_reason)` RPC: requires reason, returns row or throws; same guards.
+- **Backend Phase 4 completed and verified.** Live Supabase database state (confirmed by direct runtime probe against the production Supabase endpoint on 2026-08-23):
+  - `public.accounting_periods` table **exists** (schema cache returned hint to use it instead of the non-existent view). Table is **currently empty (0 rows)** in the live DB probe — the column-level schema is therefore **not guessable from a sample row**. The frontend adapter must map DB columns to UI fields via a `normalizePeriodRow(rawRow)` function with a fallback chain (see FR-2 correction below).
+  - `public.vw_accounting_periods` view **does not exist** (confirmed: `PGRST205 "Could not find the table 'public.vw_accounting_periods'"`). The spec previously referenced this view — **reference removed**. All reads come from `public.accounting_periods` directly.
+  - `public.close_accounting_period(p_period_id uuid, p_reason text?)` RPC **exists with uuid id param** (probe with zero-id returned `Accounting period 00000000-0000-0000-0000-000000000000 not found` — semantic error, not schema error). Attempts to call it with `p_period_code` / `p_period` text params returned **function not found**, confirming only the uuid-id signature is exposed.
+  - `public.reopen_accounting_period(p_period_id uuid, p_reason text)` RPC **exists with uuid id param + required reason** (probe returned the same not-found semantic error; wrong-param variants returned function-not-found).
+- **Explicitly unsupported assumptions removed from original spec draft** after this audit:
+  - ❌ There is no `vw_accounting_periods` view.
+  - ❌ Column names `period`, `year`, `month`, `name`, `financial_year` were NOT verified against live data. Implementation MUST use the normalizePeriodRow adapter with fallback chains for these columns.
+  - ❌ CEO visibility: previously "CEO may view the page". Corrected to match the user's task #24 verdict + existing `CEO_HIDDEN_KEYS` policy: CEO does NOT see the page.
 - **Current frontend state (Phase 4 Part B start):** No `accounting_period` reference anywhere in the frontend (0 grep matches for `accounting_period`, `period_id`, `AccountingPeriod`). Period filtering in LedgerPage uses text-based `period.slice(0,7)` / ytd / mtd / custom date ranges; `journal_entries.period` column (YYYY-MM text) is currently the only period identifier shown on posting screens.
 - **Existing design system:** `src/components/ui/*` (`Button`, `Card`, `Modal`, `SectionTitle`, `Notifications`, `MiniTable`, `Td`, `Th`, styles.ts) + tokens.ts (`INK`, `MUTED`, `RULE`, `SUCCESS`, `ALERT`, `WARN`, `FONT_MONO`, etc.). New period page MUST use these primitives (task #17 — no new visual language).
 - **Navigation architecture:** Single `NAV_CONFIG[]` source in `src/lib/permissions.ts`. Groups: Overview / Operations / Setup / Portal / Account. Accounting Periods belongs in the Setup group alongside Chart of Accounts and Export.
@@ -38,8 +42,40 @@
 
 ## Functional Requirements
 - **FR-1 (Navigation):** Add `accounting-periods` nav key to NAV_CONFIG Setup group, token `all`, label "Accounting Periods", existing lucide icon (Calendar / CalendarDays). Import the matching PeriodsPanel component in App.tsx, add a `case "accounting-periods"` panel switch case alongside other Setup pages.
-- **FR-2 (Data model):** Define `AccountingPeriod` interface in `types.ts` matching `public.accounting_periods` columns. Also add `accountingPeriods: AccountingPeriod[]` to AppData interface. Add a supabaseClient helper `getAccountingPeriods()` that performs a SELECT (either from the view or table) ordered by year, month. Add optional wrappers `closeAccountingPeriodRpc({periodId, reason?})` and `reopenAccountingPeriodRpc({periodId, reason})` to call the respective RPCs.
-- **FR-3 (AppData load):** In `App.tsx` central `loadAll()`/initial load sequence, after profile load and before ledger state load, call `getAccountingPeriods()` for ALL users only (skip for non-Admin/non-CEO since they cannot see the page and do not post). Mutate into `data.accountingPeriods`. The exact sequence position: follow same constraints as existing App.tsx load order rules (loadTaxConfig and auth before loadLedgerState) — period load is independent of ledger state so it can run in a parallel Promise.
+- **FR-2 (Data model + adapter pattern — CORRECTED SPEC per live backend audit):**
+  - Define `AccountingPeriod` interface in `types.ts` with the UI-side canonical field names (no database assumptions). This canonical UI record MUST have these fields so the rest of the frontend can rely on them:
+    - `id: string` — the UUID primary key (used for all RPC calls).
+    - `period: string` — canonical YYYY-MM text code (e.g. "2026-09").
+    - `year: number` — integer year (for grouping by FY).
+    - `month: number` — 1–12 integer (for sort order within FY).
+    - `name: string` — display label (e.g. "Sep 2026").
+    - `start_date: string` — ISO date (YYYY-MM-DD).
+    - `end_date: string` — ISO date.
+    - `status: string` — one of `"open" | "closed" | "future" | "not_open"` (literal values or any broader string; status pills will match case-insensitively against these keywords + fallback to NOT OPEN for unknowns).
+    - `is_current: boolean` — indicates the current period.
+    - `financial_year: number | string` — the FY column for grouping.
+    - Optional nullable fields for audit metadata: `closed_at?: string | null`, `closed_by?: string | null` (UUID or user identifier), `close_reason?: string | null`, `reopen_reason?: string | null`, `updated_at?: string | null`, `created_at?: string | null`.
+    - Add any extra columns the backend exposes as `[key: string]: unknown` index signature or optional fields so row normalization never drops data.
+  - Add `accountingPeriods: AccountingPeriod[]` to AppData interface.
+  - In supabaseClient.ts, add **two** adapters that guard against the unknown live DB column names (since the live table is empty and names were not verifiable from the probe):
+    1. `normalizePeriodRow(raw: Record<string, unknown>): AccountingPeriod` — pure function with a fallback chain for each canonical UI field:
+       - `id` → `raw.id ?? raw.period_id ?? raw.uuid ?? raw.pk`
+       - `period` → `raw.period_code ?? raw.period ?? raw.period_key ?? raw.period_month`
+       - `year` → `raw.year ?? raw.calendar_year ?? raw.fy_year ?? (derived: if period starts with YYYY-, slice that)`
+       - `month` → `raw.month ?? raw.calendar_month ?? (derived: period.slice(-2))`
+       - `name` → `raw.period_name ?? raw.name ?? raw.display_name ?? raw.label`
+       - `start_date` → `raw.start_date ?? raw.start ?? raw.period_start ?? raw.from_date`
+       - `end_date` → `raw.end_date ?? raw.end ?? raw.period_end ?? raw.to_date`
+       - `status` → lowercased `raw.status ?? raw.period_status ?? raw.state ?? "not_open"`
+       - `is_current` → `raw.is_current ?? raw.current_period ?? raw.current ?? false`
+       - `financial_year` → `raw.financial_year ?? raw.financial_year_id ?? raw.fy ?? raw.year` (coerce safely to string or number)
+       - Audit fields fall back on their camelCase / snake_case variants and stay null if absent.
+    2. `getAccountingPeriods(): Promise<AccountingPeriod[]>` — SELECT from `public.accounting_periods` (NOT the now-confirmed-nonexistent vw_accounting_periods). Apply `.order` by any column combo we can detect, or sort client-side with `(a,b) => a.year - b.year || a.month - b.month` as a belt-and-suspenders step, since the DB sort column is unknown.
+  - In supabaseClient.ts, add the now-confirmed-UUID RPC wrappers matching the exact backend signatures from probe:
+    1. `closeAccountingPeriodRpc(params: { periodId: string; reason?: string | null }): Promise<AccountingPeriod | null>` — calls `supabase.rpc('close_accounting_period', { p_period_id: params.periodId, p_reason: params.reason ?? null })` and returns `normalizePeriodRow(data[0] ?? data)` if truthy.
+    2. `reopenAccountingPeriodRpc(params: { periodId: string; reason: string }): Promise<AccountingPeriod | null>` — calls `supabase.rpc('reopen_accounting_period', { p_period_id: params.periodId, p_reason: params.reason })` (reason is mandatory).
+  - IMPORTANT: The frontend is NOT implementing assumed column names. Any time the live schema uses different names, only `normalizePeriodRow` needs to be edited; the rest of the application is insulated.
+- **FR-3 (AppData load — CORRECTED rule per user instruction #3):** In `App.tsx` central `loadAll()`/initial load sequence, after profile load and before ledger state load, call `getAccountingPeriods()` for **authenticated users who have access to financial posting screens or the Accounting Periods page**. Practically, this means: run the load for any user who has the `ALL` token OR any of the posting-related write tokens (`CEO_JOURNAL_WRITE`, `CEO_INVOICING_WRITE`, `CEO_BILLS_WRITE`, `CEO_PAYROLL_WRITE`, `CEO_EMPLOYEES_WRITE`, `CEO_PROJECTS_WRITE`, `ceo:access`) — so posting-screen warnings fire for anyone who posts to the ledger. Skip it ONLY for pure non-posting portal users (permissions limited to DASHBOARD_OPS/DASHBOARD_LIMITED/PROJECTS_VIEW/PAYROLL_SELF/PAYROLL_STATEMENT/FIELD_ACTIVITY_VIEW/LOANS_SELF/…). Mutate the result into `data.accountingPeriods`. Follow the existing App.tsx load-order constraint (loadTaxConfig and auth resolution complete before loadLedgerState). Periods list load can happen in parallel with other non-dependent fetches; it does not block ledger state load. If the backend returns an empty list (as the probe did), the list stays empty, banners show "No periods" where appropriate, and no error surfaces to the user.
 - **FR-4 (Periods Panel structure):** `src/panels/PeriodsPanel.tsx` displays periods as an FY hierarchy. For every distinct `financial_year` in `accountingPeriods`, render a section titled "Financial Year — {year}". Inside each FY, list periods in month order as rows (no hardcoded months, only rows actually present in `data.accountingPeriods` filtered to that FY). Use `MiniTable` or equivalent existing table primitive. Period row columns at minimum: Period (name, e.g. "Jan 2026"), Start Date, End Date, Status, Current Period, Financial Year. Optional columns ONLY if backend exposes them: Number of journal entries (sum of JE counts), Last activity (max updated_at / closed_at), Closed by, Closed date. Do not manufacture these columns.
 - **FR-5 (Status display — task #17):** Status is rendered as a coloured pill using existing tokens.ts colours:
   - OPEN → green pill (`SUCCESS` colour + light green bg, same style as other status chips seen in Ledger/Journal panels). Text: OPEN.
@@ -91,26 +127,28 @@
 
 ## Constraints
 - **Technical:**
-  - Backend tables/RPCs delivered — frontend must not modify them; use exactly their public signatures (`close_accounting_period(p_period_id, p_reason?)`, `reopen_accounting_period(p_period_id, p_reason)`). If backend signature differs from assumption (e.g., `p_period_id` is a string period-code not uuid), the `closeAccountingPeriodRpc` wrapper is adjusted to match — panel code unchanged.
+  - Backend tables/RPCs delivered — frontend must not modify them; use exactly their public signatures as verified by runtime probe: `close_accounting_period(p_period_id uuid, p_reason text?)`, `reopen_accounting_period(p_period_id uuid, p_reason text)`. p_period_code / p_period text param variants DO NOT EXIST (function not found from probe). The RPC wrapper signatures in FR-2 therefore MUST use the uuid-id form; if backend changes later, only the wrapper is updated, panel code unchanged.
   - App.tsx load order constraints (from project_memory): `loadTaxConfig` and auth resolution before `loadLedgerState`. Periods list load must not break this invariant.
   - Supabase client call pattern must match `supabaseClient.ts` style (async wrappers, `console.error` on error, typed return, no `any` leaks into components).
   - No new runtime dependencies.
+  - Live `public.accounting_periods` table is empty in the probed DB. The empty state must render gracefully ("No periods found. Contact an administrator to create accounting periods in the database.") — no null reference errors.
 - **Business (task #26):** NO auto-close / auto-reopen / complex close wizard / retained earnings / deletion of periods or FYs. All are separate accounting-control decisions.
-- **Dependencies:** Phase 4 Backend Task 4 (periods + close_accounting_period / reopen_accounting_period RPCs) is complete and verified on the current database. (Task instruction: "Only start this section after [BACKEND] passes its tests" — assumed satisfied by the user triggering this task.)
-- **Role visibility:** Existing `CEO_HIDDEN_KEYS` Setup group exclusion applies. No new permission tokens created. CEO is read-only and cannot view the page by default.
+- **Dependencies:** Phase 4 Backend Task 4 (periods + close_accounting_period / reopen_accounting_period RPCs) is complete and verified on the current database. (Task instruction: "Only start this section after [BACKEND] passes its tests" — satisfied per user's message.)
+- **Role visibility:** Existing `CEO_HIDDEN_KEYS` Setup group exclusion applies. No new permission tokens created. CEO does NOT have access to the Accounting Periods nav or page. Non-admin portal users have no access.
 
 ## Assumptions
-- A-1: `public.accounting_periods` contains at least the 12 months for the current financial year and has `start_date`, `end_date` as DATE columns, `status` as text/enum, `is_current` as boolean, `financial_year` as int/text. If any of these columns are absent or named differently, the `AccountingPeriod` interface and `getAccountingPeriods()` SELECT list are adjusted at implementation time without changing this spec.
-- A-2: `close_accounting_period` accepts one positional or named parameter for period identification (either uuid `id` or string `period` text code); the wrapper function handles the correct one. Reopen RPC additionally REQUIRES `reason`. Close RPC optionally requires reason — the wrapper passes whatever the backend accepts, and the translation layer handles the "reason required" error.
-- A-3: `data.journal` already loaded in AppData — if an "Number of journal entries" column is added, it is computed client-side as `data.journal.filter(je => je.date between start and end).length`; no new RPC count is introduced (keeps FR-4 contract of "display info actually available, no manufacture").
-- A-4: `Notifications` component in `components/ui/Notifications.tsx` has a simple `notify.success(msg)` style interface exposed already, or via App-level callback — if it's toast-only, we use the same pattern as any other existing success notification in the app (the build step will catch any interface mismatch).
-- A-5: Close Period reason requirement is ultimately enforced by the RPC. The client-side marks it required if the UI flag or the backend error pattern indicates it (task #18 conditional).
+- A-1: The live `accounting_periods` table will be seeded with at least 12 months before the accountant actually starts using the page. The empty-state banner is the correct presentation until the seed is done.
+- A-2: `public.accounting_periods` columns contain the semantic fields that the `normalizePeriodRow` fallback chain can discover (id/period/year/month/name/start_date/end_date/status/is_current/financial_year + audit cols). If additional columns exist outside the fallback chains, `normalizePeriodRow` is extended with new fallbacks ONLY at T1 implementation time (cheap, single edit) — no broader refactor of panels required.
+- A-3: `data.journal` already loaded in AppData. If a "Number of journal entries" optional column is shown, compute it from `data.journal` client-side (trivial filter between start_date/end_date). Do not add new backend count RPC.
+- A-4: `Notifications` component in `components/ui/Notifications.tsx` exposes the same pattern used elsewhere; if it needs a callback from the page, the pattern used by the existing Journal save / Export success / BillsPanel save is reused, not rebuilt.
+- A-5: Close RPC `p_reason` is optional in the Postgres signature (probe with reason passed → not-found semantic error, not missing-param error). If the backend later enforces it, the FR-8 error message translation for "reason required" catches it.
 
 ## Open Questions
-(Resolved before Plan.)
-- [ ] **Q1:** What is the exact function signature of `close_accounting_period` and `reopen_accounting_period`? Specifically: (a) are parameters named `p_period_id` (uuid) or `p_period` (text "2026-09") or both; (b) is `p_reason` a required param of close, or only reopen? Answered by direct inspection of RPC at implementation time or user clarification. If backend passes both signatures, the wrapper prefers the uuid id path.
-- [ ] **Q2:** Does CEO role actually require read-only view of the page? The task #24 says: "Users without period-management authority should be able to view periods if the existing policy permits it". Existing policy via `CEO_HIDDEN_KEYS` strips Setup group from CEO entirely. If CEO needs read-only view, the nav item key would need to be removed from `CEO_HIDDEN_KEYS` AND the Setup group filter would need adjustment. DEFAULT in this spec is to follow existing policy (CEO does NOT see the page, consistent with the existing Setup group exclusions). If the user wants CEO read-only, it is handled as a spec change.
-- [ ] **Q3:** Are `Number of journal entries / Last activity / Closed by / Closed date` actually present on the vw/table as ready-to-read columns (e.g., computed columns or stored columns) vs requiring aggregation joins? Spec default (FR-4): treat these as OPTIONAL — displayed only if the interface row exposes them without client-side joins/aggregation beyond what's trivial from AppData (A-3 for JE count).
+(All resolved per live probe / user instruction #1-#4.)
+- [x] **Q1 (RPC signature):** `close_accounting_period(p_period_id uuid, p_reason?)` and `reopen_accounting_period(p_period_id uuid, p_reason text required)` CONFIRMED by live probe (zero-id returned "not found"; wrong-param variants returned "function not found").
+- [x] **Q2 (CEO visibility):** CEO does NOT see the Accounting Periods page (per user instruction #2 / task #24 — keep existing Setup group exclusion via CEO_HIDDEN_KEYS).
+- [x] **Q3 (Optional meta columns):** Display only where trivially available (JE count from AppData.journal, other audit fields via normalizePeriodRow fallback chain). No joins/new RPCs.
+- [x] **Q4 (vw_accounting_periods):** Does NOT exist (PGRST205). All reads via public.accounting_periods directly.
 
 ## Acceptance Criteria
 

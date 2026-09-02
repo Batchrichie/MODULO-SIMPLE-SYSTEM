@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { Check } from "lucide-react";
-import { INK, MUTED, FONT_BODY } from "../theme/tokens";
+import { Check, AlertTriangle } from "lucide-react";
+import { INK, MUTED, FONT_BODY, ALERT } from "../theme/tokens";
 import Button from "../components/ui/Button";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { getInvoiceBalance, getInvoicePaidAmount } from "../utils/invoiceUtils";
-import { db, postJournalEntry, findAccountByRole, findDefaultPaymentAccount } from "../supabaseClient";
+import { db, postJournalEntry, findAccountByRole, findDefaultPaymentAccount, findPeriodByDate } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
 import type { RecordPaymentFormProps } from "../types";
@@ -21,6 +21,9 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
   const [reference, setReference] = useState("");
 
   const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
+
+  const closedPayDatePeriod = findPeriodByDate(data.accountingPeriods, date);
+  const showPayDateClosedWarn = closedPayDatePeriod?.status === "closed";
 
   async function record() {
     const amt = parseFloat(amount);
@@ -126,6 +129,12 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         <div style={{ flex: "1 1 150px" }}>
           <label style={labelStyle}>Date</label>
           <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+          {showPayDateClosedWarn && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+              <AlertTriangle size={14} />
+              <span><b>{closedPayDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+            </div>
+          )}
         </div>
         <div style={{ flex: "1 1 150px" }}>
           <label style={labelStyle}>Amount (GHS)</label>

@@ -20,7 +20,7 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { assertJournalEntry } from "../validation";
-import { postJournalEntry } from "../supabaseClient";
+import { postJournalEntry, findPeriodByDate } from "../supabaseClient";
 
 /* ---------- helpers ---------- */
 
@@ -79,6 +79,9 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
   const totalCredit = lines.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
   const diff = Math.round((totalDebit - totalCredit) * 100) / 100;
   const balanced = diff === 0 && totalDebit > 0;
+
+  const closedDatePeriod = findPeriodByDate(data.accountingPeriods, date);
+  const showDateClosedWarn = closedDatePeriod?.status === "closed";
 
   function updateLine(i: number, field: string, value: string) {
     setLines((ls) =>
@@ -173,6 +176,12 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
+          {showDateClosedWarn && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+              <AlertTriangle size={14} />
+              <span><b>{closedDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+            </div>
+          )}
         </div>
         <div style={{ flex: "3 1 250px" }}>
           <label style={labelStyle}>Description</label>

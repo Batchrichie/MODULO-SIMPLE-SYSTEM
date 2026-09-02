@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Trash2, Check } from "lucide-react";
-import { INK, RULE, MUTED, FONT_MONO, FONT_BODY } from "../theme/tokens";
+import { Plus, Trash2, Check, AlertTriangle } from "lucide-react";
+import { INK, RULE, MUTED, FONT_MONO, FONT_BODY, ALERT } from "../theme/tokens";
 import TableScroll from "../components/ui/TableScroll";
 import Th from "../components/ui/Th";
 import Td from "../components/ui/Td";
@@ -10,7 +10,7 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import { fmt, projectName } from "../utils/format";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
-import { supabase, findAccountByRole } from "../supabaseClient";
+import { supabase, findAccountByRole, findPeriodByDate } from "../supabaseClient";
 import type { NewInvoiceFormProps } from "../types";
 
 export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormProps) {
@@ -66,6 +66,11 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       ),
     [items, discountPct, data, chargeNhil, chargeVat]
   );
+
+  const closedInvDatePeriod = findPeriodByDate(data.accountingPeriods, date);
+  const showInvDateClosedWarn = closedInvDatePeriod?.status === "closed";
+  const closedDueDatePeriod = dueDate ? findPeriodByDate(data.accountingPeriods, dueDate) : null;
+  const showDueDateClosedWarn = closedDueDatePeriod?.status === "closed";
 
   function updateItem(i, field, val) {
     setItems((its) => its.map((it, idx) => (idx === i ? { ...it, [field]: val } : it)));
@@ -246,8 +251,26 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
         <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>Location</label><input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} /></div>
         <div style={{ flex: "2 1 300px" }}><label style={labelStyle}>What's this for (appears on receipts)</label><input style={inputStyle} value={forText} onChange={(e) => setForText(e.target.value)} placeholder="Construction of Four (4) Bedroom Residential Facility" /></div>
-        <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Date</label><input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></div>
-        <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Due date</label><input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+        <div style={{ flex: "1 1 120px" }}>
+          <label style={labelStyle}>Date</label>
+          <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+          {showInvDateClosedWarn && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+              <AlertTriangle size={14} />
+              <span><b>{closedInvDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+            </div>
+          )}
+        </div>
+        <div style={{ flex: "1 1 120px" }}>
+          <label style={labelStyle}>Due date</label>
+          <input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          {showDueDateClosedWarn && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+              <AlertTriangle size={14} />
+              <span><b>{closedDueDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+            </div>
+          )}
+        </div>
         <div style={{ flex: "1 1 100px" }}><label style={labelStyle}>Currency</label><select style={inputStyle} value={currency} onChange={(e) => setCurrency(e.target.value)}><option value="GHS">GHS</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="ZAR">ZAR</option><option value="NGN">NGN</option></select></div>
         {currency !== "GHS" && <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>{`Exchange rate (GHS per ${currency})`}</label><input style={inputStyle} value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value.replace(/[^0-9.]/g, ""))} /></div>}
         <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>Revenue account</label><select style={inputStyle} value={revenueAccount} onChange={(e) => setRevenueAccount(e.target.value)}>{revenueOptions.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}</select></div>

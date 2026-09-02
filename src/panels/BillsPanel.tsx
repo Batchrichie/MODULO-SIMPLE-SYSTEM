@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Banknote, Check } from "lucide-react";
+import { Plus, Banknote, Check, AlertTriangle } from "lucide-react";
 import { INK, GREEN, ALERT, MUTED, FONT_BODY } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { findAccountByRole, findDefaultPaymentAccount, postBill, postBillPayment } from "../supabaseClient";
+import { findAccountByRole, findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
 import type { PanelProps, Bill, BillPayment, JournalEntry } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
@@ -30,6 +30,11 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
   const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
   const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const closedBillDatePeriod = findPeriodByDate(data.accountingPeriods, date);
+  const showBillDateClosedWarn = closedBillDatePeriod?.status === "closed";
+  const closedBillDueDatePeriod = dueDate ? findPeriodByDate(data.accountingPeriods, dueDate) : null;
+  const showBillDueDateClosedWarn = closedBillDueDatePeriod?.status === "closed";
 
   async function createBill() {
     const amt = parseFloat(amount);
@@ -207,8 +212,26 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Vendor</label><input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" /></div>
           <div style={{ flex: "2 1 200px" }}><label style={labelStyle}>Description</label><input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Diesel for generators" /></div>
           <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Amount (GHS)</label><input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" /></div>
-          <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Date</label><input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></div>
-          <div style={{ flex: "1 1 120px" }}><label style={labelStyle}>Due Date</label><input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+          <div style={{ flex: "1 1 120px" }}>
+            <label style={labelStyle}>Date</label>
+            <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+            {showBillDateClosedWarn && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+                <AlertTriangle size={14} />
+                <span><b>{closedBillDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+              </div>
+            )}
+          </div>
+          <div style={{ flex: "1 1 120px" }}>
+            <label style={labelStyle}>Due Date</label>
+            <input type="date" style={inputStyle} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            {showBillDueDateClosedWarn && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+                <AlertTriangle size={14} />
+                <span><b>{closedBillDueDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+              </div>
+            )}
+          </div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
           <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
@@ -219,7 +242,16 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: MUTED }}>Outstanding: <b style={{ color: INK }}>GHS {fmt(payingBill.amount - payingBill.payments.reduce((s, p) => s + p.amount, 0))}</b></div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Payment Date</label><input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div style={{ flex: "1 1 150px" }}>
+              <label style={labelStyle}>Payment Date</label>
+              <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+              {showBillDateClosedWarn && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
+                  <AlertTriangle size={14} />
+                  <span><b>{closedBillDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
+                </div>
+              )}
+            </div>
             <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Amount (GHS)</label><input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" /></div>
             <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>Paid from *</label><AccountSelect value={paymentAccount} onChange={setPaymentAccount} accounts={paymentAccounts} placeholder="Search payment account…" /></div>
           </div>

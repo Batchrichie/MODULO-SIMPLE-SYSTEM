@@ -22,6 +22,7 @@ import type {
   BankReconciliation,
   BankReconciliationItem,
   ProjectPoc,
+  AccountingPeriod,
 } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -759,6 +760,177 @@ export async function getProjectPoc(projectId: string): Promise<ProjectPoc | nul
   if (!arr) return null;
   const row = Array.isArray(arr) ? arr[0] : arr;
   return (row ?? null) as ProjectPoc | null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Accounting Periods                                                  */
+/* ------------------------------------------------------------------ */
+
+export function normalizePeriodRow(raw: Record<string, unknown>): AccountingPeriod {
+  const periodCode =
+    (raw.period_code as string) ??
+    (raw.period as string) ??
+    (raw.period_key as string) ??
+    (raw.period_month as string) ??
+    '';
+
+  const startDate =
+    (raw.start_date as string) ??
+    (raw.start as string) ??
+    (raw.period_start as string) ??
+    (raw.from_date as string) ??
+    '';
+
+  const derivedYear: number = (() => {
+    if (periodCode && /^\d{4}-\d{2}/.test(periodCode)) return parseInt(periodCode.slice(0, 4), 10);
+    if (startDate && /^\d{4}-\d{2}-\d{2}/.test(startDate)) return parseInt(startDate.slice(0, 4), 10);
+    const rawYear = raw.year ?? raw.calendar_year ?? raw.fy_year;
+    if (typeof rawYear === 'number') return rawYear;
+    if (typeof rawYear === 'string' && /^\d{4}$/.test(rawYear)) return parseInt(rawYear, 10);
+    return 0;
+  })();
+
+  const derivedMonth: number = (() => {
+    if (periodCode && /^\d{4}-\d{2}/.test(periodCode)) return parseInt(periodCode.slice(5, 7), 10);
+    if (startDate && /^\d{4}-\d{2}-\d{2}/.test(startDate)) return parseInt(startDate.slice(5, 7), 10);
+    const rawMonth = raw.month ?? raw.calendar_month;
+    if (typeof rawMonth === 'number') return rawMonth;
+    if (typeof rawMonth === 'string' && /^\d{1,2}$/.test(rawMonth)) return parseInt(rawMonth, 10);
+    return 0;
+  })();
+
+  const rawStatus =
+    (raw.status as string) ??
+    (raw.period_status as string) ??
+    (raw.state as string) ??
+    'NOT_OPEN';
+  const status = String(rawStatus).toLowerCase();
+
+  const rawFyId = raw.financial_year_id;
+  const rawFy = raw.financial_year ?? raw.fy ?? raw.year;
+  const financial_year: number | string =
+    typeof rawFy === 'number' ? rawFy :
+    typeof rawFy === 'string' && /^\d{4}$/.test(rawFy) ? parseInt(rawFy, 10) :
+    derivedYear || (rawFyId as string) || '';
+
+  return {
+    id:
+      (raw.id as string) ??
+      (raw.period_id as string) ??
+      (raw.uuid as string) ??
+      (raw.pk as string) ??
+      '',
+    period: periodCode,
+    year: derivedYear,
+    month: derivedMonth,
+    name:
+      (raw.period_name as string) ??
+      (raw.name as string) ??
+      (raw.display_name as string) ??
+      (raw.label as string) ??
+      periodCode,
+    start_date: startDate,
+    end_date:
+      (raw.end_date as string) ??
+      (raw.end as string) ??
+      (raw.period_end as string) ??
+      (raw.to_date as string) ??
+      '',
+    status,
+    is_current:
+      (raw.is_current as boolean) ??
+      (raw.current_period as boolean) ??
+      (raw.current as boolean) ??
+      false,
+    financial_year,
+    financial_year_id: (rawFyId as string) ?? null,
+    opened_at: (raw.opened_at as string) ?? null,
+    opened_by: (raw.opened_by as string) ?? null,
+    closed_at: (raw.closed_at as string) ?? null,
+    closed_by: (raw.closed_by as string) ?? null,
+    reopened_at: (raw.reopened_at as string) ?? null,
+    reopened_by: (raw.reopened_by as string) ?? null,
+    reopen_reason: (raw.reopen_reason as string) ?? null,
+    updated_at: (raw.updated_at as string) ?? null,
+    created_at: (raw.created_at as string) ?? null,
+    ...raw,
+  };
+}
+
+export async function getAccountingPeriods(): Promise<AccountingPeriod[]> {
+  try {
+    const { data, error } = await supabase.from('accounting_periods').select('*');
+    if (error) {
+      console.error('Error fetching accounting_periods:', error);
+      return [];
+    }
+    const rows = ((data ?? []) as Record<string, unknown>[]).map(normalizePeriodRow);
+    rows.sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      if (a.month !== b.month) return a.month - b.month;
+      return 0;
+    });
+    return rows;
+  } catch (err) {
+    console.error('Unexpected error in getAccountingPeriods:', err);
+    return [];
+  }
+}
+
+export async function closeAccountingPeriodRpc(params: {
+  periodId: string;
+  reason?: string | null;
+}): Promise<AccountingPeriod | null> {
+  try {
+    const { data, error } = await supabase.rpc('close_accounting_period', {
+      p_period_id: params.periodId,
+      p_reason: params.reason ?? null,
+    });
+    if (error) throw error;
+    if (!data) return null;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return normalizePeriodRow(row as Record<string, unknown>);
+  } catch (err) {
+    console.error('closeAccountingPeriodRpc failed:', err);
+    throw err;
+  }
+}
+
+export async function reopenAccountingPeriodRpc(params: {
+  periodId: string;
+  reason: string;
+}): Promise<AccountingPeriod | null> {
+  try {
+    const { data, error } = await supabase.rpc('reopen_accounting_period', {
+      p_period_id: params.periodId,
+      p_reason: params.reason,
+    });
+    if (error) throw error;
+    if (!data) return null;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return normalizePeriodRow(row as Record<string, unknown>);
+  } catch (err) {
+    console.error('reopenAccountingPeriodRpc failed:', err);
+    throw err;
+  }
+}
+
+export function findPeriodByDate(
+  periods: AccountingPeriod[],
+  date: string | null | undefined
+): AccountingPeriod | null {
+  if (!periods || periods.length === 0 || !date) return null;
+  const d = date.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  for (const p of periods) {
+    if (!p.start_date || !p.end_date) continue;
+    const s = p.start_date.slice(0, 10);
+    const e = p.end_date.slice(0, 10);
+    if (d >= s && d <= e) return p;
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
