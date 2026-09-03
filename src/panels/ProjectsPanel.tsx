@@ -9,7 +9,7 @@ import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
 import { projectStatsFn } from "../utils/dashboardUtils";
-import { db } from "../supabaseClient";
+import { db, loadLedgerState, supabase } from "../supabaseClient";
 import { assertProject } from "../validation";
 import { loadMilestones, insertMilestones, type MilestoneRow } from "../supabase/fieldOps";
 import type { AppData, Project } from "../types";
@@ -310,7 +310,52 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     resetForm();
   }
 
-  function saveProject() {
+  async function upsertProjectMetadata(project: Pick<Project, "id" | "name" | "status" | "projectType" | "recognitionMethod">) {
+    const { error } = await supabase.from("projects").upsert({
+      id: project.id,
+      name: project.name,
+      status: project.status ?? "Active",
+      project_type: project.projectType ?? "Construction Contract",
+      recognition_method: project.recognitionMethod ?? "POC",
+    });
+
+    if (error) {
+      throw new Error(error.message || "Failed to save project metadata.");
+    }
+  }
+
+  async function saveProjectFinancialValue(
+    projectId: string,
+    field: "contractValue" | "estimatedCost",
+    value: number,
+    reasonOverride?: string | null
+  ) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      throw new Error(`${field === "contractValue" ? "Contract Value" : "Estimated Cost"} must be zero or greater.`);
+    }
+
+    const rpcField = field === "contractValue" ? "contract_value" : "estimated_cost";
+    const reason = (reasonOverride ?? "").trim();
+    const { data: historyId, error } = await supabase.rpc("record_project_transaction_value", {
+      p_project: projectId,
+      p_field: rpcField,
+      p_new_value: numericValue,
+      p_effective_date: new Date().toISOString().slice(0, 10),
+      p_reason: reason || null,
+    });
+
+    if (error) {
+      throw new Error(error.message || `Failed to save ${field === "contractValue" ? "Contract Value" : "Estimated Cost"}.`);
+    }
+    if (!historyId) {
+      throw new Error(`The ${field === "contractValue" ? "Contract Value" : "Estimated Cost"} change did not create a history record.`);
+    }
+
+    return historyId;
+  }
+
+  async function saveProject() {
     const err = assertProject({
       name: form.name,
       contractValue: parseFloat(form.contractValue) || 0,
@@ -320,40 +365,84 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
       window.alert(err);
       return;
     }
+
+    const projectId = editingProjectId || generateProjectId(form.name);
     const baseProject = {
-      id:
-        editingProjectId || generateProjectId(form.name),
+      id: projectId,
       name: form.name.trim(),
       status: form.status,
       projectType: form.projectType,
       recognitionMethod: form.recognitionMethod,
       contractValue: parseFloat(form.contractValue) || 0,
       estimatedCost: parseFloat(form.estimatedCost) || 0,
-    };
+    } satisfies Project;
 
-    if (editingProjectId) {
-      mutate((d) => ({
-        ...d,
-        projects: d.projects.map((p) =>
-          p.id === editingProjectId ? baseProject : p
-        ),
-      }));
-      db.saveProjects([baseProject]).catch((err) => {
-        console.error("Failed to save project:", err);
-        alert("Failed to persist project. Check console.");
-      });
-    } else {
-      mutate((d) => ({
-        ...d,
-        projects: [...d.projects, baseProject],
-      }));
-      db.saveProjects([baseProject]).catch((err) => {
-        console.error("Failed to save project:", err);
-        alert("Failed to persist project. Check console.");
-      });
+    const previousProject = editingProjectId
+      ? data.projects.find((p) => p.id === editingProjectId)
+      : undefined;
+
+    try {
+      const metadataProject = {
+        id: baseProject.id,
+        name: baseProject.name,
+        status: baseProject.status,
+        projectType: baseProject.projectType,
+        recognitionMethod: baseProject.recognitionMethod,
+      };
+
+      if (editingProjectId) {
+        mutate((d) => ({
+          ...d,
+          projects: d.projects.map((p) =>
+            p.id === editingProjectId ? baseProject : p
+          ),
+        }));
+      } else {
+        mutate((d) => ({
+          ...d,
+          projects: [...d.projects, baseProject],
+        }));
+      }
+
+      await upsertProjectMetadata(metadataProject);
+
+      const financialFields: Array<"contractValue" | "estimatedCost"> = ["contractValue", "estimatedCost"];
+      for (const field of financialFields) {
+        const previousValue = Number(previousProject?.[field] ?? 0);
+        const nextValue = Number(baseProject[field] ?? 0);
+        if (!Number.isFinite(nextValue) || nextValue < 0) {
+          throw new Error(`${field === "contractValue" ? "Contract Value" : "Estimated Cost"} must be zero or greater.`);
+        }
+        if (nextValue === previousValue) continue;
+
+        const label = field === "contractValue" ? "contract value" : "estimated cost";
+        const defaultReason = `Updated ${label}`;
+        const reason = window.prompt(`Provide a reason for the ${label} change:`, defaultReason);
+        await saveProjectFinancialValue(projectId, field, nextValue, reason ?? defaultReason);
+      }
+
+      const refreshed = await loadLedgerState();
+      if (refreshed) {
+        mutate((prev) => ({
+          ...prev,
+          ...refreshed,
+          accounts: refreshed.accounts ?? prev.accounts,
+          projects: refreshed.projects ?? prev.projects,
+          employees: refreshed.employees ?? prev.employees,
+          payrollRuns: refreshed.payrollRuns ?? prev.payrollRuns,
+          bills: refreshed.bills ?? prev.bills,
+          journal: refreshed.journal ?? prev.journal,
+          invoices: refreshed.invoices ?? prev.invoices,
+          bankReconciliations: refreshed.bankReconciliations ?? prev.bankReconciliations,
+        }));
+      }
+
+      closeModal();
+    } catch (error) {
+      console.error("Failed to save project:", error);
+      const message = error instanceof Error ? error.message : "Failed to persist project.";
+      alert(message);
     }
-
-    closeModal();
   }
 
   function deleteProject(id: string) {
@@ -367,20 +456,38 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     });
   }
 
-  function toggleStatus(id: string) {
-    mutate((d) => {
-      const updatedProjects = d.projects.map((p) =>
-        p.id === id
-          ? { ...p, status: p.status === "Active" ? "Complete" : "Active" }
-          : p
-      );
-      const updatedProj = updatedProjects.find((p) => p.id === id);
-      if (updatedProj)
-        db.saveProjects([updatedProj]).catch((err) => {
-          console.error("Failed to save project:", err);
-        });
-      return { ...d, projects: updatedProjects };
-    });
+  async function toggleStatus(id: string) {
+    const prev = data.projects.find((p) => p.id === id);
+    if (!prev) return;
+
+    const updatedProj = {
+      ...prev,
+      status: prev.status === "Active" ? "Complete" : "Active",
+    };
+
+    mutate((d) => ({
+      ...d,
+      projects: d.projects.map((p) =>
+        p.id === id ? updatedProj : p
+      ),
+    }));
+
+    try {
+      await upsertProjectMetadata({
+        id: updatedProj.id,
+        name: updatedProj.name,
+        status: updatedProj.status,
+        projectType: updatedProj.projectType,
+        recognitionMethod: updatedProj.recognitionMethod,
+      });
+    } catch (err) {
+      console.error("Failed to save project:", err);
+      mutate((d) => ({
+        ...d,
+        projects: d.projects.map((p) => (p.id === id ? prev : p)),
+      }));
+      alert(err instanceof Error ? err.message : "Failed to update project status.");
+    }
   }
 
   return (
