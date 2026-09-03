@@ -34,7 +34,21 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// This frontend is intentionally single-tab oriented. Supabase Auth's default
+// browser lock can leave an orphaned Web Lock behind after a tab crash/reload,
+// which can block getSession(), sign-in, and other Auth operations indefinitely.
+// Bypass that cross-tab coordination so Auth calls cannot deadlock on navigator.locks.
+const noOpLock = async <T>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<T>
+): Promise<T> => fn();
+
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    lock: noOpLock,
+  },
+});
 
 /* ------------------------------------------------------------------ */
 /*  Row mappers (snake_case ↔ camelCase)                                */
