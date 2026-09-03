@@ -172,8 +172,6 @@ function projectToRow(p: Project): ProjectRow {
     status: p.status ?? null,
     project_type: p.projectType ?? null,
     recognition_method: p.recognitionMethod ?? null,
-    contract_value: p.contractValue ?? null,
-    estimated_cost: p.estimatedCost ?? null,
   };
 }
 

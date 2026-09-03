@@ -8,9 +8,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
-import { projectStatsFn } from "../utils/dashboardUtils";
-import { db, loadLedgerState, supabase } from "../supabaseClient";
-import { assertProject } from "../validation";
+import { db, getProjectPoc, loadLedgerState, supabase } from "../supabaseClient";
 import { loadMilestones, insertMilestones, type MilestoneRow } from "../supabase/fieldOps";
 import type { AppData, Project } from "../types";
 
@@ -261,8 +259,39 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     recognitionMethod: "POC",
     contractValue: "",
     estimatedCost: "",
+    effectiveDate: "",
+    reason: "",
   });
-  const stats = useMemo(() => projectStatsFn(data), [data]);
+  const [projectPocById, setProjectPocById] = useState<Record<string, Awaited<ReturnType<typeof getProjectPoc>>>>({});
+  const stats = useMemo(() => data.projects.map((project) => {
+    const projectEntries = data.journal.filter((entry) => entry.project === project.id);
+    const revenueBilled = projectEntries
+      .flatMap((entry) => entry.lines)
+      .filter((line) => data.accounts.find((account) => account.code === line.account)?.type === "Income")
+      .reduce((sum, line) => sum + (line.credit - line.debit), 0);
+    const actualCost = projectEntries
+      .flatMap((entry) => entry.lines)
+      .filter((line) => data.accounts.find((account) => account.code === line.account)?.type === "Expense")
+      .reduce((sum, line) => sum + line.debit, 0);
+    return {
+      ...project,
+      revenueBilled,
+      actualCost,
+      wipMargin: revenueBilled - actualCost,
+    };
+  }), [data]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all(
+      data.projects.map(async (project) => [project.id, await getProjectPoc(project.id)] as const)
+    ).then((entries) => {
+      if (active) setProjectPocById(Object.fromEntries(entries));
+    });
+    return () => {
+      active = false;
+    };
+  }, [data.projects]);
 
   function resetForm() {
     setForm({
@@ -272,6 +301,8 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
       recognitionMethod: "POC",
       contractValue: "",
       estimatedCost: "",
+      effectiveDate: "",
+      reason: "",
     });
   }
 
@@ -298,8 +329,10 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
       status: project.status || "Active",
       projectType: project.projectType || "Construction Contract",
       recognitionMethod: project.recognitionMethod || "POC",
-      contractValue: project.contractValue?.toString() || "",
-      estimatedCost: project.estimatedCost?.toString() || "",
+      contractValue: "",
+      estimatedCost: "",
+      effectiveDate: "",
+      reason: "",
     });
     setShowModal(true);
   }
@@ -324,11 +357,26 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     }
   }
 
+  function parseOptionalCurrency(raw: string, label: string): number | null {
+    const trimmed = raw?.trim?.() ?? "";
+    if (trimmed === "") return null;
+
+    const value = Number(trimmed);
+    if (!Number.isFinite(value)) {
+      throw new Error(`${label} must be a valid number.`);
+    }
+    if (value < 0) {
+      throw new Error(`${label} cannot be negative.`);
+    }
+    return value;
+  }
+
   async function saveProjectFinancialValue(
     projectId: string,
     field: "contractValue" | "estimatedCost",
     value: number,
-    reasonOverride?: string | null
+    effectiveDate: string,
+    reason: string | null
   ) {
     const numericValue = Number(value);
     if (!Number.isFinite(numericValue) || numericValue < 0) {
@@ -336,13 +384,12 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     }
 
     const rpcField = field === "contractValue" ? "contract_value" : "estimated_cost";
-    const reason = (reasonOverride ?? "").trim();
     const { data: historyId, error } = await supabase.rpc("record_project_transaction_value", {
       p_project: projectId,
       p_field: rpcField,
       p_new_value: numericValue,
-      p_effective_date: new Date().toISOString().slice(0, 10),
-      p_reason: reason || null,
+      p_effective_date: effectiveDate,
+      p_reason: reason?.trim() || null,
     });
 
     if (error) {
@@ -356,69 +403,96 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
   }
 
   async function saveProject() {
-    const err = assertProject({
-      name: form.name,
-      contractValue: parseFloat(form.contractValue) || 0,
-      estimatedCost: parseFloat(form.estimatedCost) || 0,
-    });
-    if (err) {
-      window.alert(err);
+    const projectName = form.name.trim();
+    if (!projectName) {
+      window.alert("Project name is required.");
       return;
     }
 
-    const projectId = editingProjectId || generateProjectId(form.name);
-    const baseProject = {
-      id: projectId,
-      name: form.name.trim(),
-      status: form.status,
-      projectType: form.projectType,
-      recognitionMethod: form.recognitionMethod,
-      contractValue: parseFloat(form.contractValue) || 0,
-      estimatedCost: parseFloat(form.estimatedCost) || 0,
-    } satisfies Project;
+    let contractValue: number | null;
+    let estimatedCost: number | null;
+    try {
+      contractValue = parseOptionalCurrency(form.contractValue, "Contract Value");
+      estimatedCost = parseOptionalCurrency(form.estimatedCost, "Estimated Cost");
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Financial value is invalid.");
+      return;
+    }
 
     const previousProject = editingProjectId
       ? data.projects.find((p) => p.id === editingProjectId)
       : undefined;
 
+    const changedFinancialFields: Array<{ key: "contractValue" | "estimatedCost"; label: string; value: number }> = [];
+    if (contractValue !== null) {
+      const previousValue = previousProject?.contractValue == null ? null : Number(previousProject.contractValue);
+      if (previousValue !== contractValue) {
+        changedFinancialFields.push({ key: "contractValue", label: "Contract Value", value: contractValue });
+      }
+    }
+    if (estimatedCost !== null) {
+      const previousValue = previousProject?.estimatedCost == null ? null : Number(previousProject.estimatedCost);
+      if (previousValue !== estimatedCost) {
+        changedFinancialFields.push({ key: "estimatedCost", label: "Estimated Cost", value: estimatedCost });
+      }
+    }
+
+    if (changedFinancialFields.length > 0) {
+      if (!form.effectiveDate) {
+        window.alert("Please select an effective date for the financial value change.");
+        return;
+      }
+      if (!form.reason.trim()) {
+        window.alert("Please provide a reason for the financial value change.");
+        return;
+      }
+    }
+
+    const projectId = editingProjectId || generateProjectId(projectName);
+    const metadataProject = {
+      id: projectId,
+      name: projectName,
+      status: form.status,
+      projectType: form.projectType,
+      recognitionMethod: form.recognitionMethod,
+    };
+
     try {
-      const metadataProject = {
-        id: baseProject.id,
-        name: baseProject.name,
-        status: baseProject.status,
-        projectType: baseProject.projectType,
-        recognitionMethod: baseProject.recognitionMethod,
-      };
+      await upsertProjectMetadata(metadataProject);
 
       if (editingProjectId) {
         mutate((d) => ({
           ...d,
           projects: d.projects.map((p) =>
-            p.id === editingProjectId ? baseProject : p
+            p.id === editingProjectId ? { ...p, ...metadataProject } : p
           ),
         }));
       } else {
         mutate((d) => ({
           ...d,
-          projects: [...d.projects, baseProject],
+          projects: [...d.projects, { ...metadataProject, contractValue: null, estimatedCost: null }],
         }));
       }
 
-      await upsertProjectMetadata(metadataProject);
+      const successfulFields: string[] = [];
+      const failedFields: Array<{ label: string; message: string }> = [];
 
-      const financialFields: Array<"contractValue" | "estimatedCost"> = ["contractValue", "estimatedCost"];
-      for (const field of financialFields) {
-        const previousValue = Number(previousProject?.[field] ?? 0);
-        const nextValue = Number(baseProject[field] ?? 0);
-        if (!Number.isFinite(nextValue) || nextValue < 0) {
-          throw new Error(`${field === "contractValue" ? "Contract Value" : "Estimated Cost"} must be zero or greater.`);
+      for (const field of changedFinancialFields) {
+        try {
+          await saveProjectFinancialValue(
+            projectId,
+            field.key,
+            field.value,
+            form.effectiveDate,
+            form.reason.trim()
+          );
+          successfulFields.push(field.label);
+        } catch (error) {
+          failedFields.push({
+            label: field.label,
+            message: error instanceof Error ? error.message : "Unknown backend error.",
+          });
         }
-        if (nextValue === previousValue) continue;
-
-        const label = field === "contractValue" ? "contract value" : "estimated cost";
-        const defaultReason = `Updated ${label}`;
-        const reason = window.prompt(`Provide a reason for the ${label} change:`, defaultReason);
-        await saveProjectFinancialValue(projectId, field, nextValue, reason ?? defaultReason);
       }
 
       const refreshed = await loadLedgerState();
@@ -437,11 +511,28 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
         }));
       }
 
+      if (failedFields.length > 0 && successfulFields.length > 0) {
+        const saved = successfulFields.length === 1
+          ? `${successfulFields[0]} saved.`
+          : `${successfulFields.join(" and ")} saved.`;
+        const failed = failedFields.map((field) => `${field.label} failed: ${field.message}`).join(" ");
+        window.alert(`${saved} ${failed}`);
+      } else if (failedFields.length > 0) {
+        const errors = failedFields.map((field) => `${field.label}: ${field.message}`).join(" ");
+        window.alert(`Neither financial value was saved: ${errors}`);
+      } else if (changedFinancialFields.length > 0) {
+        window.alert(
+          successfulFields.length === 2
+            ? "Contract Value and Estimated Cost saved successfully."
+            : `${successfulFields[0]} saved successfully.`
+        );
+      }
+
       closeModal();
     } catch (error) {
       console.error("Failed to save project:", error);
       const message = error instanceof Error ? error.message : "Failed to persist project.";
-      alert(message);
+      window.alert(message);
     }
   }
 
@@ -504,7 +595,13 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
       </SectionTitle>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-        {stats.map((p) => (
+        {stats.map((p) => {
+          const poc = projectPocById[p.id];
+          const contractValue = poc?.contract_value;
+          const estimatedCost = poc?.estimated_cost;
+          const backendActualCost = poc?.actual_project_cost;
+          const backendRevenueBilled = poc?.revenue_billed;
+          return (
           <Card key={p.id} style={{ flex: "1 1 320px" }}>
             <div
               style={{
@@ -611,31 +708,31 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Contract Value
                 </span>
-                <span>GHS {fmt(p.contractValue)}</span>
+                <span>{contractValue == null ? "Not configured" : `GHS ${fmt(contractValue)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Revenue Billed
                 </span>
-                <span>GHS {fmt(p.revenueBilled)}</span>
+                <span>{backendRevenueBilled == null ? `GHS ${fmt(p.revenueBilled)}` : `GHS ${fmt(backendRevenueBilled)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Actual Cost to Date
                 </span>
-                <span>GHS {fmt(p.actualCost)}</span>
+                <span>{backendActualCost == null ? `GHS ${fmt(p.actualCost)}` : `GHS ${fmt(backendActualCost)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Estimated Cost
                 </span>
-                <span>GHS {fmt(p.estimatedCost)}</span>
+                <span>{estimatedCost == null ? "Not configured" : `GHS ${fmt(estimatedCost)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Remaining Cost
                 </span>
-                <span>GHS {fmt(p.remainingCost)}</span>
+                <span>Not available from backend</span>
               </div>
               <div
                 style={{
@@ -651,9 +748,9 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                   Projected Margin
                 </span>
                 <span
-                  style={{ color: p.projectedMargin >= 0 ? GREEN : ALERT }}
+                  style={{ color: MUTED }}
                 >
-                  GHS {fmt(p.projectedMargin)}
+                  Not available from backend
                 </span>
               </div>
               <div
@@ -672,7 +769,8 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
               </div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {showModal && (
@@ -735,11 +833,12 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <input
                   style={inputStyle}
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={form.contractValue}
                   onChange={(e) =>
                     setForm({ ...form, contractValue: e.target.value })
                   }
-                  placeholder="50000"
                 />
               </div>
               <div style={{ flex: "1 1 150px" }}>
@@ -747,13 +846,35 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <input
                   style={inputStyle}
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={form.estimatedCost}
                   onChange={(e) =>
                     setForm({ ...form, estimatedCost: e.target.value })
                   }
-                  placeholder="35000"
                 />
               </div>
+              <div style={{ flex: "1 1 150px" }}>
+                <label style={labelStyle}>Effective Date</label>
+                <input
+                  style={inputStyle}
+                  type="date"
+                  value={form.effectiveDate}
+                  onChange={(e) =>
+                    setForm({ ...form, effectiveDate: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <label style={labelStyle}>Reason for financial change</label>
+              <textarea
+                style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
+                value={form.reason}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                placeholder="Required whenever Contract Value or Estimated Cost changes."
+              />
             </div>
 
             <Button onClick={saveProject} icon={Plus} fullWidth>
