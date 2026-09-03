@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { PenLine, Plus, Trash2, ListChecks } from "lucide-react";
-import { INK, PAPER_RAISED, RULE, GREEN, ALERT, MUTED, FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
+import { INK, RULE, GREEN, ALERT, MUTED, FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
 import Button from "../components/ui/Button";
@@ -9,7 +9,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
 import { db, getProjectPoc, loadLedgerState, supabase } from "../supabaseClient";
 import { loadMilestones, insertMilestones, type MilestoneRow } from "../supabase/fieldOps";
-import type { AppData, Project, ProjectPoc } from "../types";
+import type { AppData, Project } from "../types";
 
 interface StageLine { tempId: string; name: string; }
 function StageBuilder({ projectId, onSave }: { projectId: string; onSave: () => void }) {
@@ -21,9 +21,6 @@ function StageBuilder({ projectId, onSave }: { projectId: string; onSave: () => 
   if (loading) return null; const isNew = projectId.startsWith("PRJ-NEW") || !projectId; const hasExisting = existingStages.length > 0; if (!isNew && !hasExisting) return null;
   return <div style={{ borderTop: `1px solid ${RULE}`, marginTop: 12, paddingTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}><label style={{ ...labelStyle, marginBottom: 0 }}><ListChecks size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Project Stages (Milestones)</label><Button onClick={addStage} size="sm" icon={Plus}>Add Stage</Button></div><div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>Define the stages the PM will confirm during the project. These appear in the PM portal as a progress checklist.</div>{stages.map((stage, idx) => <div key={stage.tempId} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><span style={{ fontSize: 11, fontWeight: 700, color: MUTED, width: 22, textAlign: "center" }}>{idx + 1}</span><button onClick={() => moveStage(idx, -1)} disabled={idx === 0} style={{ background: "none", border: `1px solid ${RULE}`, borderRadius: 4, padding: 2, color: idx === 0 ? RULE : MUTED }}>▲</button><button onClick={() => moveStage(idx, 1)} disabled={idx === stages.length - 1} style={{ background: "none", border: `1px solid ${RULE}`, borderRadius: 4, padding: 2, color: idx === stages.length - 1 ? RULE : MUTED }}>▼</button><input style={{ ...inputStyle, flex: 1 }} value={stage.name} onChange={(e) => setStages((p) => p.map((s) => s.tempId === stage.tempId ? { ...s, name: e.target.value } : s))} placeholder={`Stage ${idx + 1} name`} /><button onClick={() => setStages((p) => p.filter((s) => s.tempId !== stage.tempId))} style={{ background: "none", border: "none", color: ALERT }}><Trash2 size={14} /></button></div>)}{stages.length > 0 && <Button onClick={handleSave} icon={Plus} fullWidth disabled={saving} style={{ marginTop: 8 }}>{saving ? "Saving stages…" : hasExisting ? "Update Stages" : "Save Stages"}</Button>}</div>;
 }
-
-type FinancialField = "contractValue" | "estimatedCost";
-type BackendProjectPoc = ProjectPoc & { remaining_cost?: number | null; projected_margin?: number | null };
 
 export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate: (fn: (prev: AppData) => AppData) => void }) {
   const [showModal, setShowModal] = useState(false);
@@ -322,8 +319,26 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
       alert("Failed to delete project. Check console.");
     });
   }
-  async function toggleStatus(id: string) { const prev = data.projects.find((p) => p.id === id); if (!prev) return; const status = prev.status === "Active" ? "Complete" : "Active"; try { await upsertProjectMetadata({ id: prev.id, name: prev.name, status, projectType: prev.projectType, recognitionMethod: prev.recognitionMethod }); mutate((d) => ({ ...d, projects: d.projects.map((p) => p.id === id ? { ...p, status } : p) })); } catch (err) { window.alert(err instanceof Error ? err.message : "Failed to update project status."); } }
-  function deleteProject(id: string) { mutate((d) => ({ ...d, projects: d.projects.filter((p) => p.id !== id) })); db.deleteProject(id).catch((err) => { console.error(err); window.alert("Failed to delete project. Check console."); }); }
+  async function toggleStatus(id: string) {
+    const prev = data.projects.find((p) => p.id === id);
+    if (!prev) return;
+    const status = prev.status === "Active" ? "Complete" : "Active";
+    try {
+      await upsertProjectMetadata({
+        id: prev.id,
+        name: prev.name,
+        status,
+        projectType: prev.projectType,
+        recognitionMethod: prev.recognitionMethod,
+      });
+      mutate((d) => ({
+        ...d,
+        projects: d.projects.map((p) => p.id === id ? { ...p, status } : p),
+      }));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to update project status.");
+    }
+  }
 
   return (
     <div>
