@@ -1,5 +1,13 @@
 export function fmt(n: number | string | null | undefined) {
-  const v = Number(n) || 0;
+  if (n === null || n === undefined || n === "") {
+    return "—";
+  }
+
+  const v = Number(n);
+  if (!Number.isFinite(v)) {
+    return "—";
+  }
+
   return v.toLocaleString("en-GH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

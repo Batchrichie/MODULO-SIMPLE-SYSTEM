@@ -358,8 +358,10 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
           const poc = projectPocById[p.id];
           const contractValue = poc?.contract_value;
           const estimatedCost = poc?.estimated_cost;
-          const backendActualCost = poc?.actual_project_cost;
+          const backendActualCost = poc?.actual_cost;
           const backendRevenueBilled = poc?.revenue_billed;
+          const remainingCost = poc?.remaining_cost;
+          const projectedMargin = poc?.projected_margin;
           return (
           <Card key={p.id} style={{ flex: "1 1 320px" }}>
             <div
@@ -491,7 +493,7 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Remaining Cost
                 </span>
-                <span>Not available from backend</span>
+                <span>{remainingCost == null ? "Not configured" : `GHS ${fmt(remainingCost)}`}</span>
               </div>
               <div
                 style={{
@@ -507,9 +509,9 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                   Projected Margin
                 </span>
                 <span
-                  style={{ color: MUTED }}
+                  style={{ color: projectedMargin == null ? MUTED : projectedMargin < 0 ? ALERT : GREEN }}
                 >
-                  Not available from backend
+                  {projectedMargin == null ? "Not configured" : `GHS ${fmt(projectedMargin)}`}
                 </span>
               </div>
               <div

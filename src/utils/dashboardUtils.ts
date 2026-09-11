@@ -97,8 +97,8 @@ export function getDashboardMetrics(data: AppData) {
   const activeProjects = data.projects.filter(p => p.status === 'Active' && p.id !== 'GEN');
 
   activeProjects.forEach(p => {
-    totalContractValue += parseFloat(p.contractValue) || 0;
-    totalEstimatedCost += parseFloat(p.estimatedCost) || 0;
+    if (p.contractValue != null) totalContractValue += Number(p.contractValue);
+    if (p.estimatedCost != null) totalEstimatedCost += Number(p.estimatedCost);
   });
 
   data.journal.forEach(e => {
@@ -136,7 +136,9 @@ export function getDashboardMetrics(data: AppData) {
     expense: monthlyData[m].expense,
   }));
 
-  const donutData = activeProjects.map(p => ({ name: p.name, value: parseFloat(p.contractValue) || 0 })).filter(d => d.value > 0);
+  const donutData = activeProjects
+    .map(p => ({ name: p.name, value: p.contractValue == null ? null : Number(p.contractValue) }))
+    .filter((d): d is { name: string; value: number } => d.value != null && d.value > 0);
 
   return {
     cash, ar, ap, netIncome, totalRevenue, totalExpenses,
@@ -271,6 +273,13 @@ export function resolveTaxRate(value: unknown, fallback: number): number {
   return n > 1 ? n / 100 : n;
 }
 
+export function finiteNumberOrNull(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** Per-project financial summary */
 export function projectStatsFn(data: AppData): ProjectStats[] {
   return data.projects.map((p) => {
@@ -290,23 +299,30 @@ export function projectStatsFn(data: AppData): ProjectStats[] {
         return acc && acc.type === 'Expense';
       })
       .reduce((s, l) => s + l.debit, 0);
-    const estimatedCost = p.estimatedCost ?? 0;
-    const remainingCost = Math.max(estimatedCost - actualCost, 0);
-  const projectedMargin = (p.contractValue ?? 0) - estimatedCost;
-  const wipMargin = revenueBilled - actualCost;
-  return {
-    id: p.id,
-    name: p.name,
-    status: p.status,
-    recognitionMethod: p.recognitionMethod,
-    contractValue: p.contractValue ?? 0,
-    revenueBilled,
-    actualCost,
-    estimatedCost,
-    remainingCost,
-    projectedMargin,
-    wipMargin,
-  };
+
+    const contractValue = finiteNumberOrNull(p.contractValue);
+    const estimatedCost = finiteNumberOrNull(p.estimatedCost);
+    const remainingCost = contractValue == null && estimatedCost == null
+      ? null
+      : (estimatedCost == null ? null : Math.max(estimatedCost - actualCost, 0));
+    const projectedMargin = contractValue == null || estimatedCost == null
+      ? null
+      : contractValue - estimatedCost;
+    const wipMargin = revenueBilled - actualCost;
+
+    return {
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      recognitionMethod: p.recognitionMethod,
+      contractValue,
+      revenueBilled,
+      actualCost,
+      estimatedCost,
+      remainingCost,
+      projectedMargin,
+      wipMargin,
+    };
   });
 }
 

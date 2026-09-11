@@ -94,8 +94,8 @@ export default function PmDashboardPanel({ data, profile }: PmDashboardPanelProp
   }, [data.invoices, activeProjects]);
 
   // Summary KPIs
-  const totalContract = activeProjects.reduce((s, p) => s + (parseFloat(String(p.contractValue)) || 0), 0);
-  const totalEstCost = activeProjects.reduce((s, p) => s + (parseFloat(String(p.estimatedCost)) || 0), 0);
+  const totalContract = activeProjects.reduce((s, p) => s + (p.contractValue == null ? 0 : Number(p.contractValue)), 0);
+  const totalEstCost = activeProjects.reduce((s, p) => s + (p.estimatedCost == null ? 0 : Number(p.estimatedCost)), 0);
   const totalActualCost = activeProjects.reduce((s, p) => s + (projectCosts[p.id] || 0), 0);
   const totalRevenue = activeProjects.reduce((s, p) => s + (projectRevenue[p.id] || 0), 0);
   const costPct = totalEstCost > 0 ? (totalActualCost / totalEstCost) * 100 : 0;
@@ -225,12 +225,12 @@ export default function PmDashboardPanel({ data, profile }: PmDashboardPanelProp
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {activeProjects.map(p => {
               const cost = projectCosts[p.id] || 0;
-              const est = parseFloat(String(p.estimatedCost)) || 0;
-              const contract = parseFloat(String(p.contractValue)) || 0;
+              const est = p.estimatedCost == null ? null : Number(p.estimatedCost);
+              const contract = p.contractValue == null ? null : Number(p.contractValue);
               const revenue = projectRevenue[p.id] || 0;
-              const costPct = est > 0 ? (cost / est) * 100 : 0;
+              const costPct = est != null && est > 0 ? (cost / est) * 100 : 0;
               const badge = statusBadge(p.status);
-              const margin = contract > 0 ? ((contract - est) / contract * 100) : 0;
+              const margin = contract != null && est != null && contract > 0 ? ((contract - est) / contract * 100) : 0;
 
               return (
                 <Card key={p.id} style={{ borderLeft: `4px solid ${GREEN}` }}>
@@ -267,7 +267,7 @@ export default function PmDashboardPanel({ data, profile }: PmDashboardPanelProp
                     </div>
                   </div>
 
-                  {est > 0 && (
+                  {est != null && est > 0 && (
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: MUTED, marginBottom: 3 }}>
                         <span>Budget used</span>
@@ -391,7 +391,7 @@ export default function PmDashboardPanel({ data, profile }: PmDashboardPanelProp
                       <div style={{ fontWeight: 600, fontSize: 14, color: INK }}>{p.name}</div>
                       <div style={{ fontSize: 11, color: MUTED }}>{p.projectType || ""}</div>
                     </div>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 13, fontWeight: 600 }}>GHS {fmt(parseFloat(String(p.contractValue)) || 0)}</div>
+                    <div style={{ fontFamily: FONT_MONO, fontSize: 13, fontWeight: 600 }}>GHS {fmt(p.contractValue == null ? null : Number(p.contractValue))}</div>
                   </div>
                 ))}
               </Card>

@@ -308,9 +308,9 @@ export default function LimitedDashboardPanel({ data, profile, setTab }: Limited
           </SectionTitle>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {activeProjects.slice(0, 4).map(p => {
-              const contract = parseFloat(String(p.contractValue)) || 0;
-              const est = parseFloat(String(p.estimatedCost)) || 0;
-              const margin = contract > 0 ? ((contract - est) / contract * 100) : 0;
+              const contract = p.contractValue == null ? null : Number(p.contractValue);
+              const est = p.estimatedCost == null ? null : Number(p.estimatedCost);
+              const margin = contract != null && est != null && contract > 0 ? ((contract - est) / contract * 100) : 0;
               return (
                 <Card key={p.id} style={{ flex: "1 1 200px", borderLeft: `4px solid ${GREEN}` }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{p.name}</div>

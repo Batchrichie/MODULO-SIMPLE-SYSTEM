@@ -327,12 +327,12 @@ export interface ProjectStats {
   name: string;
   status?: string | null;
   recognitionMethod?: string | null;
-  contractValue: number;
+  contractValue: number | null;
   revenueBilled: number;
   actualCost: number;
-  estimatedCost: number;
-  remainingCost: number;
-  projectedMargin: number;
+  estimatedCost: number | null;
+  remainingCost: number | null;
+  projectedMargin: number | null;
   wipMargin: number;
 }
 
@@ -344,7 +344,9 @@ export interface ProjectPoc {
   poc_percent: number | null;
   contract_value: number | null;
   estimated_cost: number | null;
-  actual_project_cost: number | null;
+  actual_cost: number | null;
+  remaining_cost: number | null;
+  projected_margin: number | null;
   revenue_billed: number | null;
   revenue_recognized: number | null;
   gross_profit_recognized: number | null;

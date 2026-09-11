@@ -124,7 +124,7 @@ export default function ReportsPanel({ data }: { data: AppData }) {
         id: p.id,
         name: p.name,
         status: p.status,
-        contractValue: p.contractValue ?? 0,
+        contractValue: p.contractValue == null ? null : p.contractValue,
         revenue,
         costs,
         margin,

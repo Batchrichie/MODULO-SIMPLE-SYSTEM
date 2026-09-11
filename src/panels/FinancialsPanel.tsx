@@ -428,8 +428,8 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
                     )}
                     {kpiRow(
                       "Actual project cost",
-                      pocData?.actual_project_cost != null
-                        ? `GHS ${fmt(pocData.actual_project_cost)}`
+                      pocData?.actual_cost != null
+                        ? `GHS ${fmt(pocData.actual_cost)}`
                         : "— Not configured"
                     )}
                     {kpiRow(
