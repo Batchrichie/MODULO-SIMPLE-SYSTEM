@@ -12,8 +12,8 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
-import type { PanelProps, Bill, BillPayment } from "../types";
+import { findAccountByRole, findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
+import type { PanelProps, Bill, BillPayment, JournalEntry } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
   const [showNew, setShowNew] = useState(false);
@@ -69,8 +69,14 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         project: bill.project ?? null,
         amount: bill.amount,
         expense_account_code: expenseAccount,
-        ap_account_code: apAccount,
+        ap_account_code: apAccount.code,
       });
+      if (posted.journal_entry_id && posted.journal_entry_id !== entry.id) {
+        mutate((d) => ({
+          ...d,
+          journal: d.journal.map((je) => je.id === entry.id ? { ...je, id: posted.journal_entry_id } : je),
+        }));
+      }
     } catch (err: any) {
       mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
