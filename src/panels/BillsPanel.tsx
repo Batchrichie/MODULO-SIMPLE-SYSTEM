@@ -12,8 +12,8 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { findAccountByRole, findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
-import type { PanelProps, Bill, BillPayment, JournalEntry } from "../types";
+import { findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
+import type { PanelProps, Bill, BillPayment } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
   const [showNew, setShowNew] = useState(false);
@@ -31,7 +31,15 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
   const apAccounts = data.accounts.filter((a) => a.role === "ap");
   const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
-  const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  function nextBillNumber(billDate: string) {
+    const year = billDate.slice(0, 4);
+    const sequence = data.bills.reduce((highest, bill) => {
+      const match = bill.billNumber.match(new RegExp(`^BL-${year}-(\\d+)$`));
+      return Math.max(highest, match ? Number(match[1]) : 0);
+    }, 0) + 1;
+    return `BL-${year}-${String(sequence).padStart(4, "0")}`;
+  }
 
   const closedBillDatePeriod = findPeriodByDate(data.accountingPeriods, date);
   const showBillDateClosedWarn = closedBillDatePeriod?.status === "closed";
@@ -45,7 +53,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     if (!expenseAccount) return window.alert("Please select an expense account.");
     if (!apAccount) return window.alert("Please select an Accounts Payable account.");
 
-    const billNumber = makeTempId("BL");
+    const billNumber = nextBillNumber(date);
     const bill: Bill = {
       id: billNumber,
       billNumber,
@@ -62,6 +70,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({ ...d, bills: [bill, ...d.bills] }));
     try {
       const posted = await postBill({
+        bill_number: bill.billNumber,
         date: bill.date,
         due_date: bill.dueDate ?? null,
         vendor: bill.vendor,
@@ -69,14 +78,8 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         project: bill.project ?? null,
         amount: bill.amount,
         expense_account_code: expenseAccount,
-        ap_account_code: apAccount.code,
+        ap_account_code: apAccount,
       });
-      if (posted.journal_entry_id && posted.journal_entry_id !== entry.id) {
-        mutate((d) => ({
-          ...d,
-          journal: d.journal.map((je) => je.id === entry.id ? { ...je, id: posted.journal_entry_id } : je),
-        }));
-      }
     } catch (err: any) {
       mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";

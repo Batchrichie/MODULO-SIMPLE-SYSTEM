@@ -616,6 +616,7 @@ export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promis
  * lock_bill_payments_writes trigger.
  */
 export async function postBill(params: {
+  bill_number: string;
   date: string;
   due_date: string | null;
   vendor: string;
@@ -626,6 +627,7 @@ export async function postBill(params: {
   ap_account_code: string;
 }): Promise<{ bill_id: string; journal_entry_id: string }> {
   const { data, error } = await supabase.rpc('post_bill', {
+    p_bill_number: params.bill_number,
     p_date: params.date,
     p_due_date: params.due_date,
     p_vendor: params.vendor,
