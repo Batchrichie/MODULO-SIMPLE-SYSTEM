@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { findAccountByRole, findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
+import { supabase, findAccountByRole, findDefaultPaymentAccount, postBillPayment, findPeriodByDate } from "../supabaseClient";
 import type { PanelProps, Bill, BillPayment, JournalEntry } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
@@ -75,22 +75,34 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
 
     mutate((d) => ({ ...d, bills: [bill, ...d.bills], journal: [entry, ...d.journal] }));
     try {
-      const posted = await postBill({
-        date: bill.date,
-        due_date: bill.dueDate ?? null,
-        vendor: bill.vendor,
-        description: bill.description ?? null,
-        project: bill.project ?? null,
-        amount: bill.amount,
-        expense_account_code: expenseAccount,
-        ap_account_code: apAccount.code,
+      const { data: posted, error } = await supabase.rpc("post_bill", {
+        p_date: bill.date,
+        p_due_date: bill.dueDate ?? null,
+        p_vendor: bill.vendor,
+        p_description: bill.description ?? null,
+        p_project: bill.project ?? null,
+        p_amount: bill.amount,
+        p_expense_account_code: expenseAccount,
+        p_ap_account_code: apAccount.code,
+        p_bill_number: bill.billNumber,
       });
-      if (posted.journal_entry_id && posted.journal_entry_id !== entry.id) {
-        mutate((d) => ({
-          ...d,
-          journal: d.journal.map((je) => je.id === entry.id ? { ...je, id: posted.journal_entry_id } : je),
-        }));
-      }
+      if (error) throw error;
+
+      const postedBillId = String(posted?.bill_id || bill.id);
+      const postedBillNumber = String(posted?.bill_number || bill.billNumber);
+      const postedJournalId = String(posted?.journal_entry_id || entry.id);
+
+      mutate((d) => ({
+        ...d,
+        bills: d.bills.map((item) =>
+          item.id === bill.id
+            ? { ...item, id: postedBillId, billNumber: postedBillNumber }
+            : item
+        ),
+        journal: d.journal.map((je) =>
+          je.id === entry.id ? { ...je, id: postedJournalId } : je
+        ),
+      }));
     } catch (err: any) {
       mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id), journal: d.journal.filter((item) => item.id !== entry.id) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
