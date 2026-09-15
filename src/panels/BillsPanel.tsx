@@ -12,8 +12,8 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { findAccountByRole, findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
-import type { PanelProps, Bill, BillPayment, JournalEntry } from "../types";
+import { findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
+import type { PanelProps, Bill, BillPayment } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
   const [showNew, setShowNew] = useState(false);
@@ -25,9 +25,11 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [dueDate, setDueDate] = useState("");
   const [project, setProject] = useState("GEN");
   const [expenseAccount, setExpenseAccount] = useState("");
+  const [apAccount, setApAccount] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+  const apAccounts = data.accounts.filter((a) => a.role === "ap");
   const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
   const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -41,6 +43,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     if (!amt || amt <= 0) return window.alert("Please enter a valid amount.");
     if (!vendor.trim()) return window.alert("Please enter a vendor name.");
     if (!expenseAccount) return window.alert("Please select an expense account.");
+    if (!apAccount) return window.alert("Please select an Accounts Payable account.");
 
     const billNumber = makeTempId("BL");
     const bill: Bill = {
@@ -56,24 +59,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       payments: [],
     };
 
-    const apAccount = findAccountByRole(data.accounts, "ap");
-    if (!apAccount) return window.alert("Accounts Payable account not configured. Please contact your admin.");
-
-    const entryNumber = makeTempId("JE");
-    const entry: JournalEntry = {
-      id: entryNumber,
-      entryNumber,
-      date,
-      description: `Bill ${billNumber} — ${vendor.trim()}`,
-      period: date.slice(0, 7),
-      project: bill.project,
-      lines: [
-        { account: expenseAccount, debit: amt, credit: 0 },
-        { account: apAccount.code, debit: 0, credit: amt },
-      ],
-    };
-
-    mutate((d) => ({ ...d, bills: [bill, ...d.bills], journal: [entry, ...d.journal] }));
+    mutate((d) => ({ ...d, bills: [bill, ...d.bills] }));
     try {
       const posted = await postBill({
         date: bill.date,
@@ -83,22 +69,16 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         project: bill.project ?? null,
         amount: bill.amount,
         expense_account_code: expenseAccount,
-        ap_account_code: apAccount.code,
+        ap_account_code: apAccount,
       });
-      if (posted.journal_entry_id && posted.journal_entry_id !== entry.id) {
-        mutate((d) => ({
-          ...d,
-          journal: d.journal.map((je) => je.id === entry.id ? { ...je, id: posted.journal_entry_id } : je),
-        }));
-      }
     } catch (err: any) {
-      mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id), journal: d.journal.filter((item) => item.id !== entry.id) }));
+      mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to save bill: ${errorMsg}`);
       return;
     }
 
-    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setShowNew(false);
+    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setApAccount(""); setShowNew(false);
   }
 
   async function recordPayment(bill: Bill) {
@@ -107,30 +87,11 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     if (!amt || amt <= 0) return window.alert("Please enter a valid payment amount.");
     if (!paymentAccount) return window.alert("Please select a payment account.");
 
-    const apAccount = findAccountByRole(data.accounts, "ap");
     const resolvedCashAccount = data.accounts.find((a) => a.code === paymentAccount && a.isPaymentAccount);
-    if (!apAccount || !resolvedCashAccount) return window.alert("The selected payment account is invalid.");
+    if (!resolvedCashAccount) return window.alert("The selected payment account is invalid.");
 
     const tempPaymentId = `BPT-${Date.now()}`;
     const payment: BillPayment = { id: tempPaymentId, date, amount: amt, method: "Bank", reference: "" };
-    const paidSoFar = bill.payments.reduce((s, p) => s + p.amount, 0) + amt;
-    const optimisticStatus: Bill["status"] = paidSoFar >= bill.amount - 0.01 ? "Paid" : "Partially Paid";
-    const updatedBill = { ...bill, payments: [...bill.payments, payment], status: optimisticStatus };
-    const entryNumber = makeTempId("JE");
-    const entry: JournalEntry = {
-      id: entryNumber,
-      entryNumber,
-      date,
-      description: `Payment — ${bill.billNumber} (${bill.vendor})`,
-      period: date.slice(0, 7),
-      project: bill.project,
-      lines: [
-        { account: apAccount.code, debit: amt, credit: 0 },
-        { account: resolvedCashAccount.code, debit: 0, credit: amt },
-      ],
-    };
-
-    mutate((d) => ({ ...d, bills: d.bills.map((b) => b.id === bill.id ? updatedBill : b), journal: [entry, ...d.journal] }));
     try {
       const posted = await postBillPayment({
         bill_id: bill.id,
@@ -141,21 +102,15 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         payment_account_code: resolvedCashAccount.code,
       });
       const finalizedBill: Bill = {
-        ...updatedBill,
-        payments: updatedBill.payments.map((p) =>
-          p.id === tempPaymentId ? { ...p, id: posted.bill_payment_id || p.id } : p
-        ),
-        status: (posted.bill_status as Bill["status"]) || optimisticStatus,
+        ...bill,
+        payments: [...bill.payments, { ...payment, id: posted.bill_payment_id || tempPaymentId }],
+        status: posted.bill_status as Bill["status"],
       };
       mutate((d) => ({
         ...d,
         bills: d.bills.map((b) => (b.id === bill.id ? finalizedBill : b)),
-        journal: d.journal.map((je) =>
-          je.id === entry.id && posted.journal_entry_id ? { ...je, id: posted.journal_entry_id } : je
-        ),
       }));
     } catch (err: any) {
-      mutate((d) => ({ ...d, bills: d.bills.map((item) => item.id === bill.id ? bill : item), journal: d.journal.filter((item) => item.id !== entry.id) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to record payment: ${errorMsg}`);
       return;
@@ -231,7 +186,8 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
               </div>
             )}
           </div>
-          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
+          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account *</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
+          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>AP Account *</label><AccountSelect value={apAccount} onChange={setApAccount} accounts={apAccounts} placeholder="Search AP account…" /></div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
           <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
         </div>
