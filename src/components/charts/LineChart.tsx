@@ -6,12 +6,19 @@ export default function LineChart({ data }) {
 
   const width = 500;
   const height = 150;
-  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  const values = data.map((d) => Number(d.value) || 0);
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const range = maxVal - minVal || 1;
+  const chartTop = 10;
+  const chartBottom = height - 10;
+
+  const yForValue = (value: number) => chartBottom - ((value - minVal) / range) * (chartBottom - chartTop);
 
   const points = data
     .map((d, i) => {
       const x = (i / (data.length - 1 || 1)) * width;
-      const y = height - (d.value / maxVal) * (height - 20) - 10;
+      const y = yForValue(values[i]);
       return `${x},${y}`;
     })
     .join(" ");
@@ -34,7 +41,7 @@ export default function LineChart({ data }) {
       />
       {data.map((d, i) => {
         const x = (i / (data.length - 1 || 1)) * width;
-        const y = height - (d.value / maxVal) * (height - 20) - 10;
+        const y = yForValue(values[i]);
         return <circle key={i} cx={x} cy={y} r="3" fill="var(--green)" />;
       })}
     </svg>
