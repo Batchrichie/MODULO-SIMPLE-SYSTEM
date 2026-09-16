@@ -25,19 +25,12 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [dueDate, setDueDate] = useState("");
   const [project, setProject] = useState("GEN");
   const [expenseAccount, setExpenseAccount] = useState("");
+  const [apAccount, setApAccount] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
+  const apAccounts = data.accounts.filter((a) => a.role === "ap");
   const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
-
-  function nextBillNumber(billDate: string) {
-    const year = billDate.slice(0, 4);
-    const sequence = data.bills.reduce((highest, bill) => {
-      const match = bill.billNumber.match(new RegExp(`^BL-${year}-(\\d+)$`));
-      return Math.max(highest, match ? Number(match[1]) : 0);
-    }, 0) + 1;
-    return `BL-${year}-${String(sequence).padStart(4, "0")}`;
-  }
 
   const closedBillDatePeriod = findPeriodByDate(data.accountingPeriods, date);
   const showBillDateClosedWarn = closedBillDatePeriod?.status === "closed";
@@ -49,11 +42,12 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     if (!amt || amt <= 0) return window.alert("Please enter a valid amount.");
     if (!vendor.trim()) return window.alert("Please enter a vendor name.");
     if (!expenseAccount) return window.alert("Please select an expense account.");
+    if (!apAccount) return window.alert("Please select an Accounts Payable account.");
 
-    const billNumber = nextBillNumber(date);
+    const pendingBillId = `PENDING-BILL-${Date.now()}`;
     const bill: Bill = {
-      id: billNumber,
-      billNumber,
+      id: pendingBillId,
+      billNumber: "Pending assignment",
       date,
       dueDate: dueDate || date,
       vendor: vendor.trim(),
@@ -67,8 +61,6 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({ ...d, bills: [bill, ...d.bills] }));
     try {
       const posted = await postBill({
-        bill_id: bill.id,
-        bill_number: bill.billNumber,
         date: bill.date,
         due_date: bill.dueDate ?? null,
         vendor: bill.vendor,
@@ -76,15 +68,28 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         project: bill.project ?? null,
         amount: bill.amount,
         expense_account_code: expenseAccount,
+        ap_account_code: apAccount,
       });
+
+      if (!posted.bill_id || !posted.bill_number) {
+        throw new Error("Bill was posted but the generated bill number was not returned.");
+      }
+
+      mutate((d) => ({
+        ...d,
+        bills: d.bills.map((item) => item.id === pendingBillId
+          ? { ...item, id: posted.bill_id, billNumber: posted.bill_number, status: (posted.status as Bill["status"]) || item.status }
+          : item),
+      }));
+      window.alert(`Bill ${posted.bill_number} posted successfully.`);
     } catch (err: any) {
-      mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id) }));
+      mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== pendingBillId) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to save bill: ${errorMsg}`);
       return;
     }
 
-    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setShowNew(false);
+    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setApAccount(""); setShowNew(false);
   }
 
   async function recordPayment(bill: Bill) {
@@ -193,6 +198,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
             )}
           </div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account *</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
+          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>AP Account *</label><AccountSelect value={apAccount} onChange={setApAccount} accounts={apAccounts} placeholder="Search AP account…" /></div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
           <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
         </div>

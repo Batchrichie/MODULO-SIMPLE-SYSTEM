@@ -632,7 +632,6 @@ export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promis
  * lock_bill_payments_writes trigger.
  */
 export async function postBill(params: {
-  bill_id: string;
   bill_number: string;
   date: string;
   due_date: string | null;
@@ -641,9 +640,15 @@ export async function postBill(params: {
   project: string | null;
   amount: number;
   expense_account_code: string;
-}): Promise<{ bill_id: string; journal_entry_id: string }> {
+  ap_account_code: string;
+}): Promise<{
+  bill_id: string;
+  bill_number: string;
+  journal_entry_id: string;
+  ap_account_code: string;
+  status: string;
+}> {
   const { data, error } = await supabase.rpc('post_bill', {
-    p_bill_id: params.bill_id,
     p_bill_number: params.bill_number,
     p_date: params.date,
     p_due_date: params.due_date,
@@ -652,9 +657,22 @@ export async function postBill(params: {
     p_project: params.project,
     p_amount: params.amount,
     p_expense_account_code: params.expense_account_code,
+    p_ap_account_code: params.ap_account_code,
   });
   if (error) throw error;
-  return (data ?? { bill_id: '', journal_entry_id: '' }) as { bill_id: string; journal_entry_id: string };
+  return (data ?? {
+    bill_id: '',
+    bill_number: '',
+    journal_entry_id: '',
+    ap_account_code: params.ap_account_code,
+    status: 'Unpaid',
+  }) as {
+    bill_id: string;
+    bill_number: string;
+    journal_entry_id: string;
+    ap_account_code: string;
+    status: string;
+  };
 }
 
 /**
