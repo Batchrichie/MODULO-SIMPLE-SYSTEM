@@ -12,8 +12,8 @@ import MiniTable from "../components/ui/MiniTable";
 import { fmt } from "../utils/format";
 import { COMPANY_TEMPLATE } from "../constants/defaults";
 
-import { getTrialBalance, getBalanceSheet, getProfitAndLoss, getCurrentAssets, getProjectPoc } from "../supabaseClient";
-import { computeCashFlow } from "../utils/dashboardUtils";
+import { getTrialBalance, getBalanceSheet, getProfitAndLoss, getCashFlow, getCurrentAssets, getProjectPoc } from "../supabaseClient";
+import { computeCashFlowStatement } from "../utils/dashboardUtils";
 import IncomeStatementDocument from "../documents/IncomeStatementDocument";
 import BalanceSheetDocument from "../documents/BalanceSheetDocument";
 import CashFlowDocument from "../documents/CashFlowDocument";
@@ -27,13 +27,17 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
   const [tbData, setTbData] = useState([]);
   const [bsData, setBsData] = useState([]);
   const [plData, setPlData] = useState([]);
+  const [cashFlowRows, setCashFlowRows] = useState<any[]>([]);
   const [pocData, setPocData] = useState<ProjectPoc | null>(null);
   const [loadingFin, setLoadingFin] = useState(true);
 
   const startDate = "2026-01-01";
   const endDate = "2026-12-31";
 
-  const cf = useMemo(() => computeCashFlow(data), [data.journal]);
+  const cashFlow = useMemo(
+    () => computeCashFlowStatement(data, startDate, endDate),
+    [data]
+  );
 
   const isProjectView = view !== "company";
   const selectedProject = isProjectView
@@ -44,6 +48,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
     async function fetchFinancials() {
       setLoadingFin(true);
       setPocData(null);
+      setCashFlowRows([]);
       try {
         const fetches: Promise<unknown>[] = [];
 
@@ -53,7 +58,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
         fetches.push(plPromise);
 
         if (view === "company") {
-          fetches.push(getTrialBalance(), getBalanceSheet());
+          fetches.push(getTrialBalance(), getBalanceSheet(), getCashFlow(startDate, endDate));
         }
 
         // Fetch POC data for project views only.
@@ -69,6 +74,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
         if (view === "company") {
           const tb = results[1] as any[];
           const bs = results[2] as any[];
+          setCashFlowRows((results[3] ?? []) as any[]);
           setTbData(
             (tb || []).map((r) => ({
               code: r.code,
@@ -78,7 +84,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
             }))
           );
           setBsData(bs || []);
-          const poc = (results[3] ?? null) as ProjectPoc | null;
+          const poc = (results[4] ?? null) as ProjectPoc | null;
           setPocData(poc);
         } else {
           const poc = (results[1] ?? null) as ProjectPoc | null;
@@ -91,7 +97,7 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
       }
     }
     fetchFinancials();
-  }, [view, isProjectView, data.projects]);
+  }, [view, isProjectView, data.projects, data.journal.length]);
 
   if (loadingFin) {
     return <Card><p>Loading financial data...</p></Card>;
@@ -164,6 +170,25 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
     { id: "company", name: "Company-wide" },
     ...data.projects,
   ];
+
+  const cashFlowNetChange = cashFlowRows.reduce((sum, row) => sum + Number(row.net || 0), 0);
+  const cashIn = cashFlowRows.reduce((total, row) => total + Math.max(Number(row.net || 0), 0), 0);
+  const cashOut = cashFlowRows.reduce((total, row) => total + Math.min(Number(row.net || 0), 0), 0);
+  const cashFlowSections = [{
+    title: "CASH FLOWS FROM OPERATING ACTIVITIES",
+    lines: cashFlowRows.map((row) => ({
+      description: row.description || "Unspecified cash movement",
+      amount: Number(row.net || 0),
+      indent: true,
+      entryNumber: row.entry_number,
+      date: row.date,
+    })),
+    subtotal: cashFlowNetChange,
+  }];
+  const formatCashFlowAmount = (amount: number) => {
+    if (amount === 0) return "—";
+    return amount < 0 ? `(${fmt(Math.abs(amount))})` : fmt(amount);
+  };
 
   function exportPdf() {
     const projName =
@@ -520,56 +545,82 @@ export default function FinancialsPanel({ data, setPrintContent }: { data: AppDa
             </div>
           </Card>
 
-          <SectionTitle sub="Movements through Cash and Bank (account 1000), in date order. A simplified direct-method view.">
+          <SectionTitle sub="All Cash and Bank accounts for the reporting period, grouped by operating, investing, and financing activity.">
             Statement of Cash Flows
           </SectionTitle>
           <Card>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16, padding: "4px 0 20px", borderBottom: `1px solid ${RULE}`, marginBottom: 18 }}>
+              {[
+                { label: "Opening Balance", value: cashFlow.openingBalance },
+                { label: "Total Cash In", value: cashIn },
+                { label: "Total Cash Out", value: cashOut },
+                { label: "Net Change", value: cashFlowNetChange },
+                { label: "Closing Balance", value: cashFlow.openingBalance + cashFlowNetChange },
+              ].map((item) => (
+                <div key={item.label}>
+                  <div style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>{item.label}</div>
+                  <div style={{ color: item.value < 0 ? ALERT : INK, fontFamily: FONT_MONO, fontSize: 16, fontWeight: 700 }}>GHS {formatCashFlowAmount(item.value)}</div>
+                </div>
+              ))}
+            </div>
+
             <TableScroll>
-              <table
-                className="table-card"
-                style={{ width: "100%", borderCollapse: "collapse" }}
-              >
+              <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    <Th>Date</Th>
-                    <Th>Entry</Th>
                     <Th>Description</Th>
-                    <Th right>Net Movement</Th>
-                    <Th right>Running Balance</Th>
+                    <Th right>Amount (GHS)</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {cf.length === 0 && (
-                    <tr>
-                      <td colSpan={5} style={{ color: MUTED, padding: 10 }}>
-                        No cash movements yet.
-                      </td>
-                    </tr>
-                  )}
-                  {cf.map((r, i) => (
-                    <tr key={i} className="row-hover">
-                      <Td label="Date">{r.date}</Td>
-                      <Td mono label="Entry">
-                        {r.entryNumber}
-                      </Td>
-                      <Td label="Description">{r.description || "—"}</Td>
-                      <Td
-                        right
-                        mono
-                        label="Net Movement"
-                        style={{ color: r.net >= 0 ? GREEN : ALERT }}
-                      >
-                        {r.net >= 0 ? "+" : ""}
-                        {fmt(r.net)}
-                      </Td>
-                      <Td right mono bold label="Running Balance">
-                        {fmt(r.running)}
-                      </Td>
-                    </tr>
+                  {cashFlowSections.map((section) => (
+                    <React.Fragment key={section.title}>
+                      <tr>
+                        <td colSpan={2} style={{ padding: "14px 10px 7px", color: INK, background: "var(--nav-active, rgba(212,175,55,0.08))", fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
+                          {section.title}
+                        </td>
+                      </tr>
+                      {section.lines.length === 0 ? (
+                        <tr><td colSpan={2} style={{ color: MUTED, padding: "9px 10px", fontStyle: "italic" }}>No cash movements in this category.</td></tr>
+                      ) : section.lines.map((line) => (
+                        <tr key={`${section.title}-${line.description}`} className="row-hover">
+                          <Td label="Description" style={{ paddingLeft: line.indent ? 28 : undefined }}>
+                            <div style={{ color: INK }}>{line.description}</div>
+                            {line.entryNumber && <div style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>{line.date} · {line.entryNumber}</div>}
+                          </Td>
+                          <Td right mono label="Amount (GHS)" style={{ color: line.amount < 0 ? ALERT : INK }}>{formatCashFlowAmount(line.amount)}</Td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: `2px solid ${RULE}` }}>
+                        <Td bold>Net cash {section.title.toLowerCase().replace("cash flows ", "").replace(" activities", "")}</Td>
+                        <Td right mono bold style={{ color: section.subtotal < 0 ? ALERT : INK }}>{formatCashFlowAmount(section.subtotal)}</Td>
+                      </tr>
+                    </React.Fragment>
                   ))}
+                  <tr style={{ borderTop: `2px solid ${INK}` }}>
+                    <Td bold>Net change in cash and cash equivalents</Td>
+                    <Td right mono bold style={{ color: cashFlowNetChange < 0 ? ALERT : INK }}>{formatCashFlowAmount(cashFlowNetChange)}</Td>
+                  </tr>
                 </tbody>
               </table>
             </TableScroll>
+
+            <div style={{ marginTop: 22, paddingTop: 16, borderTop: `2px solid ${INK}` }}>
+              <div style={{ color: INK, fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 8 }}>Reconciliation of Cash and Cash Equivalents</div>
+              <div style={{ color: MUTED, fontSize: 12, marginBottom: 12 }}>All Cash and Bank accounts</div>
+              <div style={{ display: "grid", gap: 8, maxWidth: 560 }}>
+                {[
+                  { label: `Opening Balance (as of ${startDate})`, value: cashFlow.openingBalance },
+                  { label: "Net increase/(decrease) in cash and cash equivalents", value: cashFlowNetChange },
+                  { label: "Closing Balance", value: cashFlow.openingBalance + cashFlowNetChange },
+                ].map((item, index) => (
+                  <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "7px 0", borderTop: index === 2 ? `2px solid ${RULE}` : undefined, fontWeight: index === 2 ? 700 : 400 }}>
+                    <span>{item.label}</span>
+                    <span style={{ fontFamily: FONT_MONO, color: item.value < 0 ? ALERT : INK }}>GHS {formatCashFlowAmount(item.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </Card>
         </>
       )}

@@ -772,6 +772,31 @@ export interface ProfitLossRow {
   balance: number;
 }
 
+export interface CashFlowRow {
+  entry_id: string;
+  entry_number: string;
+  date: string;
+  description: string | null;
+  net: number;
+  running: number;
+}
+
+export async function getCashFlow(startDate: string, endDate: string): Promise<CashFlowRow[]> {
+  const { data, error } = await supabase.rpc('get_cash_flow', {
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+  if (error) {
+    console.error('Error fetching Cash Flow:', error);
+    return [];
+  }
+  return ((data ?? []) as CashFlowRow[]).map((row) => ({
+    ...row,
+    net: Number(row.net) || 0,
+    running: Number(row.running) || 0,
+  }));
+}
+
 export async function getProfitAndLoss(startDate: string, endDate: string, project?: string | null): Promise<ProfitLossRow[]> {
   const params: Record<string, unknown> = {
     p_start_date: startDate,
