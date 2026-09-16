@@ -25,11 +25,9 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [dueDate, setDueDate] = useState("");
   const [project, setProject] = useState("GEN");
   const [expenseAccount, setExpenseAccount] = useState("");
-  const [apAccount, setApAccount] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
-  const apAccounts = data.accounts.filter((a) => a.role === "ap");
   const paymentAccounts = data.accounts.filter((a) => a.isPaymentAccount);
 
   function nextBillNumber(billDate: string) {
@@ -51,7 +49,6 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     if (!amt || amt <= 0) return window.alert("Please enter a valid amount.");
     if (!vendor.trim()) return window.alert("Please enter a vendor name.");
     if (!expenseAccount) return window.alert("Please select an expense account.");
-    if (!apAccount) return window.alert("Please select an Accounts Payable account.");
 
     const billNumber = nextBillNumber(date);
     const bill: Bill = {
@@ -87,7 +84,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       return;
     }
 
-    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setApAccount(""); setShowNew(false);
+    setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setShowNew(false);
   }
 
   async function recordPayment(bill: Bill) {
@@ -196,7 +193,6 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
             )}
           </div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account *</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
-          <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>AP Account *</label><AccountSelect value={apAccount} onChange={setApAccount} accounts={apAccounts} placeholder="Search AP account…" /></div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
           <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
         </div>
