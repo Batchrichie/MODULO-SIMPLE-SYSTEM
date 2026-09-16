@@ -482,6 +482,22 @@ function billPaymentFromRow(r: BillPaymentRow): BillPayment {
   };
 }
 
+function normalizeBillPaymentDescription(description: string | null | undefined, bills: BillRow[] = []): string | null {
+  if (!description) return description ?? null;
+
+  const billMatch = description.match(/on bill\s+([A-Z0-9-]+)/i);
+  if (!billMatch) return description;
+
+  const billNumber = billMatch[1];
+  const vendor = bills.find((bill) => bill.bill_number === billNumber)?.vendor?.trim();
+  if (!vendor) return description;
+
+  const prefixMatch = description.match(/^(.*?on bill\s+[A-Z0-9-]+)/i);
+  const prefix = prefixMatch ? prefixMatch[1] : 'Payment';
+
+  return `${prefix} — ${vendor}`;
+}
+
 function billPaymentToRow(p: BillPayment, billId: string): BillPaymentRow {
   return {
     id: p.id,
@@ -616,6 +632,7 @@ export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promis
  * lock_bill_payments_writes trigger.
  */
 export async function postBill(params: {
+  bill_id: string;
   bill_number: string;
   date: string;
   due_date: string | null;
@@ -624,9 +641,9 @@ export async function postBill(params: {
   project: string | null;
   amount: number;
   expense_account_code: string;
-  ap_account_code: string;
 }): Promise<{ bill_id: string; journal_entry_id: string }> {
   const { data, error } = await supabase.rpc('post_bill', {
+    p_bill_id: params.bill_id,
     p_bill_number: params.bill_number,
     p_date: params.date,
     p_due_date: params.due_date,
@@ -635,7 +652,6 @@ export async function postBill(params: {
     p_project: params.project,
     p_amount: params.amount,
     p_expense_account_code: params.expense_account_code,
-    p_ap_account_code: params.ap_account_code,
   });
   if (error) throw error;
   return (data ?? { bill_id: '', journal_entry_id: '' }) as { bill_id: string; journal_entry_id: string };
@@ -1128,7 +1144,7 @@ export async function loadLedgerState(): Promise<AppData | null> {
       id: e.id,
       entryNumber: e.entry_number,
       date: e.date,
-      description: e.description,
+      description: normalizeBillPaymentDescription(e.description, billsData ?? []),
       period: e.period,
       project: e.project,
       lines: (journalLines ?? []).filter((l: JournalLineRow & { entry_id: string }) => l.entry_id === e.id).map(journalLineFromRow),

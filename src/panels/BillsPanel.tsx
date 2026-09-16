@@ -70,6 +70,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({ ...d, bills: [bill, ...d.bills] }));
     try {
       const posted = await postBill({
+        bill_id: bill.id,
         bill_number: bill.billNumber,
         date: bill.date,
         due_date: bill.dueDate ?? null,
@@ -78,7 +79,6 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         project: bill.project ?? null,
         amount: bill.amount,
         expense_account_code: expenseAccount,
-        ap_account_code: apAccount,
       });
     } catch (err: any) {
       mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== bill.id) }));
