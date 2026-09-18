@@ -407,14 +407,14 @@ export function computeCashFlowStatement(data: AppData, startDate?: string, endD
     const nonCashLines = entry.lines.filter(l => !cashCodeSet.has(l.account));
     if (nonCashLines.length === 0) return;
 
-    const primaryLine = nonCashLines[0];
-    const account = getAccountByCode(data, primaryLine.account);
-    const activity = classifyActivity(account?.type, account?.role);
-
-    const description = formatAccountName(data, primaryLine.account);
-    const targetMap = activity === 'operating' ? operatingMap : activity === 'investing' ? investingMap : financingMap;
-    const existing = targetMap.get(description) || 0;
-    targetMap.set(description, existing + cashNet);
+    nonCashLines.forEach(line => {
+      const account = getAccountByCode(data, line.account);
+      const activity = classifyActivity(account?.type, account?.role);
+      const description = formatAccountName(data, line.account);
+      const targetMap = activity === 'operating' ? operatingMap : activity === 'investing' ? investingMap : financingMap;
+      const existing = targetMap.get(description) || 0;
+      targetMap.set(description, existing - (line.debit - line.credit));
+    });
   });
 
   const buildSection = (title: string, map: Map<string, number>, invertSign: boolean): CashFlowSection => {
