@@ -345,7 +345,14 @@ export default function DashboardPanel({ data, setTab, profile }: DashboardPanel
         <Card style={{ padding: isMobile ? 14 : 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, flexWrap: "wrap", gap: 6 }}>
             <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: isMobile ? 14 : 15, color: INK, margin: 0, fontWeight: 700 }}>Cash flow</h3>
-            <span style={{ fontSize: 10, color: MUTED }}>Last 6 movements</span>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: MUTED }}>
+              <span>Last 6 movements</span>
+              {metrics.cashFlowData.map((series) => (
+                <span key={series.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: series.color }} />{series.label}
+                </span>
+              ))}
+            </div>
           </div>
           {metrics.cashFlowData.length > 0 ? (
             <LineChart data={metrics.cashFlowData} />

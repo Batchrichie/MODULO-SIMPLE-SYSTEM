@@ -34,6 +34,63 @@ export function computeCashFlow(data: AppData) {
   return rows;
 }
 
+export type CashFlowSeries = {
+  key: 'cash' | 'momo' | 'bank';
+  label: string;
+  color: string;
+  points: Array<{ date: string; label: string; amount: number }>;
+};
+
+function cashAccountKind(account: AppData['accounts'][number]): CashFlowSeries['key'] {
+  const role = (account.role || '').toLowerCase();
+  const name = account.name.toLowerCase();
+  if (role.includes('bank') || name.includes('bank')) return 'bank';
+  if (role.includes('momo') || role.includes('mobile') || name.includes('momo') || name.includes('mobile money')) return 'momo';
+  return 'cash';
+}
+
+export function computeCashFlowSeries(data: AppData): CashFlowSeries[] {
+  const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
+  const accounts = paymentAccounts.length > 0
+    ? paymentAccounts
+    : data.accounts.filter(a => a.type === 'Asset' && /^1\d{3}$/.test(a.code));
+  const accountKinds = new Map(accounts.map(account => [account.code, cashAccountKind(account)]));
+  const movementByDate = new Map<string, Record<CashFlowSeries['key'], number>>();
+
+  data.journal.forEach((entry) => {
+    const totals = movementByDate.get(entry.date) || { cash: 0, momo: 0, bank: 0 };
+    entry.lines.forEach((line) => {
+      const kind = accountKinds.get(line.account);
+      if (kind) totals[kind] += line.debit - line.credit;
+    });
+    movementByDate.set(entry.date, totals);
+  });
+
+  const dates = [...movementByDate.keys()]
+    .filter(date => {
+      const totals = movementByDate.get(date)!;
+      return totals.cash !== 0 || totals.momo !== 0 || totals.bank !== 0;
+    })
+    .sort()
+    .slice(-6);
+  const definitions: Array<{ key: CashFlowSeries['key']; label: string; color: string }> = [
+    { key: 'cash', label: 'Cash', color: 'var(--green)' },
+    { key: 'momo', label: 'Momo', color: '#3B82F6' },
+    { key: 'bank', label: 'Bank', color: 'var(--gold)' },
+  ];
+
+  return definitions
+    .map((definition) => ({
+      ...definition,
+      points: dates.map((date) => ({
+        date,
+        label: new Date(`${date}T00:00:00`).toLocaleDateString('en-GH', { month: 'short', day: '2-digit' }),
+        amount: movementByDate.get(date)![definition.key],
+      })),
+    }))
+    .filter((series) => series.points.some(point => point.amount !== 0));
+}
+
 /** Derive KPI metrics from raw app data — linked to DB accounts, invoices & bills */
 export function getDashboardMetrics(data: AppData) {
   const balanceFor = (codes: string[]) => {
@@ -116,7 +173,7 @@ export function getDashboardMetrics(data: AppData) {
   const projectedGrossMargin = totalContractValue - totalEstimatedCost;
   const projectedMarginPct = totalContractValue > 0 ? (projectedGrossMargin / totalContractValue) * 100 : 0;
 
-  const cashFlowData = computeCashFlow(data).slice(-6).map(c => ({ date: c.date, value: c.running }));
+  const cashFlowData = computeCashFlowSeries(data);
 
   const monthlyData: Record<string, { revenue: number; expense: number }> = {};
   data.journal.forEach(e => {
@@ -130,11 +187,20 @@ export function getDashboardMetrics(data: AppData) {
       if (acc.type === 'Expense') monthlyData[month].expense += (l.debit - l.credit);
     });
   });
-  const barChartData = Object.keys(monthlyData).slice(-6).map(m => ({
-    label: m.split('-')[1] + '/' + m.split('-')[0].slice(2),
-    revenue: monthlyData[m].revenue,
-    expense: monthlyData[m].expense,
-  }));
+  const currentMonth = new Date();
+  const monthKeys = Array.from({ length: 5 }, (_, index) => {
+    const month = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 4 + index, 1);
+    return `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const barChartData = monthKeys.map((monthKey) => {
+    const [year, month] = monthKey.split("-");
+    return {
+      month: `${month}/${year.slice(2)}`,
+      revenue: monthlyData[monthKey]?.revenue || 0,
+      expenses: monthlyData[monthKey]?.expense || 0,
+      isCurrent: monthKey === `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`,
+    };
+  });
 
   const donutData = activeProjects
     .map(p => ({ name: p.name, value: p.contractValue == null ? null : Number(p.contractValue) }))
