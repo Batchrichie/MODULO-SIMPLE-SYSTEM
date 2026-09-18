@@ -369,7 +369,7 @@ function classifyActivity(accountType: string | undefined, role: string | undefi
     case 'Expense':
       return 'operating';
     case 'Asset':
-      return 'investing';
+      return 'operating';
     case 'Liability':
     case 'Equity':
       return 'financing';
