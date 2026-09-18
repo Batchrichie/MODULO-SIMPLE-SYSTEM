@@ -408,12 +408,15 @@ export function computeCashFlowStatement(data: AppData, startDate?: string, endD
     if (nonCashLines.length === 0) return;
 
     nonCashLines.forEach(line => {
+      const lineCashMovement = -(line.debit - line.credit);
+      if (lineCashMovement === 0) return;
+
       const account = getAccountByCode(data, line.account);
       const activity = classifyActivity(account?.type, account?.role);
       const description = formatAccountName(data, line.account);
       const targetMap = activity === 'operating' ? operatingMap : activity === 'investing' ? investingMap : financingMap;
       const existing = targetMap.get(description) || 0;
-      targetMap.set(description, existing - (line.debit - line.credit));
+      targetMap.set(description, existing + lineCashMovement);
     });
   });
 
