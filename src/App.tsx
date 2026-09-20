@@ -129,6 +129,13 @@ export default function App() {
   );
   const effectiveTab = accessibleKeys.has(tab) ? tab : (navGroups[0]?.keys[0] || "dashboard");
 
+  // Leave the route-level ledger page before switching to another app tab.
+  // Otherwise /ledger/:accountCode keeps overriding the selected tab.
+  const handleTabChange = useCallback((nextTab: string) => {
+    if (onLedgerRoute) navigate("/", { replace: true });
+    setTab(nextTab);
+  }, [onLedgerRoute, navigate]);
+
   // Resolve icon for a nav key
   function navIcon(key: string) {
     return NAV_CONFIG.find((n) => n.key === key)?.icon ?? LayoutDashboard;
@@ -366,7 +373,7 @@ export default function App() {
             <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {group.keys.filter((k) => k !== "logout").map((k) => {
                 const Icon = navIcon(k);
-                return <NavItem key={k} icon={Icon} label={navLabel(k)} active={effectiveTab === k} onClick={() => setTab(k)} />;
+                return <NavItem key={k} icon={Icon} label={navLabel(k)} active={effectiveTab === k} onClick={() => handleTabChange(k)} />;
               })}
             </nav>
           </div>
@@ -376,7 +383,7 @@ export default function App() {
       {/* BOTTOM: Modern logout button */}
       <div style={{ paddingTop: 12, borderTop: `1px solid ${RULE}`, flexShrink: 0, marginTop: 16 }}>
         {navGroups.flatMap((group) => group.keys).includes("logout") && (
-          <button onClick={() => setTab("logout")} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${RULE}`, background: PAPER, color: ALERT, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", transition: "all 0.2s ease" }}>
+          <button onClick={() => handleTabChange("logout")} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${RULE}`, background: PAPER, color: ALERT, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", transition: "all 0.2s ease" }}>
             <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: 'rgba(166, 61, 64, 0.08)' }}>
               <LogOut size={15} strokeWidth={2} />
             </span>
@@ -547,7 +554,7 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                      <button onClick={() => setTab("dashboard")} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "all 0.2s ease" }}>Cancel</button>
+                      <button onClick={() => handleTabChange("dashboard")} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${RULE}`, background: PAPER_RAISED, color: INK, fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "all 0.2s ease" }}>Cancel</button>
                       <Button onClick={handleLogout} variant="danger" disabled={loggingOut}>{loggingOut ? "Signing out…" : "Sign out"}</Button>
                     </div>
                   </Card>
@@ -567,7 +574,7 @@ export default function App() {
                     const NavIcon = item.icon;
                     const active = effectiveTab === item.key;
                     return (
-                      <button key={item.key} onClick={() => { setTab(item.key); setShowMenu(false); }} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "11px 20px", border: "none", cursor: "pointer", textAlign: "left", background: active ? "rgba(212,175,55,0.1)" : "transparent", color: active ? "#D4AF37" : "rgba(255,255,255,0.75)", fontFamily: FONT_BODY, fontSize: 14, fontWeight: active ? 600 : 400, transition: "background 0.15s ease, color 0.15s ease" }}>
+                      <button key={item.key} onClick={() => { handleTabChange(item.key); setShowMenu(false); }} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "11px 20px", border: "none", cursor: "pointer", textAlign: "left", background: active ? "rgba(212,175,55,0.1)" : "transparent", color: active ? "#D4AF37" : "rgba(255,255,255,0.75)", fontFamily: FONT_BODY, fontSize: 14, fontWeight: active ? 600 : 400, transition: "background 0.15s ease, color 0.15s ease" }}>
                         <NavIcon size={17} style={{ flexShrink: 0, opacity: active ? 1 : 0.7 }} />
                         <span>{item.label}</span>
                         {active && <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: "#D4AF37" }} />}
@@ -583,7 +590,7 @@ export default function App() {
                 const active = effectiveTab === key;
                 const isCenter = idx === Math.floor(mobileBottomKeys.length / 2);
                 return (
-                  <button key={key} onClick={() => setTab(key)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer", padding: isCenter ? "0 2px" : "4px 6px", borderRadius: 20, transition: "all 0.25s ease" }}>
+                  <button key={key} onClick={() => handleTabChange(key)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer", padding: isCenter ? "0 2px" : "4px 6px", borderRadius: 20, transition: "all 0.25s ease" }}>
                     <div style={{ width: isCenter ? 46 : 36, height: isCenter ? 46 : 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: active ? "2px solid #D4AF37" : "2px solid transparent", background: isCenter ? (active ? "linear-gradient(135deg, #D4AF37, #B8962E)" : "linear-gradient(135deg, rgba(212,175,55,0.25), rgba(184,150,46,0.15))") : "transparent", boxShadow: isCenter && active ? "0 4px 20px rgba(212,175,55,0.45), 0 0 0 3px rgba(212,175,55,0.2)" : "0 2px 8px rgba(0,0,0,0.15)", transition: "all 0.3s cubic-bezier(0.16,1,0.3,1)", marginTop: isCenter ? -8 : 0 }}>
                       <Icon size={isCenter ? 21 : 18} style={{ color: isCenter ? (active ? "#1F2937" : "#D4AF37") : (active ? "#D4AF37" : "#9CA3AF"), transition: "color 0.25s ease" }} />
                     </div>
