@@ -36,23 +36,15 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     reason: "",
   });
   const [projectPocById, setProjectPocById] = useState<Record<string, Awaited<ReturnType<typeof getProjectPoc>>>>({});
-  const stats = useMemo(() => data.projects.map((project) => {
-    const projectEntries = data.journal.filter((entry) => entry.project === project.id);
-    const revenueBilled = projectEntries
-      .flatMap((entry) => entry.lines)
-      .filter((line) => data.accounts.find((account) => account.code === line.account)?.type === "Income")
-      .reduce((sum, line) => sum + (line.credit - line.debit), 0);
-    const actualCost = projectEntries
-      .flatMap((entry) => entry.lines)
-      .filter((line) => data.accounts.find((account) => account.code === line.account)?.type === "Expense")
-      .reduce((sum, line) => sum + line.debit, 0);
-    return {
-      ...project,
-      revenueBilled,
-      actualCost,
-      wipMargin: revenueBilled - actualCost,
-    };
-  }), [data]);
+  // Project financial figures are sourced from the backend POC view.
+  // Keep the frontend as a presentation layer; do not recalculate project
+  // revenue/cost/WIP from the cached journal state.
+  const stats = useMemo(() => data.projects.map((project) => ({
+    ...project,
+    revenueBilled: 0,
+    actualCost: 0,
+    wipMargin: 0,
+  })), [data.projects]);
 
   useEffect(() => {
     let active = true;
