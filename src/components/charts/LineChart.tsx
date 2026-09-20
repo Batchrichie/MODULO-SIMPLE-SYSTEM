@@ -24,6 +24,7 @@ export default function LineChart({ data }: { data: CashFlowSeries[] }) {
   const pointCount = Math.max(...data.map((series) => series.points.length), 1);
   const xForIndex = (index: number) => 70 + index * ((560 - 70) / Math.max(pointCount - 1, 1));
   const yForValue = (value: number) => 160 - (value / yMax) * 120;
+  const formatAmount = (amount: number) => `GHS ${Math.abs(amount).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <svg
@@ -53,8 +54,15 @@ export default function LineChart({ data }: { data: CashFlowSeries[] }) {
             <path d={areaPath} fill={`url(#cashFlowArea-${series.key})`} />
             <path d={`M ${linePath}`} fill="none" stroke={series.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
             {points.map(({ x, y, point, value }, index) => (
-              <g key={`${series.key}-${point.date}`}>
-                <title>{`${series.label} · ${point.label || point.date} · GHS ${value.toFixed(2)}`}</title>
+              <g
+                key={`${series.key}-${point.date}`}
+                tabIndex={0}
+                role="img"
+                aria-label={`${series.label}, ${point.label || point.date}, ${value < 0 ? "outflow" : "inflow"} ${formatAmount(value)}`}
+                style={{ cursor: "pointer", outline: "none" }}
+              >
+                <title>{`${series.label} · ${point.label || point.date} · ${value < 0 ? "Outflow" : "Inflow"}: ${formatAmount(value)}`}</title>
+                <circle cx={x} cy={y} r="10" fill="transparent" pointerEvents="all" />
                 {index === points.length - 1 && latest.value !== 0 ? (
                   <>
                     <circle cx={x} cy={y} r="6" fill="var(--paper)" stroke={series.color} strokeWidth="2.5" />
