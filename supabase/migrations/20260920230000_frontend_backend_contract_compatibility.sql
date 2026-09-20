@@ -170,6 +170,9 @@ REVOKE ALL ON FUNCTION public.post_bill(
 GRANT EXECUTE ON FUNCTION public.post_bill(
   text, date, date, text, text, character varying, numeric, character varying, character varying
 ) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.post_bill(
+  text, date, date, text, text, character varying, numeric, character varying, character varying
+) FROM anon;
 
 REVOKE ALL ON FUNCTION public.record_project_transaction_value(
   character varying, character varying, numeric
@@ -178,3 +181,6 @@ REVOKE ALL ON FUNCTION public.record_project_transaction_value(
 GRANT EXECUTE ON FUNCTION public.record_project_transaction_value(
   character varying, character varying, numeric
 ) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.record_project_transaction_value(
+  character varying, character varying, numeric
+) FROM anon;
