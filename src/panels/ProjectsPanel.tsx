@@ -41,9 +41,9 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
   // revenue/cost/WIP from the cached journal state.
   const stats = useMemo(() => data.projects.map((project) => ({
     ...project,
-    revenueBilled: 0,
-    actualCost: 0,
-    wipMargin: 0,
+    revenueBilled: null,
+    actualCost: null,
+    wipMargin: null,
   })), [data.projects]);
 
   useEffect(() => {
@@ -467,13 +467,13 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Revenue Billed
                 </span>
-                <span>{backendRevenueBilled == null ? `GHS ${fmt(p.revenueBilled)}` : `GHS ${fmt(backendRevenueBilled)}`}</span>
+                <span>{backendRevenueBilled == null ? "Not available" : `GHS ${fmt(backendRevenueBilled)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Actual Cost to Date
                 </span>
-                <span>{backendActualCost == null ? `GHS ${fmt(p.actualCost)}` : `GHS ${fmt(backendActualCost)}`}</span>
+                <span>{backendActualCost == null ? "Not available" : `GHS ${fmt(backendActualCost)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
@@ -516,8 +516,8 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   WIP Margin (Billed - Cost)
                 </span>
-                <span style={{ color: p.wipMargin >= 0 ? GREEN : ALERT }}>
-                  GHS {fmt(p.wipMargin)}
+                <span style={{ color: backendRevenueBilled == null || backendActualCost == null ? MUTED : backendRevenueBilled - backendActualCost >= 0 ? GREEN : ALERT }}>
+                  {backendRevenueBilled == null || backendActualCost == null ? "Not available" : `GHS ${fmt(backendRevenueBilled - backendActualCost)}`}
                 </span>
               </div>
             </div>
