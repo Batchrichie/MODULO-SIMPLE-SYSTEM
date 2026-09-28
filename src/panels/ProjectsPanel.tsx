@@ -36,23 +36,15 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
     reason: "",
   });
   const [projectPocById, setProjectPocById] = useState<Record<string, Awaited<ReturnType<typeof getProjectPoc>>>>({});
-  const stats = useMemo(() => data.projects.map((project) => {
-    const projectEntries = data.journal.filter((entry) => entry.project === project.id);
-    const revenueBilled = projectEntries
-      .flatMap((entry) => entry.lines)
-      .filter((line) => data.accounts.find((account) => account.code === line.account)?.type === "Income")
-      .reduce((sum, line) => sum + (line.credit - line.debit), 0);
-    const actualCost = projectEntries
-      .flatMap((entry) => entry.lines)
-      .filter((line) => data.accounts.find((account) => account.code === line.account)?.type === "Expense")
-      .reduce((sum, line) => sum + line.debit, 0);
-    return {
-      ...project,
-      revenueBilled,
-      actualCost,
-      wipMargin: revenueBilled - actualCost,
-    };
-  }), [data]);
+  // Project financial figures are sourced from the backend POC view.
+  // Keep the frontend as a presentation layer; do not recalculate project
+  // revenue/cost/WIP from the cached journal state.
+  const stats = useMemo(() => data.projects.map((project) => ({
+    ...project,
+    revenueBilled: null,
+    actualCost: null,
+    wipMargin: null,
+  })), [data.projects]);
 
   useEffect(() => {
     let active = true;
@@ -475,13 +467,13 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Revenue Billed
                 </span>
-                <span>{backendRevenueBilled == null ? `GHS ${fmt(p.revenueBilled)}` : `GHS ${fmt(backendRevenueBilled)}`}</span>
+                <span>{backendRevenueBilled == null ? "Not available" : `GHS ${fmt(backendRevenueBilled)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   Actual Cost to Date
                 </span>
-                <span>{backendActualCost == null ? `GHS ${fmt(p.actualCost)}` : `GHS ${fmt(backendActualCost)}`}</span>
+                <span>{backendActualCost == null ? "Not available" : `GHS ${fmt(backendActualCost)}`}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
@@ -524,8 +516,8 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
                 <span style={{ color: MUTED, fontFamily: FONT_BODY }}>
                   WIP Margin (Billed - Cost)
                 </span>
-                <span style={{ color: p.wipMargin >= 0 ? GREEN : ALERT }}>
-                  GHS {fmt(p.wipMargin)}
+                <span style={{ color: backendRevenueBilled == null || backendActualCost == null ? MUTED : backendRevenueBilled - backendActualCost >= 0 ? GREEN : ALERT }}>
+                  {backendRevenueBilled == null || backendActualCost == null ? "Not available" : `GHS ${fmt(backendRevenueBilled - backendActualCost)}`}
                 </span>
               </div>
             </div>
