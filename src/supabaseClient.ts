@@ -633,8 +633,8 @@ export async function listExpenses(): Promise<Record<string, unknown>[]> {
 
 export async function createExpenseDraft(params: CreateExpenseDraftInput): Promise<unknown> {
   const { data, error } = await supabase.rpc('create_expense', {
-    p_date: params.date,
-    p_vendor: params.vendor || null,
+    p_transaction_date: params.date,
+    p_vendor_payee: params.vendor || null,
     p_description: params.description,
     p_amount: params.amount,
     p_project: params.project,
