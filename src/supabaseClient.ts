@@ -611,6 +611,58 @@ export async function postJournalEntry(
   return newEntryId as string;
 }
 
+export interface CreateExpenseDraftInput {
+  date: string;
+  vendor: string;
+  description: string;
+  amount: number;
+  project: string | null;
+}
+
+export async function listExpenseAccounts(): Promise<unknown> {
+  const { data, error } = await supabase.rpc('list_expense_accounts');
+  if (error) throw error;
+  return data;
+}
+
+export async function listExpenses(): Promise<Record<string, unknown>[]> {
+  const { data, error } = await supabase.from('expenses').select('*');
+  if (error) throw error;
+  return (data ?? []) as Record<string, unknown>[];
+}
+
+export async function createExpenseDraft(params: CreateExpenseDraftInput): Promise<unknown> {
+  const { data, error } = await supabase.rpc('create_expense', {
+    p_date: params.date,
+    p_vendor: params.vendor || null,
+    p_description: params.description,
+    p_amount: params.amount,
+    p_project: params.project,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function postExpenseTransaction(
+  expenseId: string,
+  expenseAccountCode: string,
+  paymentAccountCode: string
+): Promise<unknown> {
+  const { data, error } = await supabase.rpc('post_expense_transaction', {
+    p_expense_id: expenseId,
+    p_expense_account_code: expenseAccountCode,
+    p_payment_account_code: paymentAccountCode,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function cancelExpense(expenseId: string): Promise<unknown> {
+  const { data, error } = await supabase.rpc('cancel_expense', { p_expense_id: expenseId });
+  if (error) throw error;
+  return data;
+}
+
 export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promise<string> {
   const { data: employeeId, error: empErr } = await supabase.rpc('my_employee_id');
   if (empErr) throw empErr;

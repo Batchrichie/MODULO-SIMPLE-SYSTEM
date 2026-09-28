@@ -23,6 +23,8 @@ export const CEO_BILLS_WRITE = "ceo:bills:write";
 export const CEO_EMPLOYEES_WRITE = "ceo:employees:write";
 export const CEO_PAYROLL_WRITE = "ceo:payroll:write";
 export const CEO_LOANS_WRITE = "ceo:loans:write";
+export const CEO_EXPENSES_CREATE = "ceo:expenses:create";
+export const CEO_EXPENSES_POST = "ceo:expenses:post";
 
 // Non-admin portal tokens
 export const DASHBOARD_OPS = "dashboard:ops";
@@ -38,6 +40,7 @@ export const FIELD_ACTIVITY_VIEW = "field-activity:view";
 export const LOANS_SELF = "loans:self";
 export const LOANS_APPROVE = "loans:approve";
 const LOAN_APPROVAL_TOKENS = new Set([LOANS_APPROVE, CEO_LOANS_WRITE]);
+const EXPENSE_TOKENS = new Set([CEO_EXPENSES_CREATE, CEO_EXPENSES_POST]);
 
 /** Tokens exclusive to non-admin portal users (hidden from CEO) */
 const PORTAL_ONLY_TOKENS: ReadonlySet<string> = new Set([
@@ -51,6 +54,7 @@ export const SCOPED_TOKENS = [
   CEO_JOURNAL_READ, CEO_JOURNAL_WRITE,
   CEO_PROJECTS_WRITE, CEO_INVOICING_WRITE, CEO_BILLS_WRITE,
   CEO_EMPLOYEES_WRITE, CEO_PAYROLL_WRITE, CEO_LOANS_WRITE,
+  CEO_EXPENSES_CREATE, CEO_EXPENSES_POST,
   DASHBOARD_OPS, DASHBOARD_LIMITED, PROJECTS_VIEW,
   PROGRESS_WRITE, SITE_REPORTS_WRITE, ISSUES_WRITE, MEDIA_WRITE,
   PAYROLL_SELF, PAYROLL_STATEMENT, FIELD_ACTIVITY_VIEW, LOANS_SELF, LOANS_APPROVE,
@@ -184,7 +188,7 @@ const ADMIN_HIDDEN_KEYS = new Set([
  * Media Library, Field Activity).
  */
 const CEO_HIDDEN_KEYS = new Set([
-  "expenses", "bank-reconciliation", "accounts", "accounting-periods", "export",
+  "bank-reconciliation", "accounts", "accounting-periods", "export",
   "pm-dashboard", "my-payslips", "my-statement", "media-library", "my-loans", "field-activity",
 ]);
 
@@ -197,6 +201,7 @@ export function getNavGroups(permissions: string[]) {
   const admin = isAdmin(permissions);
   const ceo = isCeo(permissions);
   const accessible = NAV_CONFIG.filter((n) => {
+    if (n.key === "expenses") return admin || permissions.some((permission) => EXPENSE_TOKENS.has(permission));
     if (!canAccess(permissions, n.token)) return false;
     if (admin && ADMIN_HIDDEN_KEYS.has(n.key)) return false;
     if (ceo && CEO_HIDDEN_KEYS.has(n.key)) return false;
@@ -259,6 +264,7 @@ export function getMobileMoreItems(permissions: string[]): NavItemConfig[] {
   return NAV_CONFIG.filter((n) => {
     if (n.key === "logout") return true;
     if (bottomKeys.has(n.key)) return false;
+    if (n.key === "expenses") return admin || permissions.some((permission) => EXPENSE_TOKENS.has(permission));
     if (!canAccess(permissions, n.token)) return false;
     if (admin && ADMIN_HIDDEN_KEYS.has(n.key)) return false;
     if (ceo && CEO_HIDDEN_KEYS.has(n.key)) return false;

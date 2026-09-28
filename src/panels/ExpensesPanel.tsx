@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from "react";
-import { Plus, Receipt, AlertTriangle } from 'lucide-react';
-import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GOLD, ALERT, MUTED, FONT_DISPLAY, FONT_BODY, FONT_MONO } from '../theme/tokens';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { AlertTriangle, Receipt } from 'lucide-react';
+import { INK, RULE, GREEN, ALERT, MUTED, FONT_DISPLAY, FONT_MONO } from '../theme/tokens';
 import Card from '../components/ui/Card';
 import SectionTitle from '../components/ui/SectionTitle';
 import TableScroll from '../components/ui/TableScroll';
@@ -12,253 +12,372 @@ import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
 import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
-import { postJournalEntry, findDefaultPaymentAccount, findPeriodByDate } from '../supabaseClient';
-import type { AppData, PanelProps, JournalEntry } from '../types';
+import { findPeriodByDate } from '../supabaseClient';
+import {
+  cancelExpense,
+  createExpenseDraft,
+  listExpenseAccounts,
+  listExpenses,
+  loadLedgerState,
+  postExpenseTransaction,
+} from '../supabaseClient';
+import type { Account, AppData, MutateFn } from '../types';
 
-export default function ExpensesPanel({ data, mutate }: PanelProps) {
+type ExpenseRecord = {
+  id: string;
+  date: string;
+  vendor: string;
+  description: string;
+  amount: number;
+  project: string | null;
+  status: 'Draft' | 'Posted' | 'Cancelled';
+  suggestedExpenseAccountCode: string | null;
+  suggestedPaymentAccountCode: string | null;
+  expenseAccountCode: string | null;
+  paymentAccountCode: string | null;
+  journalEntryId: string | null;
+};
+
+type PanelProps = {
+  data: AppData;
+  mutate: MutateFn;
+  canCreate: boolean;
+  canPost: boolean;
+};
+
+function valueFrom(row: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) if (row[key] !== undefined && row[key] !== null) return row[key];
+  return undefined;
+}
+
+function normalizeExpense(value: unknown, fallback: Partial<ExpenseRecord> = {}): ExpenseRecord {
+  const wrapped = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const nested = (wrapped.expense && typeof wrapped.expense === 'object')
+    ? wrapped.expense as Record<string, unknown>
+    : wrapped;
+  const statusValue = String(valueFrom(nested, 'status') ?? fallback.status ?? 'Draft').toLowerCase();
+  const status: ExpenseRecord['status'] = statusValue === 'posted'
+    ? 'Posted'
+    : statusValue === 'cancelled' || statusValue === 'canceled'
+      ? 'Cancelled'
+      : 'Draft';
+  return {
+    id: String(valueFrom(nested, 'id', 'expense_id') ?? fallback.id ?? ''),
+    date: String(valueFrom(nested, 'date', 'expense_date') ?? fallback.date ?? ''),
+    vendor: String(valueFrom(nested, 'vendor', 'payee') ?? fallback.vendor ?? ''),
+    description: String(valueFrom(nested, 'description') ?? fallback.description ?? ''),
+    amount: Number(valueFrom(nested, 'amount', 'amount_ghs') ?? fallback.amount ?? 0),
+    project: (valueFrom(nested, 'project', 'project_id') ?? fallback.project ?? null) as string | null,
+    status,
+    suggestedExpenseAccountCode: String(valueFrom(nested, 'suggested_expense_account_code', 'expense_account_suggestion', 'suggested_expense_account') ?? fallback.suggestedExpenseAccountCode ?? '') || null,
+    suggestedPaymentAccountCode: String(valueFrom(nested, 'suggested_payment_account_code', 'payment_account_suggestion', 'suggested_payment_account') ?? fallback.suggestedPaymentAccountCode ?? '') || null,
+    expenseAccountCode: String(valueFrom(nested, 'expense_account_code') ?? fallback.expenseAccountCode ?? '') || null,
+    paymentAccountCode: String(valueFrom(nested, 'payment_account_code') ?? fallback.paymentAccountCode ?? '') || null,
+    journalEntryId: String(valueFrom(nested, 'journal_entry_id') ?? fallback.journalEntryId ?? '') || null,
+  };
+}
+
+function accountChoices(raw: unknown): { expense: Account[]; payment: Account[] } {
+  const object = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const expenseRows = Array.isArray(object.expense_accounts) ? object.expense_accounts : [];
+  const paymentRows = Array.isArray(object.payment_accounts) ? object.payment_accounts : [];
+  const rows = Array.isArray(raw) ? raw : [...expenseRows, ...paymentRows, ...(Array.isArray(object.accounts) ? object.accounts : [])];
+  const expense: Account[] = [];
+  const payment: Account[] = [];
+  for (const value of rows) {
+    if (!value || typeof value !== 'object') continue;
+    const row = value as Record<string, unknown>;
+    const code = String(valueFrom(row, 'code', 'account_code') ?? '');
+    if (!code) continue;
+    const name = String(valueFrom(row, 'name', 'account_name') ?? code);
+    const type = String(valueFrom(row, 'type', 'account_type', 'category') ?? '');
+    const account: Account = {
+      code,
+      name,
+      type,
+      isPaymentAccount: Boolean(valueFrom(row, 'is_payment_account', 'isPaymentAccount')),
+      role: String(valueFrom(row, 'role', 'account_role') ?? '') || null,
+    };
+    const normalizedType = type.toLowerCase();
+    const isPayment = account.isPaymentAccount || /payment|cash|bank/.test(normalizedType) || /cash|bank/.test((account.role ?? '').toLowerCase()) || paymentRows.includes(value);
+    if (isPayment) payment.push(account);
+    else expense.push(account);
+  }
+  return { expense, payment };
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? 'Unknown error');
+}
+
+export default function ExpensesPanel({ data, mutate, canCreate, canPost }: PanelProps) {
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [expenseAccounts, setExpenseAccounts] = useState<Account[]>([]);
+  const [paymentAccounts, setPaymentAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
+  const [activeExpense, setActiveExpense] = useState<ExpenseRecord | null>(null);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [vendor, setVendor] = useState("");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [paymentAccount, setPaymentAccount] = useState("");
-  const [account, setAccount] = useState("");
-  const [project, setProject] = useState("GEN");
-  const [showHistory, setShowHistory] = useState(true);
+  const [vendor, setVendor] = useState('');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [paymentAccount, setPaymentAccount] = useState('');
+  const [account, setAccount] = useState('');
+  const [project, setProject] = useState('GEN');
 
-  const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
-  const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
-  const makeTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  async function reloadExpenses() {
+    const rows = await listExpenses();
+    setExpenses(rows.map((row) => normalizeExpense(row)).filter((expense) => expense.id));
+  }
 
-  const closedExpDatePeriod = findPeriodByDate(data.accountingPeriods, date);
-  const showExpDateClosedWarn = closedExpDatePeriod?.status === "closed";
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([listExpenseAccounts(), listExpenses()])
+      .then(([accountsResult, expensesResult]) => {
+        if (!mounted) return;
+        const choices = accountChoices(accountsResult);
+        setExpenseAccounts(choices.expense);
+        setPaymentAccounts(choices.payment);
+        setExpenses(expensesResult.map((row) => normalizeExpense(row)).filter((expense) => expense.id));
+      })
+      .catch((loadError) => {
+        if (mounted) setError(`Could not load expense setup: ${errorText(loadError)}`);
+      })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, []);
 
   function resetForm() {
     setDate(new Date().toISOString().slice(0, 10));
-    setVendor(""); setDescription(""); setAmount("");
-    const def = findDefaultPaymentAccount(data.accounts);
-    setPaymentAccount(def?.code || "");
-    setAccount(""); setProject("GEN");
+    setVendor('');
+    setDescription('');
+    setAmount('');
+    setPaymentAccount('');
+    setAccount('');
+    setProject('GEN');
+    setActiveExpense(null);
+    setError('');
   }
 
-  async function postExpense() {
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { window.alert("Please enter a valid amount."); return; }
-    if (!account) { window.alert("Please select an expense account."); return; }
-    if (!paymentAccount) { window.alert("Please select a payment account."); return; }
-    if (!description.trim()) { window.alert("Please enter a description."); return; }
+  function openReview(expense: ExpenseRecord) {
+    setActiveExpense(expense);
+    setAccount(expense.expenseAccountCode ?? expense.suggestedExpenseAccountCode ?? '');
+    setPaymentAccount(expense.paymentAccountCode ?? expense.suggestedPaymentAccountCode ?? '');
+    setError('');
+    setShowNewModal(true);
+  }
 
-    // Note: RPC will handle description — vendor concatenation, so send them separately
-    const entryNumber = makeTempId("JE-EXP");
-
-    // Construct temporary entry for optimistic UI update (will be replaced when journal reloads)
-    const entry: JournalEntry = {
-      id: entryNumber,
-      entryNumber,
-      date,
-      description: `${description.trim()} — ${vendor.trim() || "Cash expense"}`,
-      period: date.slice(0, 7),
-      project: project === "GEN" ? null : project,
-      lines: [
-        { account, debit: amt, credit: 0 },
-        { account: paymentAccount, debit: 0, credit: amt },
-      ],
-    };
-
-    mutate((d) => ({
-      ...d,
-      journal: [entry, ...d.journal],
-    }));
-
+  async function createDraft() {
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) { setError('Enter a valid amount greater than zero.'); return; }
+    if (!description.trim()) { setError('Enter a description.'); return; }
+    setBusy(true);
+    setError('');
     try {
-      const postedEntryId = await postJournalEntry(
-        entry.date,
-        entry.description ?? null,
-        entry.project ?? null,
-        entry.lines.map((line) => ({
-          account: line.account,
-          debit: Number(line.debit) || 0,
-          credit: Number(line.credit) || 0,
-        }))
-      );
-
-      mutate((d) => ({
-        ...d,
-        journal: d.journal.map((item) =>
-          item.id === entry.id ? { ...item, id: postedEntryId } : item
-        ),
-      }));
-    } catch (err: any) {
-      mutate((d) => ({
-        ...d,
-        journal: d.journal.filter((item: JournalEntry) => item.id !== entry.id),
-      }));
-      console.error("Failed to post expense:", err);
-      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
-      window.alert(`Failed to post expense: ${errorMsg}`);
-      return;
+      const result = await createExpenseDraft({
+        date,
+        vendor: vendor.trim(),
+        description: description.trim(),
+        amount: parsedAmount,
+        project: project === 'GEN' ? null : project,
+      });
+      const created = normalizeExpense(Array.isArray(result) ? result[0] : result, {
+        id: typeof result === 'string' ? result : '',
+        date,
+        vendor: vendor.trim(),
+        description: description.trim(),
+        amount: parsedAmount,
+        project: project === 'GEN' ? null : project,
+        status: 'Draft',
+      });
+      if (!created.id) throw new Error('The backend created a draft but returned no expense ID.');
+      setExpenses((current) => [created, ...current.filter((expense) => expense.id !== created.id)]);
+      setActiveExpense(created);
+      setAccount(created.suggestedExpenseAccountCode ?? '');
+      setPaymentAccount(created.suggestedPaymentAccountCode ?? '');
+      setError('');
+    } catch (createError) {
+      setError(`Could not create expense draft: ${errorText(createError)}`);
+    } finally {
+      setBusy(false);
     }
-
-    resetForm();
-    setShowNewModal(false);
   }
 
-  const recentExpenses = data.journal
-    .filter((e) => {
-      if (!e.lines || e.lines.length < 2) return false;
-      const debitLine = e.lines.find((line) => line.debit > 0);
-      const creditLine = e.lines.find((line) => line.credit > 0);
-      if (!debitLine || !creditLine) return false;
-      const expenseAccount = data.accounts.find((a) => a.code === debitLine.account);
-      const paymentAccount = data.accounts.find((a) => a.code === creditLine.account);
-      return Boolean(
-        expenseAccount &&
-        expenseAccount.type?.toLowerCase() === "expense" &&
-        paymentAccount &&
-        paymentAccount.isPaymentAccount
-      );
-    })
-    .slice(0, 20);
+  async function approveAndPost() {
+    if (!activeExpense || activeExpense.status !== 'Draft') return;
+    if (!account || !paymentAccount) { setError('Choose both the expense and payment accounts before posting.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const result = await postExpenseTransaction(activeExpense.id, account, paymentAccount);
+      if (result && typeof result === 'object' && (result as Record<string, unknown>).success === false) {
+        throw new Error(String((result as Record<string, unknown>).message ?? 'The backend did not confirm posting.'));
+      }
+      setExpenses((current) => current.map((expense) => expense.id === activeExpense.id
+        ? { ...expense, status: 'Posted', expenseAccountCode: account, paymentAccountCode: paymentAccount }
+        : expense));
+      const refreshed = await loadLedgerState();
+      if (refreshed) mutate((current) => ({ ...current, journal: refreshed.journal }));
+      try { await reloadExpenses(); } catch { /* RPC success remains authoritative for the status shown here. */ }
+      setShowNewModal(false);
+      setActiveExpense(null);
+    } catch (postError) {
+      setError(`Could not post expense: ${errorText(postError)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const totalExpenses = recentExpenses.reduce(
-    (s, e) => s + (e.lines.find((l) => l.debit > 0)?.debit || 0), 0
-  );
+  async function cancelDraft() {
+    if (!activeExpense || activeExpense.status !== 'Draft') return;
+    setBusy(true);
+    setError('');
+    try {
+      await cancelExpense(activeExpense.id);
+      setExpenses((current) => current.map((expense) => expense.id === activeExpense.id
+        ? { ...expense, status: 'Cancelled' }
+        : expense));
+      try { await reloadExpenses(); } catch { /* Keep the confirmed local cancellation visible. */ }
+      setShowNewModal(false);
+      setActiveExpense(null);
+    } catch (cancelError) {
+      setError(`Could not cancel draft: ${errorText(cancelError)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const postedTotal = expenses.filter((expense) => expense.status === 'Posted').reduce((sum, expense) => sum + expense.amount, 0);
+  const draftCount = expenses.filter((expense) => expense.status === 'Draft').length;
+  const expenseAccountName = expenseAccounts.find((item) => item.code === account)?.name ?? account;
+  const paymentAccountName = paymentAccounts.find((item) => item.code === paymentAccount)?.name ?? paymentAccount;
+  const closedPeriod = findPeriodByDate(data.accountingPeriods, date);
 
   return (
     <div>
       <SectionTitle
-        sub="Record day-to-day costs without touching the double-entry journal."
-        action={
-          mutate ? (
-            <Button onClick={() => { resetForm(); setShowNewModal(true); }} icon={Plus}>
-              New Expense
-            </Button>
-          ) : undefined
-        }
+        sub="Create expense drafts, review the suggested accounts, then approve posting."
+        action={canCreate ? <Button onClick={() => { resetForm(); setShowNewModal(true); }}>New Expense</Button> : undefined}
       >
-        Quick Expenses
+        Expenses
       </SectionTitle>
 
-      {/* Summary strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
         <Card style={{ borderTop: `3px solid ${INK}` }}>
-          <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Recent Expenses ({recentExpenses.length})</div>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: INK }}>GHS {fmt(totalExpenses)}</div>
+          <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Posted expenses</div>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: INK }}>GHS {fmt(postedTotal)}</div>
+        </Card>
+        <Card style={{ borderTop: `3px solid ${GREEN}` }}>
+          <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Drafts awaiting review</div>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 18, fontWeight: 700, color: INK }}>{draftCount}</div>
         </Card>
       </div>
 
-      <SectionTitle
-        sub="Recently posted through this quick-entry panel."
-        action={
-          <Button variant="ghost" onClick={() => setShowHistory((s) => !s)}>
-            {showHistory ? "Hide" : "Show"} history
-          </Button>
-        }
-      >
-        Expense History
-      </SectionTitle>
-
-      {showHistory && (
-        <Card>
-          <TableScroll>
-            <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <Th>Entry</Th>
-                  <Th>Date</Th>
-                  <Th>Description</Th>
-                  <Th>Project</Th>
-                  <Th right>Amount</Th>
+      <SectionTitle sub="Drafts and posted expenses are shown from the backend record." >Expense Register</SectionTitle>
+      {error && !showNewModal && <div role="alert" style={{ color: ALERT, margin: '0 0 12px', fontSize: 13 }}>{error}</div>}
+      <Card>
+        <TableScroll>
+          <table className="table-card" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>Date</Th><Th>Description</Th><Th>Vendor</Th><Th>Project</Th><Th>Status</Th><Th right>Amount</Th><Th right>Action</Th></tr></thead>
+            <tbody>
+              {expenses.map((expense) => (
+                <tr key={expense.id} className="row-hover">
+                  <Td label="Date">{expense.date}</Td>
+                  <Td label="Description">{expense.description}</Td>
+                  <Td label="Vendor">{expense.vendor || '—'}</Td>
+                  <Td label="Project">{projectName(data.projects, expense.project)}</Td>
+                  <Td label="Status"><span style={{ color: expense.status === 'Posted' ? GREEN : expense.status === 'Cancelled' ? MUTED : ALERT, fontWeight: 600 }}>{expense.status}</span></Td>
+                  <Td right mono label="Amount">GHS {fmt(expense.amount)}</Td>
+                  <Td right label="Action">{expense.status === 'Draft' && (
+                    <Button variant="ghost" onClick={() => openReview(expense)}>Review</Button>
+                  )}</Td>
                 </tr>
-              </thead>
-              <tbody>
-                {recentExpenses.map((e) => (
-                  <tr key={e.id} className="row-hover">
-                    <Td mono label="Entry">{e.entryNumber}</Td>
-                    <Td label="Date">{e.date}</Td>
-                    <Td label="Description">{e.description}</Td>
-                    <Td label="Project">{projectName(data.projects, e.project)}</Td>
-                    <Td right mono label="Amount">
-                      GHS {fmt(e.lines.find((l) => l.debit > 0)?.debit || 0)}
-                    </Td>
-                  </tr>
-                ))}
-                {recentExpenses.length === 0 && (
-                  <tr>
-                    <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: MUTED }}>
-                      <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}><Receipt size={28} style={{ margin: '0 auto', display: 'block' }} /></div>
-                      <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, marginBottom: 4 }}>No expenses posted yet</div>
-                      <div style={{ fontSize: 13 }}>Click <b>New Expense</b> to record your first quick expense.</div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </TableScroll>
-        </Card>
-      )}
+              ))}
+              {!loading && expenses.length === 0 && <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: MUTED }}>
+                <Receipt size={26} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.45 }} />
+                <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14 }}>No expenses yet</div>
+              </td></tr>}
+              {loading && <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: MUTED }}>Loading expenses…</td></tr>}
+            </tbody>
+          </table>
+        </TableScroll>
+      </Card>
 
-      {/* New Expense Modal */}
       {showNewModal && (
-        <Modal title="New Quick Expense" sub="Posts a debit to the expense account and credit to your payment account." onClose={() => { resetForm(); setShowNewModal(false); }}>
-          <div style={{ display: 'grid', gap: 14 }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 140px' }}>
-                <label style={labelStyle}>Date *</label>
-                <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
-                {showExpDateClosedWarn && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "var(--alert-bg)", border: `1px dashed ${ALERT}`, color: ALERT, fontSize: 12, fontFamily: FONT_BODY }}>
-                    <AlertTriangle size={14} />
-                    <span><b>{closedExpDatePeriod!.name}</b> is closed. Transactions cannot be posted to this period.</span>
-                  </div>
-                )}
+        <Modal
+          title={activeExpense ? 'Review Expense Draft' : 'New Expense Draft'}
+          sub={activeExpense ? 'Confirm the suggested accounts and inspect the journal preview before posting.' : 'Saving creates a draft only. No journal entry is created until approval.'}
+          onClose={() => { setShowNewModal(false); setActiveExpense(null); setError(''); }}
+          wide={Boolean(activeExpense)}
+        >
+          {activeExpense ? (
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+                <div><div style={labelStyle}>Date</div><div>{activeExpense.date}</div></div>
+                <div><div style={labelStyle}>Amount</div><div style={{ fontFamily: FONT_MONO }}>GHS {fmt(activeExpense.amount)}</div></div>
+                <div><div style={labelStyle}>Vendor</div><div>{activeExpense.vendor || '—'}</div></div>
+                <div><div style={labelStyle}>Project</div><div>{projectName(data.projects, activeExpense.project)}</div></div>
               </div>
-              <div style={{ flex: '1 1 120px' }}>
-                <label style={labelStyle}>Amount (GHS) *</label>
-                <input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" />
+              <div><div style={labelStyle}>Description</div><div>{activeExpense.description}</div></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Expense account *</label>
+                  <AccountSelect value={account} onChange={setAccount} accounts={expenseAccounts} placeholder="Choose expense account…" />
+                  <div style={{ marginTop: 5, color: MUTED, fontSize: 11 }}>Backend suggestion: {activeExpense.suggestedExpenseAccountCode ?? 'None returned'}</div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Payment account *</label>
+                  <AccountSelect value={paymentAccount} onChange={setPaymentAccount} accounts={paymentAccounts} placeholder="Choose payment account…" />
+                  <div style={{ marginTop: 5, color: MUTED, fontSize: 11 }}>Backend suggestion: {activeExpense.suggestedPaymentAccountCode ?? 'None returned'}</div>
+                </div>
               </div>
+              <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 12 }}>
+                <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, marginBottom: 8 }}>Journal Preview</div>
+                <TableScroll>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr><Th>Account</Th><Th right>Debit</Th><Th right>Credit</Th></tr></thead>
+                    <tbody>
+                      <tr><Td>{account ? `${account} - ${expenseAccountName}` : 'Select expense account'}</Td><Td right mono>GHS {fmt(activeExpense.amount)}</Td><Td right mono>—</Td></tr>
+                      <tr><Td>{paymentAccount ? `${paymentAccount} - ${paymentAccountName}` : 'Select payment account'}</Td><Td right mono>—</Td><Td right mono>GHS {fmt(activeExpense.amount)}</Td></tr>
+                    </tbody>
+                  </table>
+                </TableScroll>
+              </div>
+              {error && <div role="alert" style={{ color: ALERT, fontSize: 13 }}>{error}</div>}
+              {canPost && activeExpense.status === 'Draft' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  {canCreate && <Button variant="ghost" onClick={cancelDraft} disabled={busy}>Cancel Draft</Button>}
+                  <Button onClick={approveAndPost} disabled={busy || !account || !paymentAccount} fullWidth={!canCreate}>
+                    {busy ? 'Processing…' : 'Approve & Post'}
+                  </Button>
+                </div>
+              )}
+              {!canPost && <div style={{ color: MUTED, fontSize: 12 }}>You can review this draft, but do not have permission to post it.</div>}
             </div>
-            <div style={{ flex: '1 1 100%' }}>
-              <label style={labelStyle}>Description *</label>
-              <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Fuel for site visit" />
+          ) : (
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 140px' }}>
+                  <label style={labelStyle}>Date *</label>
+                  <input type="date" style={inputStyle as CSSProperties} value={date} onChange={(event) => setDate(event.target.value)} />
+                  {closedPeriod && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, color: ALERT, fontSize: 12 }}><AlertTriangle size={14} />{closedPeriod.name} is closed.</div>}
+                </div>
+                <div style={{ flex: '1 1 120px' }}>
+                  <label style={labelStyle}>Amount (GHS) *</label>
+                  <input style={inputStyle as CSSProperties} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" />
+                </div>
+              </div>
+              <div><label style={labelStyle}>Description *</label><input style={inputStyle as CSSProperties} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="e.g. Fuel for site visit" /></div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 180px' }}><label style={labelStyle}>Vendor / Payee</label><input style={inputStyle as CSSProperties} value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="e.g. Shell Ghana" /></div>
+                <div style={{ flex: '1 1 180px' }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
+              </div>
+              {error && <div role="alert" style={{ color: ALERT, fontSize: 13 }}>{error}</div>}
+              <Button onClick={createDraft} fullWidth disabled={busy || !canCreate}>{busy ? 'Saving Draft…' : 'Save Draft'}</Button>
             </div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 180px' }}>
-                <label style={labelStyle}>Vendor / Payee</label>
-                <input style={inputStyle} value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Shell Ghana" />
-              </div>
-              <div style={{ flex: '1 1 180px' }}>
-                <label style={labelStyle}>Paid via *</label>
-                <AccountSelect
-                  value={paymentAccount}
-                  onChange={setPaymentAccount}
-                  accounts={paymentAccounts}
-                  placeholder="Search payment account…"
-                />
-                {paymentAccounts.length === 0 && (
-                  <div style={{ fontSize: 11, color: ALERT, marginTop: 4 }}>No payment accounts found. Go to Chart of Accounts and mark accounts as "Payment Account".</div>
-                )}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 200px' }}>
-                <label style={labelStyle}>Expense account *</label>
-                <AccountSelect
-                  value={account}
-                  onChange={setAccount}
-                  accounts={expenseAccounts}
-                  placeholder="Search expense account…"
-                />
-              </div>
-              <div style={{ flex: '1 1 200px' }}>
-                <label style={labelStyle}>Project</label>
-                <ProjectSelect value={project} onChange={setProject} projects={data.projects} />
-              </div>
-            </div>
-            <Button onClick={postExpense} icon={Plus} fullWidth>
-              Post Expense
-            </Button>
-          </div>
+          )}
         </Modal>
       )}
     </div>

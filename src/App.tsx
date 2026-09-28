@@ -11,7 +11,7 @@ import {
   getSession, onAuthStateChange, signOut, getAccountingPeriods,
 } from "./supabaseClient";
 import { loadMyProfile, type UserProfile } from "./supabase/profile";
-import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite, canApproveLoans, ALL } from "./lib/permissions";
+import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite, canApproveLoans, CEO_EXPENSES_CREATE, CEO_EXPENSES_POST, ALL } from "./lib/permissions";
 import PMDashboard from "./portals/pm/PMDashboard";
 import ProjectsBasicList from "./portals/shared/ProjectsBasicList";
 import MyPayslipsPanel from "./portals/shared/MyPayslipsPanel";
@@ -513,7 +513,14 @@ export default function App() {
               {effectiveTab === "employees" && (adminFlag || ceoFlag) && <EmployeesPanel data={data} mutate={canEdit ? mutate : undefined} />}
               {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
               {effectiveTab === "bills" && (adminFlag || ceoFlag) && <BillsPanel data={data} mutate={canEdit ? mutate : undefined} />}
-              {effectiveTab === "expenses" && canEdit && <ExpensesPanel data={data} mutate={mutate} />}
+              {effectiveTab === "expenses" && (canEdit || isCeo(permissions) || canWrite(permissions, CEO_EXPENSES_CREATE) || canWrite(permissions, CEO_EXPENSES_POST)) && (
+                <ExpensesPanel
+                  data={data}
+                  mutate={mutate}
+                  canCreate={canWrite(permissions, CEO_EXPENSES_CREATE)}
+                  canPost={canWrite(permissions, CEO_EXPENSES_POST)}
+                />
+              )}
               {effectiveTab === "aged-payables" && (adminFlag || ceoFlag) && <AgedPayablesPanel data={data} />}
               {effectiveTab === "bank-reconciliation" && canEdit && <BankReconciliationPanel data={data} mutate={mutate} />}
               {effectiveTab === "reports" && (adminFlag || ceoFlag) && <ReportsPanel data={data} />}
