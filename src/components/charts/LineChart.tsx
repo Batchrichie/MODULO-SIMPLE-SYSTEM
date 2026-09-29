@@ -30,7 +30,7 @@ export default function LineChart({ data }: { data: CashFlowSeries[] }) {
     <svg
       viewBox="0 0 600 200"
       role="img"
-      aria-label="Cash flow for the last six movements"
+      aria-label="Cash flow by month for the last six months"
       style={{ width: "100%", height: "auto", minHeight: 150 }}
     >
       {[40, 80, 120, 160].map((y) => <line key={y} x1="40" x2="590" y1={y} y2={y} stroke="var(--rule)" strokeWidth="1" />)}

@@ -55,24 +55,23 @@ export function computeCashFlowSeries(data: AppData): CashFlowSeries[] {
     ? paymentAccounts
     : data.accounts.filter(a => a.type === 'Asset' && /^1\d{3}$/.test(a.code));
   const accountKinds = new Map(accounts.map(account => [account.code, cashAccountKind(account)]));
-  const movementByDate = new Map<string, Record<CashFlowSeries['key'], number>>();
+  const movementByMonth = new Map<string, Record<CashFlowSeries['key'], number>>();
 
   data.journal.forEach((entry) => {
-    const totals = movementByDate.get(entry.date) || { cash: 0, momo: 0, bank: 0 };
+    const month = entry.date.slice(0, 7);
+    const totals = movementByMonth.get(month) || { cash: 0, momo: 0, bank: 0 };
     entry.lines.forEach((line) => {
       const kind = accountKinds.get(line.account);
       if (kind) totals[kind] += line.debit - line.credit;
     });
-    movementByDate.set(entry.date, totals);
+    movementByMonth.set(month, totals);
   });
 
-  const dates = [...movementByDate.keys()]
-    .filter(date => {
-      const totals = movementByDate.get(date)!;
-      return totals.cash !== 0 || totals.momo !== 0 || totals.bank !== 0;
-    })
-    .sort()
-    .slice(-6);
+  const currentMonth = new Date();
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const month = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 5 + index, 1);
+    return `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+  });
   const definitions: Array<{ key: CashFlowSeries['key']; label: string; color: string }> = [
     { key: 'cash', label: 'Cash', color: 'var(--green)' },
     { key: 'momo', label: 'Momo', color: '#3B82F6' },
@@ -82,10 +81,10 @@ export function computeCashFlowSeries(data: AppData): CashFlowSeries[] {
   return definitions
     .map((definition) => ({
       ...definition,
-      points: dates.map((date) => ({
-        date,
-        label: new Date(`${date}T00:00:00`).toLocaleDateString('en-GH', { month: 'short', day: '2-digit' }),
-        amount: movementByDate.get(date)![definition.key],
+      points: months.map((month) => ({
+        date: month,
+        label: new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GH', { month: 'short', year: '2-digit' }),
+        amount: movementByMonth.get(month)?.[definition.key] ?? 0,
       })),
     }))
     .filter((series) => series.points.some(point => point.amount !== 0));
