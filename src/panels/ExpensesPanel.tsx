@@ -21,21 +21,30 @@ import {
   loadLedgerState,
   postExpenseTransaction,
 } from '../supabaseClient';
+import type { ExpenseAccountRow, ExpenseRow, ExpenseSuggestion } from '../supabaseClient';
 import type { Account, AppData, MutateFn } from '../types';
 
-type ExpenseRecord = {
-  id: string;
-  date: string;
-  vendor: string;
-  description: string;
-  amount: number;
-  project: string | null;
-  status: 'Draft' | 'Posted' | 'Cancelled';
-  suggestedExpenseAccountCode: string | null;
-  suggestedPaymentAccountCode: string | null;
-  expenseAccountCode: string | null;
-  paymentAccountCode: string | null;
-  journalEntryId: string | null;
+type ExpenseRecord = Pick<ExpenseRow,
+  | 'id'
+  | 'expense_number'
+  | 'vendor_payee'
+  | 'description'
+  | 'amount'
+  | 'transaction_date'
+  | 'project'
+  | 'status'
+  | 'expense_account_code'
+  | 'payment_account_code'
+  | 'suggested_expense_account_code'
+  | 'suggested_payment_account_code'
+  | 'suggestion_reason'
+  | 'suggestion_match_count'
+  | 'posted_journal_entry_id'
+  | 'posted_by'
+  | 'posted_at'
+> & {
+  suggestionTier?: ExpenseSuggestion['tier'] | null;
+  postedEntryNumber?: string | null;
 };
 
 type PanelProps = {
@@ -45,65 +54,18 @@ type PanelProps = {
   canPost: boolean;
 };
 
-function valueFrom(row: Record<string, unknown>, ...keys: string[]): unknown {
-  for (const key of keys) if (row[key] !== undefined && row[key] !== null) return row[key];
-  return undefined;
-}
-
-function normalizeExpense(value: unknown, fallback: Partial<ExpenseRecord> = {}): ExpenseRecord {
-  const wrapped = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  const nested = (wrapped.expense && typeof wrapped.expense === 'object')
-    ? wrapped.expense as Record<string, unknown>
-    : wrapped;
-  const statusValue = String(valueFrom(nested, 'status') ?? fallback.status ?? 'Draft').toLowerCase();
-  const status: ExpenseRecord['status'] = statusValue === 'posted'
-    ? 'Posted'
-    : statusValue === 'cancelled' || statusValue === 'canceled'
-      ? 'Cancelled'
-      : 'Draft';
+function accountChoices(rows: ExpenseAccountRow[]): { expense: Account[]; payment: Account[] } {
+  const toAccount = (row: ExpenseAccountRow): Account => ({
+    code: row.code,
+    name: row.name,
+    type: row.kind === 'expense' ? 'Expense' : 'Asset',
+    isPaymentAccount: row.kind === 'payment',
+    role: row.reporting_group,
+  });
   return {
-    id: String(valueFrom(nested, 'id', 'expense_id') ?? fallback.id ?? ''),
-    date: String(valueFrom(nested, 'date', 'expense_date') ?? fallback.date ?? ''),
-    vendor: String(valueFrom(nested, 'vendor', 'payee') ?? fallback.vendor ?? ''),
-    description: String(valueFrom(nested, 'description') ?? fallback.description ?? ''),
-    amount: Number(valueFrom(nested, 'amount', 'amount_ghs') ?? fallback.amount ?? 0),
-    project: (valueFrom(nested, 'project', 'project_id') ?? fallback.project ?? null) as string | null,
-    status,
-    suggestedExpenseAccountCode: String(valueFrom(nested, 'suggested_expense_account_code', 'expense_account_suggestion', 'suggested_expense_account') ?? fallback.suggestedExpenseAccountCode ?? '') || null,
-    suggestedPaymentAccountCode: String(valueFrom(nested, 'suggested_payment_account_code', 'payment_account_suggestion', 'suggested_payment_account') ?? fallback.suggestedPaymentAccountCode ?? '') || null,
-    expenseAccountCode: String(valueFrom(nested, 'expense_account_code') ?? fallback.expenseAccountCode ?? '') || null,
-    paymentAccountCode: String(valueFrom(nested, 'payment_account_code') ?? fallback.paymentAccountCode ?? '') || null,
-    journalEntryId: String(valueFrom(nested, 'journal_entry_id') ?? fallback.journalEntryId ?? '') || null,
+    expense: rows.filter((row) => row.kind === 'expense').map(toAccount),
+    payment: rows.filter((row) => row.kind === 'payment').map(toAccount),
   };
-}
-
-function accountChoices(raw: unknown): { expense: Account[]; payment: Account[] } {
-  const object = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-  const expenseRows = Array.isArray(object.expense_accounts) ? object.expense_accounts : [];
-  const paymentRows = Array.isArray(object.payment_accounts) ? object.payment_accounts : [];
-  const rows = Array.isArray(raw) ? raw : [...expenseRows, ...paymentRows, ...(Array.isArray(object.accounts) ? object.accounts : [])];
-  const expense: Account[] = [];
-  const payment: Account[] = [];
-  for (const value of rows) {
-    if (!value || typeof value !== 'object') continue;
-    const row = value as Record<string, unknown>;
-    const code = String(valueFrom(row, 'code', 'account_code') ?? '');
-    if (!code) continue;
-    const name = String(valueFrom(row, 'name', 'account_name') ?? code);
-    const type = String(valueFrom(row, 'type', 'account_type', 'category') ?? '');
-    const account: Account = {
-      code,
-      name,
-      type,
-      isPaymentAccount: Boolean(valueFrom(row, 'is_payment_account', 'isPaymentAccount')),
-      role: String(valueFrom(row, 'role', 'account_role') ?? '') || null,
-    };
-    const normalizedType = type.toLowerCase();
-    const isPayment = account.isPaymentAccount || /payment|cash|bank/.test(normalizedType) || /cash|bank/.test((account.role ?? '').toLowerCase()) || paymentRows.includes(value);
-    if (isPayment) payment.push(account);
-    else expense.push(account);
-  }
-  return { expense, payment };
 }
 
 function errorText(error: unknown): string {
@@ -117,6 +79,7 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
   const [activeExpense, setActiveExpense] = useState<ExpenseRecord | null>(null);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -129,7 +92,7 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
 
   async function reloadExpenses() {
     const rows = await listExpenses();
-    setExpenses(rows.map((row) => normalizeExpense(row)).filter((expense) => expense.id));
+    setExpenses(rows);
   }
 
   useEffect(() => {
@@ -140,7 +103,7 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
         const choices = accountChoices(accountsResult);
         setExpenseAccounts(choices.expense);
         setPaymentAccounts(choices.payment);
-        setExpenses(expensesResult.map((row) => normalizeExpense(row)).filter((expense) => expense.id));
+        setExpenses(expensesResult);
       })
       .catch((loadError) => {
         if (mounted) setError(`Could not load expense setup: ${errorText(loadError)}`);
@@ -163,8 +126,8 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
 
   function openReview(expense: ExpenseRecord) {
     setActiveExpense(expense);
-    setAccount(expense.expenseAccountCode ?? expense.suggestedExpenseAccountCode ?? '');
-    setPaymentAccount(expense.paymentAccountCode ?? expense.suggestedPaymentAccountCode ?? '');
+    setAccount(expense.expense_account_code ?? expense.suggested_expense_account_code ?? '');
+    setPaymentAccount(expense.payment_account_code ?? expense.suggested_payment_account_code ?? '');
     setError('');
     setShowNewModal(true);
   }
@@ -183,20 +146,30 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
         amount: parsedAmount,
         project: project === 'GEN' ? null : project,
       });
-      const created = normalizeExpense(Array.isArray(result) ? result[0] : result, {
-        id: typeof result === 'string' ? result : '',
-        date,
-        vendor: vendor.trim(),
+      const created: ExpenseRecord = {
+        id: result.expense_id,
+        expense_number: result.expense_number,
+        transaction_date: date,
+        vendor_payee: vendor.trim(),
         description: description.trim(),
         amount: parsedAmount,
         project: project === 'GEN' ? null : project,
-        status: 'Draft',
-      });
-      if (!created.id) throw new Error('The backend created a draft but returned no expense ID.');
+        status: result.status,
+        expense_account_code: null,
+        payment_account_code: null,
+        suggested_expense_account_code: result.suggestion?.expense_account_code ?? null,
+        suggested_payment_account_code: result.suggestion?.payment_account_code ?? null,
+        suggestion_reason: result.suggestion?.reason ?? null,
+        suggestion_match_count: result.suggestion?.match_count ?? null,
+        posted_journal_entry_id: null,
+        posted_by: null,
+        posted_at: null,
+        suggestionTier: result.suggestion?.tier ?? null,
+      };
       setExpenses((current) => [created, ...current.filter((expense) => expense.id !== created.id)]);
       setActiveExpense(created);
-      setAccount(created.suggestedExpenseAccountCode ?? '');
-      setPaymentAccount(created.suggestedPaymentAccountCode ?? '');
+      setAccount(created.suggested_expense_account_code ?? '');
+      setPaymentAccount(created.suggested_payment_account_code ?? '');
       setError('');
     } catch (createError) {
       setError(`Could not create expense draft: ${errorText(createError)}`);
@@ -212,15 +185,20 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
     setError('');
     try {
       const result = await postExpenseTransaction(activeExpense.id, account, paymentAccount);
-      if (result && typeof result === 'object' && (result as Record<string, unknown>).success === false) {
-        throw new Error(String((result as Record<string, unknown>).message ?? 'The backend did not confirm posting.'));
-      }
-      setExpenses((current) => current.map((expense) => expense.id === activeExpense.id
-        ? { ...expense, status: 'Posted', expenseAccountCode: account, paymentAccountCode: paymentAccount }
+      setExpenses((current) => current.map((expense) => expense.id === result.expense_id
+        ? {
+            ...expense,
+            status: result.status,
+            expense_account_code: result.expense_account_code,
+            payment_account_code: result.payment_account_code,
+            posted_journal_entry_id: result.journal_entry_id,
+            postedEntryNumber: result.entry_number,
+          }
         : expense));
       const refreshed = await loadLedgerState();
       if (refreshed) mutate((current) => ({ ...current, journal: refreshed.journal }));
       try { await reloadExpenses(); } catch { /* RPC success remains authoritative for the status shown here. */ }
+      setNotice(result.already_posted ? `Expense ${result.expense_id} was already posted; its existing journal entry is confirmed.` : '');
       setShowNewModal(false);
       setActiveExpense(null);
     } catch (postError) {
@@ -235,11 +213,12 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
     setBusy(true);
     setError('');
     try {
-      await cancelExpense(activeExpense.id);
-      setExpenses((current) => current.map((expense) => expense.id === activeExpense.id
-        ? { ...expense, status: 'Cancelled' }
+      const result = await cancelExpense(activeExpense.id);
+      setExpenses((current) => current.map((expense) => expense.id === result.expense_id
+        ? { ...expense, status: result.status }
         : expense));
       try { await reloadExpenses(); } catch { /* Keep the confirmed local cancellation visible. */ }
+      setNotice(result.already_cancelled ? `Expense ${result.expense_id} was already cancelled.` : '');
       setShowNewModal(false);
       setActiveExpense(null);
     } catch (cancelError) {
@@ -249,7 +228,7 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
     }
   }
 
-  const postedTotal = expenses.filter((expense) => expense.status === 'Posted').reduce((sum, expense) => sum + expense.amount, 0);
+  const postedTotal = expenses.filter((expense) => expense.status === 'Posted').reduce((sum, expense) => sum + Number(expense.amount), 0);
   const draftCount = expenses.filter((expense) => expense.status === 'Draft').length;
   const expenseAccountName = expenseAccounts.find((item) => item.code === account)?.name ?? account;
   const paymentAccountName = paymentAccounts.find((item) => item.code === paymentAccount)?.name ?? paymentAccount;
@@ -276,17 +255,31 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
       </div>
 
       <SectionTitle sub="Drafts and posted expenses are shown from the backend record." >Expense Register</SectionTitle>
+      {notice && <div role="status" style={{ color: GREEN, margin: '0 0 12px', fontSize: 13 }}>{notice}</div>}
       {error && !showNewModal && <div role="alert" style={{ color: ALERT, margin: '0 0 12px', fontSize: 13 }}>{error}</div>}
       <Card>
         <TableScroll>
           <table className="table-card" style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><Th>Date</Th><Th>Description</Th><Th>Vendor</Th><Th>Project</Th><Th>Status</Th><Th right>Amount</Th><Th right>Action</Th></tr></thead>
+            <thead><tr><Th>Expense</Th><Th>Date</Th><Th>Description</Th><Th>Vendor</Th><Th>Project</Th><Th>Status</Th><Th right>Amount</Th><Th right>Action</Th></tr></thead>
             <tbody>
               {expenses.map((expense) => (
                 <tr key={expense.id} className="row-hover">
-                  <Td label="Date">{expense.date}</Td>
-                  <Td label="Description">{expense.description}</Td>
-                  <Td label="Vendor">{expense.vendor || '—'}</Td>
+                  <Td mono label="Expense">{expense.expense_number}</Td>
+                  <Td label="Date">{expense.transaction_date}</Td>
+                  <Td label="Description">
+                    {expense.description}
+                    {expense.status === 'Posted' && (
+                      <div style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>
+                        Dr {expense.expense_account_code} · Cr {expense.payment_account_code}
+                        {expense.postedEntryNumber || expense.posted_journal_entry_id
+                          ? ` · Journal ${expense.postedEntryNumber ?? expense.posted_journal_entry_id}`
+                          : ''}
+                        {expense.posted_at ? ` · ${expense.posted_at}` : ''}
+                        {expense.posted_by ? ` · ${expense.posted_by}` : ''}
+                      </div>
+                    )}
+                  </Td>
+                  <Td label="Vendor">{expense.vendor_payee || '—'}</Td>
                   <Td label="Project">{projectName(data.projects, expense.project)}</Td>
                   <Td label="Status"><span style={{ color: expense.status === 'Posted' ? GREEN : expense.status === 'Cancelled' ? MUTED : ALERT, fontWeight: 600 }}>{expense.status}</span></Td>
                   <Td right mono label="Amount">GHS {fmt(expense.amount)}</Td>
@@ -295,11 +288,11 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
                   )}</Td>
                 </tr>
               ))}
-              {!loading && expenses.length === 0 && <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: MUTED }}>
+              {!loading && expenses.length === 0 && <tr><td colSpan={8} style={{ padding: 32, textAlign: 'center', color: MUTED }}>
                 <Receipt size={26} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.45 }} />
                 <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14 }}>No expenses yet</div>
               </td></tr>}
-              {loading && <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: MUTED }}>Loading expenses…</td></tr>}
+              {loading && <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: MUTED }}>Loading expenses…</td></tr>}
             </tbody>
           </table>
         </TableScroll>
@@ -315,22 +308,28 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
           {activeExpense ? (
             <div style={{ display: 'grid', gap: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-                <div><div style={labelStyle}>Date</div><div>{activeExpense.date}</div></div>
+                <div><div style={labelStyle}>Date</div><div>{activeExpense.transaction_date}</div></div>
                 <div><div style={labelStyle}>Amount</div><div style={{ fontFamily: FONT_MONO }}>GHS {fmt(activeExpense.amount)}</div></div>
-                <div><div style={labelStyle}>Vendor</div><div>{activeExpense.vendor || '—'}</div></div>
+                <div><div style={labelStyle}>Vendor</div><div>{activeExpense.vendor_payee || '—'}</div></div>
                 <div><div style={labelStyle}>Project</div><div>{projectName(data.projects, activeExpense.project)}</div></div>
               </div>
               <div><div style={labelStyle}>Description</div><div>{activeExpense.description}</div></div>
+              <div style={{ color: MUTED, fontSize: 12 }}>
+                Suggested accounts: {activeExpense.suggested_expense_account_code ?? 'None'} / {activeExpense.suggested_payment_account_code ?? 'None'}
+                {activeExpense.suggestion_reason && <> · {activeExpense.suggestion_reason}</>}
+                {activeExpense.suggestion_match_count !== null && <> · {activeExpense.suggestion_match_count} match(es)</>}
+                {activeExpense.suggestionTier && <> · {activeExpense.suggestionTier === 'vendor_and_description' ? 'Vendor and description match' : 'Vendor match'}</>}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Expense account *</label>
                   <AccountSelect value={account} onChange={setAccount} accounts={expenseAccounts} placeholder="Choose expense account…" />
-                  <div style={{ marginTop: 5, color: MUTED, fontSize: 11 }}>Backend suggestion: {activeExpense.suggestedExpenseAccountCode ?? 'None returned'}</div>
+                  <div style={{ marginTop: 5, color: MUTED, fontSize: 11 }}>Backend suggestion: {activeExpense.suggested_expense_account_code ?? 'None'}</div>
                 </div>
                 <div>
                   <label style={labelStyle}>Payment account *</label>
                   <AccountSelect value={paymentAccount} onChange={setPaymentAccount} accounts={paymentAccounts} placeholder="Choose payment account…" />
-                  <div style={{ marginTop: 5, color: MUTED, fontSize: 11 }}>Backend suggestion: {activeExpense.suggestedPaymentAccountCode ?? 'None returned'}</div>
+                  <div style={{ marginTop: 5, color: MUTED, fontSize: 11 }}>Backend suggestion: {activeExpense.suggested_payment_account_code ?? 'None'}</div>
                 </div>
               </div>
               <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 12 }}>

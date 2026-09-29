@@ -619,48 +619,110 @@ export interface CreateExpenseDraftInput {
   project: string | null;
 }
 
-export async function listExpenseAccounts(): Promise<unknown> {
+export interface ExpenseAccountRow {
+  code: string;
+  name: string;
+  kind: 'expense' | 'payment';
+  reporting_group: string;
+}
+
+export interface ExpenseSuggestion {
+  tier: 'vendor_and_description' | 'vendor';
+  reason: string;
+  match_count: number;
+  expense_account_code: string;
+  payment_account_code: string;
+}
+
+export interface CreateExpenseDraftResult {
+  expense_id: string;
+  expense_number: string;
+  status: 'Draft';
+  suggestion: ExpenseSuggestion | null;
+}
+
+export interface ExpenseRow {
+  id: string;
+  expense_number: string;
+  vendor_payee: string;
+  description: string;
+  amount: number;
+  transaction_date: string;
+  project: string | null;
+  status: 'Draft' | 'Posted' | 'Cancelled';
+  expense_account_code: string | null;
+  payment_account_code: string | null;
+  suggested_expense_account_code: string | null;
+  suggested_payment_account_code: string | null;
+  suggestion_reason: string | null;
+  suggestion_match_count: number | null;
+  posted_journal_entry_id: string | null;
+  posted_by: string | null;
+  posted_at: string | null;
+}
+
+export interface PostExpenseTransactionResult {
+  expense_id: string;
+  status: 'Posted';
+  journal_entry_id: string;
+  entry_number: string;
+  expense_account_code: string;
+  payment_account_code: string;
+  already_posted: boolean;
+}
+
+export interface CancelExpenseResult {
+  expense_id: string;
+  status: 'Cancelled';
+  already_cancelled: boolean;
+}
+
+export async function listExpenseAccounts(): Promise<ExpenseAccountRow[]> {
   const { data, error } = await supabase.rpc('list_expense_accounts');
   if (error) throw error;
-  return data;
+  return (data ?? []) as ExpenseAccountRow[];
 }
 
-export async function listExpenses(): Promise<Record<string, unknown>[]> {
-  const { data, error } = await supabase.from('expenses').select('*');
+export async function listExpenses(): Promise<ExpenseRow[]> {
+  const { data, error } = await supabase.from('expenses').select(
+    'id, expense_number, vendor_payee, description, amount, transaction_date, project, status, expense_account_code, payment_account_code, suggested_expense_account_code, suggested_payment_account_code, suggestion_reason, suggestion_match_count, posted_journal_entry_id, posted_by, posted_at'
+  );
   if (error) throw error;
-  return (data ?? []) as Record<string, unknown>[];
+  return (data ?? []) as ExpenseRow[];
 }
 
-export async function createExpenseDraft(params: CreateExpenseDraftInput): Promise<unknown> {
+export async function createExpenseDraft(params: CreateExpenseDraftInput): Promise<CreateExpenseDraftResult> {
   const { data, error } = await supabase.rpc('create_expense', {
     p_transaction_date: params.date,
-    p_vendor_payee: params.vendor || null,
+    p_vendor_payee: params.vendor,
     p_description: params.description,
     p_amount: params.amount,
-    p_project: params.project,
+    p_project: params.project ?? null,
   });
   if (error) throw error;
-  return data;
+  return data as CreateExpenseDraftResult;
 }
 
 export async function postExpenseTransaction(
   expenseId: string,
   expenseAccountCode: string,
   paymentAccountCode: string
-): Promise<unknown> {
+): Promise<PostExpenseTransactionResult> {
   const { data, error } = await supabase.rpc('post_expense_transaction', {
     p_expense_id: expenseId,
     p_expense_account_code: expenseAccountCode,
     p_payment_account_code: paymentAccountCode,
   });
   if (error) throw error;
-  return data;
+  return data as PostExpenseTransactionResult;
 }
 
-export async function cancelExpense(expenseId: string): Promise<unknown> {
-  const { data, error } = await supabase.rpc('cancel_expense', { p_expense_id: expenseId });
+export async function cancelExpense(expenseId: string): Promise<CancelExpenseResult> {
+  const { data, error } = await supabase.rpc('cancel_expense', {
+    p_expense_id: expenseId,
+  });
   if (error) throw error;
-  return data;
+  return data as CancelExpenseResult;
 }
 
 export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promise<string> {
