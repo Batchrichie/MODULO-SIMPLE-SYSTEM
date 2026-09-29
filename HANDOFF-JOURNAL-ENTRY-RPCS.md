@@ -107,6 +107,18 @@ The guard triggers (`lock_journal_entries_writes` and `lock_journal_lines_writes
 
 **Why this order?** The guards prevent any direct table writes once enabled. If guards are flipped before frontend is calling the RPCs, old `INSERT` statements will fail with RLS violations.
 
+## Expense Review and Cancellation Authorization
+
+`ceo:expenses:review` grants read/review authority only; it does not authorize
+cancellation of another user's expense. Cancellation of another user's Draft
+or Review expense requires `ceo:expenses:post` or `all`. The creator may cancel
+their own Draft or Review expense.
+
+The frontend Cancel action is currently gated by the actual create/post
+permission props and Draft status; it does not use a `ceo:expenses:review`
+permission rule. The backend remains authoritative and must enforce ownership
+and cancellation permissions.
+
 ---
 
 ## Test Coverage Verified
