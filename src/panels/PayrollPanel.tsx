@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
 import { normalizeTaxRate } from "../utils/invoiceUtils";
 import Payslip from "../documents/Payslip";
-import { saveTaxRates, savePayeBrackets, runPayrollAndFetch } from "../supabaseClient";
+import { saveTaxRates, savePayeBrackets, runPayrollAndFetch, fetchPayslip } from "../supabaseClient";
 import type { AppData, PayrollPanelProps } from "../types";
 
 export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollPanelProps) {
@@ -25,6 +25,7 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
   const [taxSaveMessage, setTaxSaveMessage] = useState("");
   const [taxSaveError, setTaxSaveError] = useState("");
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null);
+  const [payslipError, setPayslipError] = useState("");
 
   function updateTaxRate(field, value) {
     const percent = Number(value);
@@ -96,15 +97,37 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
     } finally { setPosting(false); }
   }
 
-  function printPayslip(run, row) {
-    const empName = row.name.replace(/\s+/g, "_");
-    document.title = `Payslip_${empName}_${run.period}`;
-    setPrintContent(<div><Payslip key={row.employeeId} data={data} run={run} r={row} /></div>);
+  async function printPayslip(run, row) {
+    setPayslipError("");
+    try {
+      const payslip = await fetchPayslip(run.id, row.employeeId);
+      if (!payslip) {
+        setPayslipError("Payslip not available.");
+        return;
+      }
+      document.title = `Payslip_${payslip.employee.name.replace(/\s+/g, "_")}_${payslip.period}`;
+      setPrintContent(<div><Payslip key={row.employeeId} data={data} payslip={payslip} /></div>);
+    } catch (err) {
+      console.error("Failed to fetch payslip:", err);
+      setPayslipError("Payslip not available.");
+    }
   }
 
-  function printAllPayslips(run) {
-    document.title = `Payslips_${run.period}`;
-    setPrintContent(<div>{run.rows.map((r) => <Payslip key={r.employeeId} data={data} run={run} r={r} />)}</div>);
+  async function printAllPayslips(run) {
+    setPayslipError("");
+    try {
+      const slips = await Promise.all(run.rows.map(async (row) => ({
+        employeeId: row.employeeId,
+        payslip: await fetchPayslip(run.id, row.employeeId),
+      })));
+      document.title = `Payslips_${run.period}`;
+      setPrintContent(<div>{slips.map(({ employeeId, payslip }) => (
+        <Payslip key={employeeId} data={data} payslip={payslip} />
+      ))}</div>);
+    } catch (err) {
+      console.error("Failed to fetch payslips:", err);
+      setPayslipError("Payslip not available.");
+    }
   }
 
   const alreadyPosted = data.payrollRuns.some((r) => r.period === period);
@@ -114,6 +137,7 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
       <SectionTitle sub="Bracket-based PAYE, plus SSNIT employee and employer contributions. Payslips match your standard format.">
         Payroll
       </SectionTitle>
+      {payslipError && <div role="alert" style={{ color: ALERT, marginBottom: 12 }}>{payslipError}</div>}
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 150px" }}>

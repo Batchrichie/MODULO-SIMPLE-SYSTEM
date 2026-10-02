@@ -20,6 +20,10 @@ interface ReceiptDocumentProps {
   inv: Invoice;
   payment: Payment;
   receiptNo: string;
+  paymentAccountCode?: string;
+  journalEntryId?: string;
+  invoiceStatus?: string;
+  invoiceOutstanding?: number;
 }
 
 /** Rotated ink-stamp seal — the one signature element on this document. */
@@ -86,7 +90,9 @@ function PaidStamp() {
   );
 }
 
-export default function ReceiptDocument({ data, inv, payment, receiptNo }: ReceiptDocumentProps) {
+export default function ReceiptDocument({
+  data, inv, payment, receiptNo, paymentAccountCode, journalEntryId, invoiceStatus, invoiceOutstanding,
+}: ReceiptDocumentProps) {
   const company = normalizePrintCompany(data.company || COMPANY_TEMPLATE, data.companyName);
   const invoicePayments = Array.isArray(inv.payments) ? inv.payments : [];
   const idx = invoicePayments.findIndex((p) => p.id === payment.id);
@@ -103,8 +109,9 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
     },
   };
   const grandTotal = getInvoiceGrandTotalGHS(invoiceForTotals, data);
-  const outstanding = Math.max(grandTotal - paidThrough, 0);
-  const isSettled = outstanding < 0.01;
+  const outstanding = invoiceOutstanding ?? Math.max(grandTotal - paidThrough, 0);
+  const isSettled = invoiceStatus ? invoiceStatus === "Paid" : outstanding < 0.01;
+  const paymentAccount = data.accounts.find((account) => account.code === paymentAccountCode);
 
   const s = {
     container: {
@@ -366,6 +373,7 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
             <span style={s.infoLabel}>Receipt No.</span>
             <span style={s.infoValue}>{receiptNo}</span>
           </div>
+          {journalEntryId && <div style={s.infoRow}><span style={s.infoLabel}>Journal Entry</span><span style={s.infoValue}>{journalEntryId}</span></div>}
         </div>
       </div>
 
@@ -376,14 +384,14 @@ export default function ReceiptDocument({ data, inv, payment, receiptNo }: Recei
       <table style={s.table}>
         <thead>
           <tr>
-            <th style={s.th}>Payment By</th>
+            <th style={s.th}>Payment Account</th>
             <th style={s.th}>Reference No.</th>
             <th style={{ ...s.th, ...s.thRight }}>Amount</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style={s.td}>{payment.method}</td>
+            <td style={s.td}>{paymentAccountCode ? `${paymentAccountCode} - ${paymentAccount?.name ?? "Account"}` : "Not provided"}</td>
             <td style={s.td}>{payment.reference || "—"}</td>
             <td style={{ ...s.td, ...s.tdRight, fontWeight: 700 }}>
               GHS {fmt(payment.amountGHS)}

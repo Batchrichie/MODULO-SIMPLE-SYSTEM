@@ -11,6 +11,8 @@ import type {
   Payment,
   PayrollRun,
   PayrollLine,
+  PayslipDetails,
+  RecordInvoicePaymentResult,
   TaxConfig,
   TaxRates,
   PayeBracket,
@@ -1173,6 +1175,15 @@ export async function runPayrollAndFetch(period: string): Promise<{ run: Payroll
   return { run, journalEntry };
 }
 
+export async function fetchPayslip(runId: string, employeeId: string): Promise<PayslipDetails | null> {
+  const { data, error } = await supabase.rpc('get_payslip', {
+    p_run_id: runId,
+    p_employee_id: employeeId,
+  });
+  if (error) throw error;
+  return (data as PayslipDetails | null) ?? null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Settings & tax config                                               */
 /* ------------------------------------------------------------------ */
@@ -1644,4 +1655,24 @@ export async function voidInvoice(invoiceId: string, reason?: string | null): Pr
     console.error('Failed to void invoice:', err);
     throw err;
   }
+}
+
+export async function recordInvoicePayment(params: {
+  invoiceId: string;
+  date: string;
+  amount: number;
+  paymentAccountCode: string;
+  method?: string | null;
+  reference?: string | null;
+}): Promise<RecordInvoicePaymentResult> {
+  const { data, error } = await supabase.rpc('record_invoice_payment', {
+    p_invoice_id: params.invoiceId,
+    p_date: params.date,
+    p_amount: params.amount,
+    p_payment_account_code: params.paymentAccountCode,
+    p_method: params.method ?? null,
+    p_reference: params.reference ?? null,
+  });
+  if (error) throw error;
+  return data as RecordInvoicePaymentResult;
 }

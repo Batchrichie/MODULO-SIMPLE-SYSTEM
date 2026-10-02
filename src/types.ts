@@ -109,6 +109,14 @@ export interface Payment {
   reference?: string | null;
 }
 
+export interface RecordInvoicePaymentResult {
+  payment_id: string;
+  journal_entry_id: string;
+  payment_account_code: string;
+  invoice_status: InvoiceStatus;
+  invoice_outstanding: number;
+}
+
 export interface InvoiceTotals {
   subtotal?: number;
   taxableValue?: number;
@@ -173,6 +181,53 @@ export interface PayrollRun {
   entryNumber?: string | null;
   postedAt?: string | null;
   rows: PayrollLine[];
+}
+
+export interface PayslipDetails {
+  run_id: string;
+  period: string;
+  posted_at: string | null;
+  employee: {
+    id: string;
+    name: string;
+    designation: string | null;
+    position_title: string | null;
+    department: string | null;
+    ssnit_no: string | null;
+    nia_card: string | null;
+  };
+  earnings: {
+    type: 'salary' | 'allowance';
+    basic_salary: number;
+    allowance: number;
+    overtime?: number;
+    bonuses?: number;
+    total: number;
+  };
+  deductions: {
+    ssnit_employee: number;
+    ssnit_tier1: number;
+    ssnit_tier2: number;
+    paye: number;
+    loan: number;
+    total: number;
+  };
+  chargeable_income: number;
+  net_pay: number;
+  employer: {
+    ssnit_employer: number;
+    total_cost: number;
+  };
+  ytd: {
+    through_period: string;
+    opening_covered_through: string | null;
+    gross: number;
+    paye: number;
+    ssnit_employee: number;
+    ssnit_employer: number;
+    loan: number;
+    net: number;
+  };
 }
 
 export interface BillPayment {

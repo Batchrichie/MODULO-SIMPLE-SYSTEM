@@ -5,11 +5,31 @@ import Button from "../components/ui/Button";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
-import { getInvoiceBalance, getInvoicePaidAmount } from "../utils/invoiceUtils";
-import { db, postJournalEntry, findAccountByRole, findDefaultPaymentAccount, findPeriodByDate } from "../supabaseClient";
+import { getInvoiceBalance } from "../utils/invoiceUtils";
+import { recordInvoicePayment, findDefaultPaymentAccount, findPeriodByDate } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
 import type { RecordPaymentFormProps } from "../types";
+
+const PAYMENT_ERROR_MESSAGES: Record<string, string> = {
+  AUTH_REQUIRED: "Please sign in before recording a payment.",
+  EMPLOYEE_REQUIRED: "Your employee record is required to record a payment.",
+  NOT_AUTHORIZED: "You are not authorized to record this invoice payment.",
+  INVOICE_NOT_FOUND: "The invoice could not be found.",
+  INVOICE_VOID: "A payment cannot be recorded for a void invoice.",
+  INVOICE_NOT_POSTED: "This invoice must be posted before receiving payment.",
+  INVOICE_TOTALS_INVALID: "The invoice total is invalid. Please contact an administrator.",
+  OVERPAYMENT: "This payment exceeds the invoice's outstanding balance.",
+  ACCOUNT_NOT_FOUND: "The selected payment account could not be found.",
+  ACCOUNT_INVALID: "Select a valid payment account.",
+  ACCOUNT_INACTIVE: "The selected payment account is inactive.",
+};
+
+function paymentErrorMessage(error: unknown) {
+  const backendMessage = error instanceof Error ? error.message : String(error ?? "");
+  const knownCode = Object.keys(PAYMENT_ERROR_MESSAGES).find((code) => backendMessage.includes(code));
+  return knownCode ? `${PAYMENT_ERROR_MESSAGES[knownCode]} (${knownCode})` : backendMessage || "Payment could not be recorded.";
+}
 
 export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintContent }: RecordPaymentFormProps) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -19,6 +39,8 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
     return def?.code || "";
   });
   const [reference, setReference] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const paymentAccounts = data.accounts.filter(a => a.isPaymentAccount);
 
@@ -28,93 +50,63 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
   async function record() {
     const amt = parseFloat(amount);
     const err = assertPayment(amt);
-    if (err) { window.alert(err); return; }
-    if (!paymentAccount) { window.alert("Please select a payment account."); return; }
+    if (err) { setErrorMessage(err); return; }
+    if (!paymentAccount) { setErrorMessage("Please select a payment account."); return; }
 
-    const paymentId = "PYT-" + Date.now();
-    const payment = { id: paymentId, date, amountGHS: amt, method: paymentAccount, reference };
-    const totalGhs = Number(inv.totals?.total_ghs ?? inv.totals?.grandTotalGHS ?? inv.totals?.total ?? inv.totals?.grandTotal ?? 0) || 0;
-    const paidSoFar = getInvoicePaidAmount(inv) + amt;
-    const newStatus = paidSoFar >= totalGhs - 0.01 ? "Paid" : "Partially Paid";
-
-    const entryNumber = `JE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const arAccount = findAccountByRole(data.accounts, "ar");
-    if (!arAccount) {
-      window.alert("Accounts Receivable account not configured. Please contact your admin.");
-      return;
-    }
-    const normalizedProject = inv.project === "GEN" ? null : inv.project;
-    const entry = {
-      id: entryNumber,
-      entryNumber,
-      date,
-      description: `Payment received — ${inv.invoiceNumber} (${inv.billTo})`,
-      period: date.slice(0, 7),
-      project: normalizedProject,
-      lines: [
-        { account: paymentAccount, debit: amt, credit: 0 },
-        { account: arAccount.code, debit: 0, credit: amt },
-      ],
-    };
-
-    const updatedInvoice = {
-      ...inv,
-      payments: [...inv.payments, payment],
-      status: newStatus,
-    };
-
-    const receiptNo = `PYT${String(
-      data.invoices.findIndex((i) => i.id === inv.id) * 10 +
-        inv.payments.length + 1
-    ).padStart(3, "0")}`;
-
-    mutate((d) => ({
-      ...d,
-      invoices: d.invoices.map((i) => i.id === inv.id ? updatedInvoice : i),
-      journal: [entry, ...d.journal],
-    }));
-
+    setSubmitting(true);
+    setErrorMessage("");
     try {
-      await db.saveInvoice(updatedInvoice);
-      const postedEntryId = await postJournalEntry(
-        entry.date,
-        entry.description ?? null,
-        normalizedProject,
-        entry.lines.map((line) => ({
-          account: line.account,
-          debit: Number(line.debit) || 0,
-          credit: Number(line.credit) || 0,
-        }))
+      const result = await recordInvoicePayment({
+        invoiceId: inv.id,
+        date,
+        amount: amt,
+        paymentAccountCode: paymentAccount,
+        method: null,
+        reference: reference.trim() || null,
+      });
+      const payment = {
+        id: result.payment_id,
+        date,
+        amountGHS: amt,
+        method: "Not specified",
+        reference: reference.trim() || null,
+      };
+      const updatedInvoice = {
+        ...inv,
+        payments: [...inv.payments, payment],
+        status: result.invoice_status,
+      };
+      const receiptNo = result.payment_id;
+      const receiptData = {
+        ...data,
+        invoices: data.invoices.map((invoice) => invoice.id === inv.id ? updatedInvoice : invoice),
+      };
+
+      mutate((current) => ({
+        ...current,
+        invoices: current.invoices.map((invoice) => invoice.id === inv.id ? updatedInvoice : invoice),
+      }));
+
+      document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
+      setPrintContent(
+        <ReceiptDocument
+          data={receiptData}
+          inv={updatedInvoice}
+          payment={payment}
+          receiptNo={receiptNo}
+          paymentAccountCode={result.payment_account_code}
+          journalEntryId={result.journal_entry_id}
+          invoiceStatus={result.invoice_status}
+          invoiceOutstanding={result.invoice_outstanding}
+        />
       );
-
-      mutate((d) => ({
-        ...d,
-        journal: d.journal.map((item) =>
-          item.id === entry.id ? { ...item, id: postedEntryId } : item
-        ),
-      }));
-    } catch (err: any) {
-      mutate((d) => ({
-        ...d,
-        invoices: d.invoices.map((item) => item.id === inv.id ? inv : item),
-        journal: d.journal.filter((item) => item.id !== entry.id),
-      }));
-      console.error("Failed to persist payment or journal entry:", err);
-      const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
-      window.alert(`Failed to record payment: ${errorMsg}`);
+      onDone && onDone();
+    } catch (error) {
+      console.error("Failed to record invoice payment:", error);
+      setErrorMessage(paymentErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
-
-    const receiptInvoice = updatedInvoice;
-    const receiptData = {
-      ...data,
-      invoices: data.invoices.map((i) => i.id === inv.id ? receiptInvoice : i),
-    };
-
-    document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
-    setPrintContent(
-      <ReceiptDocument data={receiptData} inv={receiptInvoice} payment={payment} receiptNo={receiptNo} />
-    );
-    onDone && onDone();
   }
 
   const balance = getInvoiceBalance(inv, data);
@@ -125,6 +117,7 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
       <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: MUTED }}>
         Outstanding balance: <b style={{ color: INK }}>GHS {fmt(balance)}</b>
       </div>
+      {errorMessage && <div role="alert" style={{ color: ALERT, fontSize: 12.5 }}>{errorMessage}</div>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
         <div style={{ flex: "1 1 150px" }}>
           <label style={labelStyle}>Date</label>
@@ -186,8 +179,8 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
           <input style={inputStyle} value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
       </div>
-      <Button onClick={record} icon={Check} fullWidth>
-        Record payment & Print Receipt
+      <Button onClick={record} icon={Check} fullWidth disabled={submitting}>
+        {submitting ? "Recording payment..." : "Record payment & Print Receipt"}
       </Button>
     </div>
   );
