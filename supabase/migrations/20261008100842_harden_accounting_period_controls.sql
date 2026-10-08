@@ -4,8 +4,8 @@
 -- journal-entry trigger so future posting code cannot accidentally write into
 -- a CLOSED/FUTURE period or attach the wrong period_id/period code.
 --
--- The demo calendar is also normalized: October 2026 is current/open and
--- November/December are future. Prior months remain open until explicitly closed.
+-- The demo calendar is normalized only for periods that have not been closed.
+-- Existing CLOSED periods are never reopened by this migration.
 
 CREATE OR REPLACE FUNCTION public.assert_period_open(p_date date)
 RETURNS TABLE(period_id uuid, period_code varchar, financial_year_id uuid)
@@ -129,7 +129,8 @@ SET status = CASE
   is_current = (CURRENT_DATE BETWEEN start_date AND end_date)
 WHERE financial_year_id IN (
   SELECT id FROM public.financial_years WHERE status = 'OPEN'
-);
+)
+AND status <> 'CLOSED';
 
 CREATE UNIQUE INDEX IF NOT EXISTS accounting_periods_one_current_idx
   ON public.accounting_periods (financial_year_id)
