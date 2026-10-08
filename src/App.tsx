@@ -520,7 +520,7 @@ export default function App() {
               {effectiveTab === "employees" && (adminFlag || ceoFlag) && <EmployeesPanel data={data} mutate={canEdit ? mutate : undefined} />}
               {effectiveTab === "payroll" && (adminFlag || ceoFlag) && <PayrollPanel data={data} mutate={canEdit ? mutate : undefined} setPrintContent={queuePrint} />}
               {effectiveTab === "bills" && (adminFlag || ceoFlag) && <BillsPanel data={data} mutate={canEdit ? mutate : undefined} />}
-              {effectiveTab === "expenses" && (canEdit || isCeo(permissions) || canWrite(permissions, CEO_EXPENSES_CREATE) || canWrite(permissions, CEO_EXPENSES_POST)) && (
+              {effectiveTab === "expenses" && (adminFlag || isCeo(permissions) || canWrite(permissions, CEO_EXPENSES_CREATE) || canWrite(permissions, CEO_EXPENSES_POST)) && (
                 <ExpensesPanel
                   data={data}
                   mutate={mutate}
