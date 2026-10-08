@@ -79,12 +79,19 @@ export default function EmployeesPanel({ data, mutate }) {
   }
 
   function saveEmployee() {
+    const existingEmployee = editingEmployeeId ? data.employees.find((e) => e.id === editingEmployeeId) : null;
+    const willBeActive = existingEmployee?.active ?? true;
+    const parsedBaseSalary = Number(form.baseSalary);
     const err = assertEmployee({
       name: form.name,
-      baseSalary: parseFloat(form.baseSalary) || 0,
+      baseSalary: Number.isFinite(parsedBaseSalary) ? parsedBaseSalary : 0,
     });
     if (err) {
       window.alert(err);
+      return;
+    }
+    if (willBeActive && parsedBaseSalary <= 0) {
+      window.alert("Enter a monthly base salary greater than zero for an active payroll employee.");
       return;
     }
 
@@ -226,7 +233,8 @@ export default function EmployeesPanel({ data, mutate }) {
               <tr>
                 <Th>Name</Th>
                 <Th>Designation</Th>
-                <Th right>Base Salary</Th>
+                <Th right>Monthly Base Salary</Th>
+                <Th>SSNIT No.</Th>
                 <Th>Portal</Th>
                 <Th>Exemptions</Th>
                 <Th>Status</Th>
@@ -243,6 +251,7 @@ export default function EmployeesPanel({ data, mutate }) {
                   <Td right mono label="Base Salary">
                     GHS {fmt(e.baseSalary)}
                   </Td>
+                  <Td label="SSNIT No.">{e.ssnitNo || <span style={{ color: MUTED }}>—</span>}</Td>
                   <Td label="Portal">
                     {e.onboardingStatus === "active" && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: GREEN_DEEP, background: "var(--success-bg)", padding: "2px 8px", borderRadius: 6 }}>
@@ -340,7 +349,7 @@ export default function EmployeesPanel({ data, mutate }) {
               ))}
               {(data.employees || []).length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ color: MUTED, padding: 10 }}>
+                  <td colSpan={8} style={{ color: MUTED, padding: 10 }}>
                     No employees added yet.
                   </td>
                 </tr>
@@ -415,7 +424,7 @@ export default function EmployeesPanel({ data, mutate }) {
               />
             </div>
             <div style={{ flex: "1 1 150px" }}>
-              <label style={labelStyle}>Base salary (GHS)</label>
+              <label style={labelStyle}>Monthly base salary (GHS)</label>
               <input
                 style={inputStyle}
                 value={form.baseSalary}
@@ -424,6 +433,7 @@ export default function EmployeesPanel({ data, mutate }) {
                 }
                 placeholder="3500"
               />
+              <span style={{ fontSize: 11, color: MUTED }}>Payroll currently uses this as gross pay; the database does not store a separate pay type.</span>
             </div>
             <div style={{ flex: "1 1 150px" }}>
               <label style={labelStyle}>SSNIT No.</label>

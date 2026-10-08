@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   loadLedgerState, loadTaxConfig, saveSettings,
-  getSession, onAuthStateChange, signOut, getAccountingPeriods,
+  getSession, onAuthStateChange, signOut, getAccountingPeriods, supabase,
 } from "./supabaseClient";
 import { loadMyProfile, type UserProfile } from "./supabase/profile";
 import { NAV_CONFIG, getNavGroups, getMobileBottomNav, getMobileMoreItems, isAdmin, isCeo, canWrite, canApproveLoans, CEO_EXPENSES_CREATE, CEO_EXPENSES_POST, ALL } from "./lib/permissions";
@@ -283,6 +283,74 @@ export default function App() {
       setLoaded(true);
     })();
   }, [authChecked, authSession]);
+
+  useEffect(() => {
+    if (!loaded || !authSession || (!adminFlag && !ceoFlag) || effectiveTab !== "dashboard") return;
+
+    const changedTables = ["journal_entries", "journal_lines", "invoices", "payments", "expenses"];
+    const changeEvents = ["INSERT", "UPDATE", "DELETE"] as const;
+    const channel = supabase.channel("dashboard-data-changes");
+    let refreshTimer: number | undefined;
+    let refreshInFlight = false;
+    let refreshPending = false;
+    let active = true;
+
+    const scheduleRefresh = () => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        if (!active) return;
+        if (refreshInFlight) {
+          refreshPending = true;
+          return;
+        }
+
+        refreshInFlight = true;
+        void loadLedgerState()
+          .then((remote) => {
+            if (!active || !remote) return;
+            setData((previous) => ({
+              ...DEFAULT_DATA,
+              ...previous,
+              ...remote,
+              accounts: remote.accounts || [],
+              company: remote.company || COMPANY_TEMPLATE,
+              companyName: remote.companyName || "",
+              ssnitEmployeeRate: previous.ssnitEmployeeRate,
+              ssnitEmployerRate: previous.ssnitEmployerRate,
+              nhilGetfundRate: previous.nhilGetfundRate,
+              vatRate: previous.vatRate,
+              brackets: previous.brackets,
+              accountingPeriods: previous.accountingPeriods,
+            }));
+          })
+          .catch((error) => console.error("Failed to refresh dashboard data:", error))
+          .finally(() => {
+            refreshInFlight = false;
+            if (active && refreshPending) {
+              refreshPending = false;
+              scheduleRefresh();
+            }
+          });
+      }, 300);
+    };
+
+    for (const table of changedTables) {
+      for (const event of changeEvents) {
+        channel.on("postgres_changes", { event, schema: "public", table }, scheduleRefresh);
+      }
+    }
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        console.error(`Dashboard Realtime subscription ${status.toLowerCase()}.`);
+      }
+    });
+
+    return () => {
+      active = false;
+      window.clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [loaded, authSession, adminFlag, ceoFlag, effectiveTab]);
 
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => fn(prev));

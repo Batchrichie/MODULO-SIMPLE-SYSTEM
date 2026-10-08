@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { Trash2, Banknote, Printer, Check, Settings2, Plus } from "lucide-react";
-import { INK, PAPER, PAPER_RAISED, RULE, GREEN, GOLD, ALERT, MUTED, FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
+import React, { useEffect, useState } from "react";
+import { Banknote, Printer, Settings2 } from "lucide-react";
+import { INK, RULE, GREEN, ALERT, MUTED, FONT_DISPLAY, FONT_BODY, FONT_MONO } from "../theme/tokens";
 import Card from "../components/ui/Card";
 import SectionTitle from "../components/ui/SectionTitle";
 import TableScroll from "../components/ui/TableScroll";
@@ -10,90 +10,138 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
-import { normalizeTaxRate } from "../utils/invoiceUtils";
 import Payslip from "../documents/Payslip";
-import { saveTaxRates, savePayeBrackets, runPayrollAndFetch, fetchPayslip } from "../supabaseClient";
+import { findPeriodByDate, loadPayrollTaxConfiguration, runPayrollAndFetch, fetchPayslip } from "../supabaseClient";
 import type { AppData, PayrollPanelProps } from "../types";
+
+function payrollErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const message = raw.toLowerCase();
+  if (message.includes("already been posted") || message.includes("duplicate")) return "Payroll for this period has already been posted.";
+  if (message.includes("closed period") || message.includes("period is closed")) return "Payroll cannot be posted because the accounting period is closed.";
+  if (message.includes("future period") || message.includes("not opened") || message.includes("not open")) return "Payroll cannot be posted because this accounting period has not opened yet.";
+  if (message.includes("tax") || message.includes("paye_brackets") || message.includes("pension rate") || message.includes("app_tax_rates")) return "Payroll cannot be processed because the payroll tax configuration is incomplete.";
+  if (message.includes("employee") || message.includes("salary") || message.includes("no active employees")) return "Payroll cannot be processed because one or more employees have invalid payroll information.";
+  if (message.includes("results_unavailable")) return "Payroll may have posted, but the run or journal could not be verified. Refresh payroll history before trying again.";
+  return "Payroll could not be processed. Check the payroll setup or contact an administrator.";
+}
+
+function payrollMoney(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(Number(value)) ? "—" : `GHS ${fmt(Number(value))}`;
+}
+
+function postedDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
 
 export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollPanelProps) {
   const now = new Date();
   const [period, setPeriod] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [posting, setPosting] = useState(false);
+  const [postStatus, setPostStatus] = useState<"draft" | "processing" | "posted" | "failed">("draft");
   const [postError, setPostError] = useState("");
+  const [postMessage, setPostMessage] = useState("");
   const [showTaxModal, setShowTaxModal] = useState(false);
-  const [savingTaxSettings, setSavingTaxSettings] = useState(false);
-  const [taxSaveMessage, setTaxSaveMessage] = useState("");
-  const [taxSaveError, setTaxSaveError] = useState("");
+  const [payrollTaxConfig, setPayrollTaxConfig] = useState<Awaited<ReturnType<typeof loadPayrollTaxConfiguration>> | null>(null);
+  const [taxConfigLoading, setTaxConfigLoading] = useState(true);
+  const [taxConfigError, setTaxConfigError] = useState("");
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null);
   const [payslipError, setPayslipError] = useState("");
 
-  function updateTaxRate(field, value) {
-    const percent = Number(value);
-    const nextRate = Number.isFinite(percent) ? normalizeTaxRate(percent) : 0;
-    mutate((prev) => ({ ...prev, [field]: nextRate }));
-  }
-
-  function updateBracket(index, field, value) {
-    mutate((prev) => {
-      const brackets = [...(prev.brackets || [])];
-      const current = brackets[index] || { upto: 0, rate: 0 };
-      const next = { ...current };
-      if (field === "rate") {
-        const parsed = Number(value);
-        next.rate = isNaN(parsed) ? 0 : parsed / 100;
-      } else {
-        const raw = String(value).trim();
-        next.upto = raw.toLowerCase() === "infinity" ? Infinity : Number(raw);
-        if (isNaN(next.upto)) next.upto = current.upto;
-      }
-      brackets[index] = next;
-      return { ...prev, brackets };
-    });
-  }
-
-  function addBracket() {
-    mutate((prev) => {
-      const brackets = [...(prev.brackets || [])];
-      const existingUptos = brackets.filter((b) => b.upto !== Infinity).map((b) => Number(b.upto) || 0);
-      const highestUpto = existingUptos.length > 0 ? Math.max(...existingUptos) : 0;
-      const nextUpto = Math.max(1000, highestUpto + 1);
-      const infinityIndex = brackets.findIndex((b) => b.upto === Infinity);
-      const newBracket = { upto: nextUpto, rate: 0.1 };
-      if (infinityIndex === -1) brackets.push(newBracket);
-      else brackets.splice(infinityIndex, 0, newBracket);
-      return { ...prev, brackets };
-    });
-  }
-
-  function removeBracket(index) {
-    mutate((prev) => ({ ...prev, brackets: (prev.brackets || []).filter((_, i) => i !== index) }));
-  }
-
-  async function saveTaxSettings() {
-    setSavingTaxSettings(true);
-    setTaxSaveMessage("");
-    setTaxSaveError("");
+  async function refreshPayrollTaxConfiguration() {
+    setTaxConfigLoading(true);
+    setTaxConfigError("");
     try {
-      await saveTaxRates({ ssnitEmployeeRate: data.ssnitEmployeeRate, ssnitEmployerRate: data.ssnitEmployerRate, nhilGetfundRate: data.nhilGetfundRate, vatRate: data.vatRate });
-      await savePayeBrackets(data.brackets);
-      setTaxSaveMessage("Tax settings saved to the database.");
+      setPayrollTaxConfig(await loadPayrollTaxConfiguration());
     } catch (err) {
-      console.error("Failed to save tax settings:", err);
-      setTaxSaveError("Unable to persist tax settings. Try again.");
-    } finally { setSavingTaxSettings(false); }
+      console.error("Failed to load payroll tax configuration:", err);
+      setTaxConfigError("Unable to read payroll tax configuration from the database.");
+    } finally { setTaxConfigLoading(false); }
   }
+
+  function openTaxSettings() {
+    setShowTaxModal(true);
+  }
+
+  useEffect(() => {
+    let active = true;
+    loadPayrollTaxConfiguration().then((config) => {
+      if (active) setPayrollTaxConfig(config);
+    }).catch((error) => {
+      console.error("Failed to load payroll tax configuration:", error);
+      if (active) setTaxConfigError("Unable to read payroll tax configuration from the database.");
+    }).finally(() => {
+      if (active) setTaxConfigLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   async function handlePostPayroll() {
     if (!period) return;
-    if (data.payrollRuns.some((r) => r.period === period)) { setPostError("Payroll for this period has already been posted."); return; }
+    if (data.payrollRuns.some((r) => r.period === period)) {
+      setPostStatus("posted");
+      setPostError("Payroll for this period has already been posted.");
+      return;
+    }
+    if (period > `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`) {
+      setPostStatus("failed");
+      setPostError("Payroll cannot be posted because this accounting period has not opened yet.");
+      return;
+    }
+    const accountingPeriod = findPeriodByDate(data.accountingPeriods, `${period}-01`);
+    if (accountingPeriod?.status === "closed") {
+      setPostStatus("failed");
+      setPostError("Payroll cannot be posted because the accounting period is closed.");
+      return;
+    }
+    if (accountingPeriod?.status === "future" || accountingPeriod?.status === "not_open") {
+      setPostStatus("failed");
+      setPostError("Payroll cannot be posted because this accounting period has not opened yet.");
+      return;
+    }
+    if (taxConfigLoading) {
+      setPostStatus("failed");
+      setPostError("Payroll tax configuration is still loading. Try again shortly.");
+      return;
+    }
+    if (taxConfigError || !payrollTaxConfig || payrollTaxConfig.employeeTier1Rate == null || payrollTaxConfig.employeeTier2Rate == null || payrollTaxConfig.employerSsnitRate == null || payrollTaxConfig.brackets.length === 0) {
+      setPostStatus("failed");
+      setPostError("Payroll cannot be processed because the payroll tax configuration is incomplete.");
+      return;
+    }
+    const activeEmployees = data.employees.filter((employee) => employee.active);
+    const invalidEmployees = activeEmployees.filter((employee) =>
+      !Number.isFinite(Number(employee.baseSalary)) || Number(employee.baseSalary) <= 0
+    );
+    if (activeEmployees.length === 0 || invalidEmployees.length > 0) {
+      setPostStatus("failed");
+      setPostError(activeEmployees.length === 0
+        ? "Payroll cannot be processed because there are no active employees."
+        : `Payroll cannot be processed because these active employees need a valid base salary: ${invalidEmployees.map((employee) => employee.name).join(", ")}.`);
+      return;
+    }
     setPosting(true);
+    setPostStatus("processing");
     setPostError("");
+    setPostMessage("");
     try {
       const { run, journalEntry } = await runPayrollAndFetch(period);
-      mutate((d) => ({ ...d, payrollRuns: [run, ...d.payrollRuns], journal: [journalEntry, ...d.journal] }));
+      if (run.period !== period || run.rows.length === 0 || journalEntry.lines.length === 0) {
+        throw new Error("PAYROLL_RESULTS_UNAVAILABLE");
+      }
+      mutate((d) => ({
+        ...d,
+        payrollRuns: [run, ...d.payrollRuns.filter((existing) => existing.period !== run.period)],
+        journal: [journalEntry, ...d.journal.filter((entry) => entry.id !== journalEntry.id)],
+      }));
+      setPostStatus("posted");
+      setPostMessage(`Payroll posted for ${run.period}. Journal entry ${journalEntry.entryNumber} was loaded from the database.`);
     } catch (err) {
       console.error("Failed to post payroll:", err);
-      setPostError(err?.message || "Failed to post payroll. Check console for details.");
+      setPostStatus("failed");
+      setPostError(payrollErrorMessage(err));
     } finally { setPosting(false); }
   }
 
@@ -131,6 +179,7 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
   }
 
   const alreadyPosted = data.payrollRuns.some((r) => r.period === period);
+  const selectedPeriodStatus = alreadyPosted ? "posted" : posting ? "processing" : postStatus;
 
   return (
     <div>
@@ -142,14 +191,22 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
         <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 150px" }}>
             <label style={labelStyle}>Period</label>
-            <input type="month" style={inputStyle} value={period} onChange={(e) => { setPeriod(e.target.value); setPostError(""); }} />
+            <input type="month" style={inputStyle} value={period} onChange={(e) => {
+              setPeriod(e.target.value);
+              setPostError("");
+              setPostMessage("");
+              setPostStatus(data.payrollRuns.some((run) => run.period === e.target.value) ? "posted" : "draft");
+            }} />
+          </div>
+          <div role="status" style={{ flex: "1 1 150px", color: selectedPeriodStatus === "failed" ? ALERT : selectedPeriodStatus === "posted" ? GREEN : MUTED, fontFamily: FONT_BODY, fontSize: 13, paddingBottom: 8 }}>
+            Status: <b>{selectedPeriodStatus.charAt(0).toUpperCase() + selectedPeriodStatus.slice(1)}</b>
           </div>
           {mutate && (
             <>
               <Button onClick={handlePostPayroll} icon={Banknote} disabled={posting || alreadyPosted || !period}>
                 {posting ? "Posting..." : alreadyPosted ? "Already Posted" : "Run & Post Payroll"}
               </Button>
-              <Button variant="ghost" onClick={() => setShowTaxModal(true)} icon={Settings2}>
+              <Button variant="ghost" onClick={openTaxSettings} icon={Settings2}>
                 Tax settings
               </Button>
             </>
@@ -161,6 +218,10 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
             <span style={{ color: ALERT, fontFamily: FONT_BODY, fontSize: 13 }}>{postError}</span>
           )}
         </div>
+        <div style={{ marginTop: 12, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+          Payroll amounts are calculated and posted by the database. This backend currently does not expose a pre-post preview; posted figures appear after the run and journal have both been retrieved.
+        </div>
+        {postMessage && <div role="status" style={{ color: GREEN, marginTop: 10, fontSize: 12.5 }}>{postMessage}</div>}
       </Card>
 
       <SectionTitle>Past payroll runs</SectionTitle>
@@ -176,6 +237,18 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
         <div style={{ display: "grid", gap: 12 }}>
           {data.payrollRuns.map((run) => {
             const isOpen = expandedPeriod === run.period;
+            const totals = run.rows.reduce((sum, row) => ({
+              gross: sum.gross + (Number(row.gross) || 0),
+              ssnitEmployee: sum.ssnitEmployee + (Number(row.ssnitEmployee) || 0),
+              tier1: sum.tier1 + (Number(row.ssnitTier1) || 0),
+              tier2: sum.tier2 + (Number(row.ssnitTier2) || 0),
+              paye: sum.paye + (Number(row.paye) || 0),
+              employer: sum.employer + (Number(row.ssnitEmployer) || 0),
+              net: sum.net + (Number(row.net) || 0),
+            }), { gross: 0, ssnitEmployee: 0, tier1: 0, tier2: 0, paye: 0, employer: 0, net: 0 });
+            const journalEntry = data.journal.find((entry) =>
+              entry.id === (run.entryNumber || `JE-PAY-${run.period}`) || entry.entryNumber === run.entryNumber
+            );
             return (
               <div
                 key={run.id}
@@ -226,10 +299,13 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, lineHeight: 1.2, color: "var(--ink, #1F2A24)" }}>{run.period}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted, #6B6255)", marginTop: 4 }}>{run.rows.length} payslip{run.rows.length === 1 ? "" : "s"}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted, #6B6255)", marginTop: 4 }}>
+                        {postedDate(run.postedAt)} · {run.rows.length} employee{run.rows.length === 1 ? "" : "s"}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <span style={{ color: GREEN, fontSize: 11, fontWeight: 700 }}>Posted</span>
                     <Button variant="ghost" icon={Printer} onClick={(e) => { e.stopPropagation(); printAllPayslips(run); }}>
                       Print all
                     </Button>
@@ -237,18 +313,57 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
                   </div>
                 </button>
 
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(115px, 1fr))", gap: 8, padding: "0 16px 14px" }}>
+                  {[
+                    ["Gross payroll", totals.gross],
+                    ["PAYE", totals.paye],
+                    ["Employee pension", totals.ssnitEmployee],
+                    ["Tier 1", totals.tier1],
+                    ["Tier 2", totals.tier2],
+                    ["Employer SSNIT", totals.employer],
+                    ["Net payroll", totals.net],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} style={{ borderTop: `1px solid ${RULE}`, paddingTop: 8 }}>
+                      <div style={{ fontSize: 10, color: MUTED }}>{label}</div>
+                      <div style={{ fontFamily: FONT_MONO, fontSize: 11, fontWeight: 600, color: INK }}>{payrollMoney(Number(value))}</div>
+                    </div>
+                  ))}
+                </div>
+
                 {isOpen && (
                   <div style={{ padding: "0 16px 16px" }}>
+                    <div style={{ margin: "0 0 10px", fontSize: 12, color: MUTED }}>
+                      Accounting journal: {journalEntry ? `${journalEntry.entryNumber} · ${postedDate(journalEntry.date)}` : "Journal entry not found in loaded database history."}
+                    </div>
+                    {journalEntry && (
+                      <TableScroll>
+                        <table className="table-card" style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
+                          <thead><tr><Th>Account</Th><Th right>Debit</Th><Th right>Credit</Th></tr></thead>
+                          <tbody>{journalEntry.lines.map((line, index) => {
+                            const account = data.accounts.find((item) => item.code === line.account);
+                            return <tr key={`${line.account}-${index}`}>
+                              <Td label="Account">{line.account} · {account?.name || "—"}</Td>
+                              <Td right mono label="Debit">{payrollMoney(line.debit)}</Td>
+                              <Td right mono label="Credit">{payrollMoney(line.credit)}</Td>
+                            </tr>;
+                          })}</tbody>
+                        </table>
+                      </TableScroll>
+                    )}
                     <TableScroll>
                       <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead>
-                          <tr><Th>Employee</Th><Th right>Net Pay</Th><Th right>&nbsp;</Th></tr>
+                          <tr><Th>Employee</Th><Th right>Gross</Th><Th right>Tier 1</Th><Th right>Tier 2</Th><Th right>PAYE</Th><Th right>Net Pay</Th><Th right>&nbsp;</Th></tr>
                         </thead>
                         <tbody>
                           {run.rows.map((r) => (
                             <tr key={r.employeeId} className="row-hover">
                               <Td label="Employee">{r.name}</Td>
-                              <Td right mono label="Net Pay">GHS {fmt(r.net)}</Td>
+                              <Td right mono label="Gross">{payrollMoney(r.gross)}</Td>
+                              <Td right mono label="Tier 1">{payrollMoney(r.ssnitTier1)}</Td>
+                              <Td right mono label="Tier 2">{payrollMoney(r.ssnitTier2)}</Td>
+                              <Td right mono label="PAYE">{payrollMoney(r.paye)}</Td>
+                              <Td right mono label="Net Pay">{payrollMoney(r.net)}</Td>
                               <Td right><Button variant="ghost" icon={Printer} onClick={() => printPayslip(run, r)}>Print</Button></Td>
                             </tr>
                           ))}
@@ -265,70 +380,46 @@ export default function PayrollPanel({ data, mutate, setPrintContent }: PayrollP
 
       {/* Tax Settings Modal */}
       {showTaxModal && (
-        <Modal title="Tax Settings" sub="Configure PAYE brackets, SSNIT rates, NHIL/GETFund, and VAT." onClose={() => { setShowTaxModal(false); setTaxSaveMessage(""); setTaxSaveError(""); }} wide>
-          <div style={{ display: 'grid', gap: 16 }}>
-            <p style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: MUTED, margin: 0 }}>
-              Monthly PAYE bands (GHS) — estimated from 2026 GRA annual bands.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-              <div>
-                <label style={labelStyle}>SSNIT employee rate (%)</label>
-                <input style={inputStyle} type="number" step="0.1" min="0" value={(data.ssnitEmployeeRate * 100).toFixed(2)} onChange={(e) => updateTaxRate("ssnitEmployeeRate", e.target.value)} />
+        <Modal title="Payroll tax configuration" sub="Read-only values currently used by the database payroll calculation." onClose={() => setShowTaxModal(false)} wide>
+          <div style={{ display: "grid", gap: 16 }}>
+            {taxConfigLoading && <div style={{ color: MUTED }}>Loading payroll tax configuration…</div>}
+            {taxConfigError && (
+              <div role="alert" style={{ color: ALERT, display: "flex", alignItems: "center", gap: 12 }}>
+                <span>{taxConfigError}</span>
+                <Button variant="ghost" onClick={refreshPayrollTaxConfiguration} disabled={taxConfigLoading}>Retry</Button>
               </div>
-              <div>
-                <label style={labelStyle}>SSNIT employer rate (%)</label>
-                <input style={inputStyle} type="number" step="0.1" min="0" value={(data.ssnitEmployerRate * 100).toFixed(2)} onChange={(e) => updateTaxRate("ssnitEmployerRate", e.target.value)} />
-              </div>
-              <div>
-                <label style={labelStyle}>NHIL / GETFund rate (%)</label>
-                <input style={inputStyle} type="number" step="0.1" min="0" value={(data.nhilGetfundRate * 100).toFixed(2)} onChange={(e) => updateTaxRate("nhilGetfundRate", e.target.value)} />
-              </div>
-              <div>
-                <label style={labelStyle}>VAT rate (%)</label>
-                <input style={inputStyle} type="number" step="0.1" min="0" value={(data.vatRate * 100).toFixed(2)} onChange={(e) => updateTaxRate("vatRate", e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <h4 style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK, margin: 0 }}>PAYE Brackets</h4>
-              <Button onClick={addBracket} icon={Plus} variant="ghost">Add bracket</Button>
-            </div>
-
-            <TableScroll>
-              <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr><Th>Up to (GHS)</Th><Th right>Rate (%)</Th><Th right>Actions</Th></tr>
-                </thead>
-                <tbody>
-                  {data.brackets.map((b, i) => (
-                    <tr key={i} className="row-hover">
-                      <Td mono label="Up to (GHS)">
-                        <input style={{ ...inputStyle, width: "100%" }} type="text" value={b.upto === Infinity ? "Infinity" : b.upto} onChange={(e) => updateBracket(i, "upto", e.target.value)} />
-                      </Td>
-                      <Td right mono label="Rate">
-                        <input style={{ ...inputStyle, width: "100%" }} type="number" step="0.1" min="0" value={(b.rate * 100).toFixed(2)} onChange={(e) => updateBracket(i, "rate", e.target.value)} />
-                      </Td>
-                      <Td right mono>
-                        <Button variant="ghost" onClick={() => removeBracket(i)} icon={Trash2} disabled={b.upto === Infinity}>Remove</Button>
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
-
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', paddingTop: 8, borderTop: `1px solid ${RULE}` }}>
-              <Button onClick={saveTaxSettings} icon={Check} disabled={savingTaxSettings}>
-                {savingTaxSettings ? "Saving..." : "Save tax settings"}
-              </Button>
-              {taxSaveMessage && <span style={{ color: GREEN, fontFamily: FONT_BODY, fontSize: 13 }}>{taxSaveMessage}</span>}
-              {taxSaveError && <span style={{ color: ALERT, fontFamily: FONT_BODY, fontSize: 13 }}>{taxSaveError}</span>}
-            </div>
-
-            <div style={{ display: 'flex', gap: 20, fontFamily: FONT_BODY, fontSize: 13, flexWrap: 'wrap', color: MUTED }}>
-              <span>SSNIT employee (Tier 1+2): <b style={{ color: INK }}>{(data.ssnitEmployeeRate * 100).toFixed(1)}%</b></span>
-              <span>SSNIT employer (Tier 1): <b style={{ color: INK }}>{(data.ssnitEmployerRate * 100).toFixed(1)}%</b></span>
-            </div>
+            )}
+            {payrollTaxConfig && !taxConfigLoading && (
+              <>
+                <div style={{ fontSize: 13, color: MUTED }}>
+                  Effective date: <b style={{ color: INK }}>{payrollTaxConfig.effectiveDate || "Not provided by the database"}</b>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  <div><div style={{ color: MUTED, fontSize: 11 }}>Employee SSNIT Tier 1</div><b>{payrollTaxConfig.employeeTier1Rate == null ? "—" : `${(payrollTaxConfig.employeeTier1Rate * 100).toFixed(2)}%`}</b></div>
+                  <div><div style={{ color: MUTED, fontSize: 11 }}>Employee SSNIT Tier 2</div><b>{payrollTaxConfig.employeeTier2Rate == null ? "—" : `${(payrollTaxConfig.employeeTier2Rate * 100).toFixed(2)}%`}</b></div>
+                  <div><div style={{ color: MUTED, fontSize: 11 }}>Employer SSNIT</div><b>{payrollTaxConfig.employerSsnitRate == null ? "—" : `${(payrollTaxConfig.employerSsnitRate * 100).toFixed(2)}%`}</b></div>
+                </div>
+                <div>
+                  <h4 style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15, color: INK, margin: "0 0 8px" }}>PAYE brackets</h4>
+                  {payrollTaxConfig.brackets.length === 0 ? <div style={{ color: MUTED }}>No PAYE brackets were returned.</div> : (
+                    <TableScroll>
+                      <table className="table-card" style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr><Th>Up to (GHS)</Th><Th right>Rate</Th></tr></thead>
+                        <tbody>{payrollTaxConfig.brackets.map((bracket, index) => (
+                          <tr key={`${bracket.upto}-${index}`}>
+                            <Td mono label="Up to">{Number.isFinite(bracket.upto) ? fmt(bracket.upto) : "No upper limit"}</Td>
+                            <Td right mono label="Rate">{(bracket.rate * 100).toFixed(2)}%</Td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </TableScroll>
+                  )}
+                </div>
+                <p style={{ margin: 0, color: MUTED, fontSize: 12, lineHeight: 1.5 }}>
+                  This frontend has no verified payroll-tax write RPC. Configuration changes must be made through the approved database workflow.
+                </p>
+              </>
+            )}
           </div>
         </Modal>
       )}

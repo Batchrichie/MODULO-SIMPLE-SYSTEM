@@ -390,6 +390,8 @@ interface PayrollLineRow {
   name?: string | null;
   gross?: number | null;
   ssnit_employee?: number | null;
+  employee_ssnit_tier1?: number | null;
+  employee_tier2?: number | null;
   ssnit_employer?: number | null;
   paye?: number | null;
   net?: number | null;
@@ -401,6 +403,8 @@ function payrollLineFromRow(r: PayrollLineRow): PayrollLine {
     name: r.name ?? '',
     gross: r.gross ?? 0,
     ssnitEmployee: r.ssnit_employee ?? 0,
+    ssnitTier1: r.employee_ssnit_tier1 ?? null,
+    ssnitTier2: r.employee_tier2 ?? null,
     ssnitEmployer: r.ssnit_employer ?? 0,
     paye: r.paye ?? 0,
     net: r.net ?? 0,
@@ -414,6 +418,8 @@ function payrollLineToRow(l: PayrollLine, runId: string): PayrollLineRow & { run
     name: l.name ?? null,
     gross: l.gross ?? null,
     ssnit_employee: l.ssnitEmployee ?? null,
+    employee_ssnit_tier1: l.ssnitTier1 ?? null,
+    employee_tier2: l.ssnitTier2 ?? null,
     ssnit_employer: l.ssnitEmployer ?? null,
     paye: l.paye ?? null,
     net: l.net ?? null,
@@ -1140,11 +1146,11 @@ export async function runPayrollAndFetch(period: string): Promise<{ run: Payroll
 
   if (runResult.error) {
     console.error('Error fetching posted payroll run:', runResult.error);
-    throw runResult.error;
+    throw new Error('PAYROLL_RESULTS_UNAVAILABLE');
   }
   if (entryResult.error) {
     console.error('Error fetching posted payroll journal entry:', entryResult.error);
-    throw entryResult.error;
+    throw new Error('PAYROLL_RESULTS_UNAVAILABLE');
   }
 
   const runData = runResult.data as Record<string, unknown> & {
@@ -1171,6 +1177,10 @@ export async function runPayrollAndFetch(period: string): Promise<{ run: Payroll
     project: entryData.project ? String(entryData.project) : null,
     lines: (entryData.journal_lines ?? []).map(journalLineFromRow),
   };
+
+  if (run.rows.length === 0 || journalEntry.lines.length === 0) {
+    throw new Error('PAYROLL_RESULTS_UNAVAILABLE');
+  }
 
   return { run, journalEntry };
 }
@@ -1235,6 +1245,44 @@ export async function saveTaxRates(rates: TaxRates): Promise<AppSettingsData> {
 
 export async function savePayeBrackets(brackets: PayeBracket[]): Promise<AppSettingsData> {
   return mergeAppSettings({ brackets });
+}
+
+export interface PayrollTaxConfiguration {
+  employeeTier1Rate: number | null;
+  employeeTier2Rate: number | null;
+  employerSsnitRate: number | null;
+  effectiveDate: string | null;
+  brackets: Array<{ upto: number; rate: number }>;
+}
+
+export async function loadPayrollTaxConfiguration(): Promise<PayrollTaxConfiguration> {
+  const [ratesResult, bracketsResult] = await Promise.all([
+    supabase.from('app_tax_rates').select('*').limit(1).maybeSingle(),
+    supabase.from('paye_brackets').select('upto_amount, rate').order('upto_amount'),
+  ]);
+  if (ratesResult.error) throw ratesResult.error;
+  if (bracketsResult.error) throw bracketsResult.error;
+
+  const rates = (ratesResult.data ?? {}) as Record<string, unknown>;
+  const readRate = (key: string): number | null => {
+    const value = rates[key];
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  const effectiveValue = rates.effective_date ?? rates.effective_from ?? rates.valid_from;
+  const brackets = (bracketsResult.data ?? []).map((row) => ({
+    upto: Number(row.upto_amount),
+    rate: Number(row.rate),
+  })).filter((bracket) => !Number.isNaN(bracket.upto) && Number.isFinite(bracket.rate));
+
+  return {
+    employeeTier1Rate: readRate('employee_ssnit_tier1_rate'),
+    employeeTier2Rate: readRate('employee_tier2_rate'),
+    employerSsnitRate: readRate('ssnit_employer_rate'),
+    effectiveDate: effectiveValue ? String(effectiveValue) : null,
+    brackets,
+  };
 }
 
 export function onAuthStateChange(callback: (session: Session | null) => void): () => void {

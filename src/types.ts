@@ -170,6 +170,8 @@ export interface PayrollLine {
   name: string;
   gross: number;
   ssnitEmployee: number;
+  ssnitTier1?: number | null;
+  ssnitTier2?: number | null;
   ssnitEmployer: number;
   paye: number;
   net: number;

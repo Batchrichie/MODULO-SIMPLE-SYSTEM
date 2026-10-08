@@ -43,6 +43,7 @@ export default function Payslip({ data, payslip }: PayslipProps) {
   );
   const payslipNumber = `PS-${payslip.period}-${suffixCollision ? employee.id : employeeSuffix}`;
   const deductions = payslip.deductions;
+  const hasTierBreakdown = deductions.ssnit_tier1 > 0 || deductions.ssnit_tier2 > 0;
   const hasAnyDeduction = deductions.ssnit_employee > 0 || deductions.paye > 0 || deductions.loan > 0;
   const generatedAt = new Date().toLocaleString("en-GB", {
     day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
@@ -149,7 +150,12 @@ export default function Payslip({ data, payslip }: PayslipProps) {
           <h2 className="ps-table-title">Deductions</h2>
           {hasAnyDeduction ? (
             <table className="ps-table"><tbody>
-              {deductions.ssnit_employee > 0 && <tr><td>SSNIT employee (5.5%)</td><td>{money(deductions.ssnit_employee)}</td></tr>}
+              {hasTierBreakdown ? (
+                <>
+                  {deductions.ssnit_tier1 > 0 && <tr><td>SSNIT Tier 1</td><td>{money(deductions.ssnit_tier1)}</td></tr>}
+                  {deductions.ssnit_tier2 > 0 && <tr><td>SSNIT Tier 2</td><td>{money(deductions.ssnit_tier2)}</td></tr>}
+                </>
+              ) : deductions.ssnit_employee > 0 && <tr><td>SSNIT employee</td><td>{money(deductions.ssnit_employee)}</td></tr>}
               {deductions.paye > 0 && <tr><td>PAYE</td><td>{money(deductions.paye)}</td></tr>}
               {deductions.loan > 0 && <tr><td>Loan repayment</td><td>{money(deductions.loan)}</td></tr>}
               <tr className="total"><td>Total deductions</td><td>{money(deductions.total)}</td></tr>
