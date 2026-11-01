@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Plus, Trash2, Check, AlertTriangle } from "lucide-react";
 import { INK, RULE, MUTED, FONT_MONO, FONT_BODY, ALERT } from "../theme/tokens";
 import TableScroll from "../components/ui/TableScroll";
@@ -10,7 +10,7 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import { fmt, projectName } from "../utils/format";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
-import { supabase, findAccountByRole, findPeriodByDate } from "../supabaseClient";
+import { supabase, findAccountByRole, findPeriodByDate, loadLedgerState } from "../supabaseClient";
 import type { NewInvoiceFormProps } from "../types";
 
 export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormProps) {
@@ -53,6 +53,8 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
           },
         ]
   );
+  const [submitting, setSubmitting] = useState(false);
+  const submissionLock = useRef(false);
 
   const totals = useMemo(
     () =>
@@ -83,6 +85,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
   }
 
   async function create() {
+    if (submissionLock.current) return;
     const err = assertInvoice({ billTo, items, dueDate, date });
     if (err) {
       alert(err);
@@ -126,36 +129,19 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
     };
 
     const arAccount = findAccountByRole(data.accounts, "ar");
-    const vatAccount = findAccountByRole(data.accounts, "vat-payable");
-    const nhilAccount = findAccountByRole(data.accounts, "nhil-payable");
     if (!arAccount) {
       alert("Accounts Receivable account not configured. Please contact your admin.");
       return;
     }
 
-    const entryNumber = `JE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const entry = {
-      id: entryNumber,
-      entryNumber,
-      date,
-      description: `Invoice pending number — ${billTo.trim()}`,
-      period: date.slice(0, 7),
-      project,
-      lines: [
-        { account: arAccount.code, debit: totals.grandTotalGHS, credit: 0 },
-        { account: revenueAccount, debit: 0, credit: totals.newSubtotalGHS },
-        ...(chargeNhil && nhilAccount ? [{ account: nhilAccount.code, debit: 0, credit: totals.nhilGetfundGHS }] : []),
-        ...(chargeVat && vatAccount ? [{ account: vatAccount.code, debit: 0, credit: totals.vatGHS }] : []),
-      ],
-    };
-    inv.journalEntryId = entry.id;
-
+    submissionLock.current = true;
+    setSubmitting(true);
     mutate((d) => ({
       ...d,
       invoices: [inv, ...d.invoices],
-      journal: [entry, ...d.journal],
       nextInvoiceNum: d.nextInvoiceNum,
     }));
+    let confirmed = false;
     try {
       // post_invoice creates its own GL posting internally; do not call postJournalEntry() here
       const { data: postResult, error: rpcError } = await supabase.rpc('post_invoice', {
@@ -172,7 +158,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         p_revenue_account: revenueAccount,
         p_charge_nhil: chargeNhil,
         p_charge_vat: chargeVat,
-  p_client_phone: clientPhone.trim() || null,
+      p_client_phone: clientPhone.trim() || null,
         p_items: cleanItems.map((item) => ({
           line_type: item.lineType,
           description: item.description,
@@ -182,18 +168,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         })),
       });
 
-      if (rpcError) {
-        mutate((d) => ({
-          ...d,
-          invoices: d.invoices.filter((item) => item.id !== temporaryInvoiceId),
-          journal: d.journal.filter((item) => item.id !== entry.id),
-          nextInvoiceNum: d.nextInvoiceNum,
-        }));
-        console.error("Failed to post invoice:", rpcError);
-        const errorMsg = rpcError?.message || rpcError?.toString?.() || "Unknown error occurred";
-        alert(`Failed to save invoice: ${errorMsg}`);
-        return;
-      }
+      if (rpcError) throw rpcError;
 
       const result = postResult as {
         invoice_id: string;
@@ -203,9 +178,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       if (!result?.invoice_id || !result.invoice_number) {
         throw new Error("post_invoice returned no backend invoice identity.");
       }
-      inv.id = result.invoice_id;
-      inv.invoiceNumber = result.invoice_number;
-      inv.journalEntryId = result.journal_entry_id;
+      confirmed = true;
       mutate((d) => ({
         ...d,
         invoices: d.invoices.map((item) =>
@@ -213,34 +186,32 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
             ? { ...item, id: result.invoice_id, invoiceNumber: result.invoice_number, journalEntryId: result.journal_entry_id }
             : item
         ),
-        journal: result.journal_entry_id
-          ? d.journal.map((item) =>
-              item.id === entry.id
-                ? {
-                    ...item,
-                    id: result.journal_entry_id,
-                    entryNumber: result.journal_entry_id,
-                    description: `Invoice ${result.invoice_number} — ${billTo.trim()}`,
-                  }
-                : item
-            )
-          : d.journal,
       }));
 
-      // RPC handles the full invoice creation — no need for separate db.saveInvoice()
-      // Optimistic UI update via mutate() above will show temp data until next journal reload
+      try {
+        const refreshed = await loadLedgerState();
+        if (refreshed?.invoices.some((invoice) => invoice.id === result.invoice_id)) {
+          mutate((d) => ({ ...d, invoices: refreshed.invoices, journal: refreshed.journal }));
+        }
+      } catch (refreshError) {
+        console.error("Failed to refresh invoice and journal after posting:", refreshError);
+      }
     } catch (err: any) {
-      mutate((d) => ({
-        ...d,
-        invoices: d.invoices.filter((item) => item.id !== temporaryInvoiceId),
-        journal: d.journal.filter((item) => item.id !== entry.id),
-        nextInvoiceNum: d.nextInvoiceNum,
-      }));
-      console.error("Failed to persist invoice:", err);
+      if (!confirmed) {
+        mutate((d) => ({
+          ...d,
+          invoices: d.invoices.filter((item) => item.id !== temporaryInvoiceId),
+        }));
+      }
+      console.error("Failed to post invoice:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       alert(`Failed to save invoice: ${errorMsg}`);
+      if (!confirmed) return;
+    } finally {
+      submissionLock.current = false;
+      setSubmitting(false);
     }
-    onDone && onDone();
+    if (confirmed) onDone && onDone();
   }
 
   return (
@@ -302,7 +273,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 15, borderTop: `1px solid ${RULE}`, marginTop: 6, paddingTop: 6 }}><span>Grand Total</span><span>{currency} {fmt(totals.grandTotal)}</span></div>
       </div>
 
-      <div style={{ marginTop: 14 }}><Button onClick={create} icon={Check}>Create &amp; post invoice</Button></div>
+      <div style={{ marginTop: 14 }}><Button onClick={create} icon={Check} disabled={submitting}>{submitting ? "Posting invoice..." : "Create &amp; post invoice"}</Button></div>
     </div>
   );
 }

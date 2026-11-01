@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Plus, Banknote, Check, AlertTriangle } from "lucide-react";
 import { INK, GREEN, ALERT, MUTED, FONT_BODY } from "../theme/tokens";
 import Card from "../components/ui/Card";
@@ -12,7 +12,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
-import { findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate } from "../supabaseClient";
+import { findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate, loadLedgerState } from "../supabaseClient";
 import type { PanelProps, Bill, BillPayment } from "../types";
 
 export default function BillsPanel({ data, mutate }: PanelProps) {
@@ -27,6 +27,10 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const [expenseAccount, setExpenseAccount] = useState("");
   const [apAccount, setApAccount] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
+  const [postingBill, setPostingBill] = useState(false);
+  const [postingPayment, setPostingPayment] = useState(false);
+  const billSubmissionLock = useRef(false);
+  const paymentSubmissionLock = useRef(false);
 
   const expenseAccounts = data.accounts.filter((a) => a.type === "Expense");
   const apAccounts = data.accounts.filter((a) => a.role === "ap");
@@ -38,13 +42,17 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
   const showBillDueDateClosedWarn = closedBillDueDatePeriod?.status === "closed";
 
   async function createBill() {
+    if (billSubmissionLock.current) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return window.alert("Please enter a valid amount.");
     if (!vendor.trim()) return window.alert("Please enter a vendor name.");
     if (!expenseAccount) return window.alert("Please select an expense account.");
     if (!apAccount) return window.alert("Please select an Accounts Payable account.");
 
-    const pendingBillId = `PENDING-BILL-${Date.now()}`;
+    billSubmissionLock.current = true;
+    setPostingBill(true);
+    const billNumber = `BILL-${Date.now()}`;
+    const pendingBillId = `PENDING-${billNumber}`;
     const bill: Bill = {
       id: pendingBillId,
       billNumber: "Pending assignment",
@@ -61,6 +69,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
     mutate((d) => ({ ...d, bills: [bill, ...d.bills] }));
     try {
       const posted = await postBill({
+        bill_number: billNumber,
         date: bill.date,
         due_date: bill.dueDate ?? null,
         vendor: bill.vendor,
@@ -71,8 +80,8 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         ap_account_code: apAccount,
       });
 
-      if (!posted.bill_id || !posted.bill_number) {
-        throw new Error("Bill was posted but the generated bill number was not returned.");
+      if (!posted.bill_id || !posted.bill_number || !posted.journal_entry_id) {
+        throw new Error("The bill posting did not return its confirmed bill and journal identities.");
       }
 
       mutate((d) => ({
@@ -81,18 +90,30 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
           ? { ...item, id: posted.bill_id, billNumber: posted.bill_number, status: (posted.status as Bill["status"]) || item.status }
           : item),
       }));
+      try {
+        const refreshed = await loadLedgerState();
+        if (refreshed?.bills.some((item) => item.id === posted.bill_id)) {
+          mutate((d) => ({ ...d, bills: refreshed.bills, journal: refreshed.journal }));
+        }
+      } catch (refreshError) {
+        console.error("Failed to refresh bill and journal after posting:", refreshError);
+      }
       window.alert(`Bill ${posted.bill_number} posted successfully.`);
     } catch (err: any) {
       mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== pendingBillId) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to save bill: ${errorMsg}`);
       return;
+    } finally {
+      billSubmissionLock.current = false;
+      setPostingBill(false);
     }
 
     setVendor(""); setDescription(""); setAmount(""); setDueDate(""); setExpenseAccount(""); setApAccount(""); setShowNew(false);
   }
 
   async function recordPayment(bill: Bill) {
+    if (paymentSubmissionLock.current) return;
     if (!payingBill) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return window.alert("Please enter a valid payment amount.");
@@ -103,6 +124,8 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
 
     const tempPaymentId = `BPT-${Date.now()}`;
     const payment: BillPayment = { id: tempPaymentId, date, amount: amt, method: "Bank", reference: "" };
+    paymentSubmissionLock.current = true;
+    setPostingPayment(true);
     try {
       const posted = await postBillPayment({
         bill_id: bill.id,
@@ -112,19 +135,41 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         reference: payment.reference ?? null,
         payment_account_code: resolvedCashAccount.code,
       });
+      if (!posted.bill_payment_id || !posted.journal_entry_id || !posted.bill_status) {
+        throw new Error("The payment posting did not return its confirmed payment and journal identities.");
+      }
+      const confirmedPayment = { ...payment, id: posted.bill_payment_id };
       const finalizedBill: Bill = {
         ...bill,
-        payments: [...bill.payments, { ...payment, id: posted.bill_payment_id || tempPaymentId }],
+        payments: [...bill.payments, confirmedPayment],
         status: posted.bill_status as Bill["status"],
       };
-      mutate((d) => ({
-        ...d,
-        bills: d.bills.map((b) => (b.id === bill.id ? finalizedBill : b)),
-      }));
+      let refreshedBill: Bill | undefined;
+      try {
+        const refreshed = await loadLedgerState();
+        refreshedBill = refreshed?.bills.find((item) =>
+          item.id === bill.id && item.payments.some((itemPayment) => itemPayment.id === posted.bill_payment_id)
+        );
+        if (refreshedBill) {
+          mutate((d) => ({ ...d, bills: refreshed!.bills, journal: refreshed!.journal }));
+        }
+      } catch (refreshError) {
+        console.error("Failed to refresh bill payment data:", refreshError);
+      }
+      if (!refreshedBill) {
+        mutate((d) => ({
+          ...d,
+          bills: d.bills.map((currentBill) => currentBill.id === bill.id ? finalizedBill : currentBill),
+        }));
+        window.alert("Payment was accepted by the backend, but its refreshed record was not available yet. The confirmed payment is shown; refresh the page before recording another payment.");
+      }
     } catch (err: any) {
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
       window.alert(`Failed to record payment: ${errorMsg}`);
       return;
+    } finally {
+      paymentSubmissionLock.current = false;
+      setPostingPayment(false);
     }
     setPayingBill(null); setAmount("");
   }
@@ -200,7 +245,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Expense Account *</label><AccountSelect value={expenseAccount} onChange={setExpenseAccount} accounts={expenseAccounts} placeholder="Search expense account…" /></div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>AP Account *</label><AccountSelect value={apAccount} onChange={setApAccount} accounts={apAccounts} placeholder="Search AP account…" /></div>
           <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Project</label><ProjectSelect value={project} onChange={setProject} projects={data.projects} /></div>
-          <Button onClick={createBill} icon={Plus} fullWidth>Post bill</Button>
+          <Button onClick={createBill} icon={Plus} fullWidth disabled={postingBill}>{postingBill ? "Posting bill..." : "Post bill"}</Button>
         </div>
       </Modal>}
 
@@ -221,7 +266,7 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
             <div style={{ flex: "1 1 150px" }}><label style={labelStyle}>Amount (GHS)</label><input style={inputStyle} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00" /></div>
             <div style={{ flex: "1 1 200px" }}><label style={labelStyle}>Paid from *</label><AccountSelect value={paymentAccount} onChange={setPaymentAccount} accounts={paymentAccounts} placeholder="Search payment account…" /></div>
           </div>
-          <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth>Record payment</Button>
+          <Button onClick={() => recordPayment(payingBill)} icon={Check} fullWidth disabled={postingPayment}>{postingPayment ? "Recording payment..." : "Record payment"}</Button>
         </div>
       </Modal>}
     </div>

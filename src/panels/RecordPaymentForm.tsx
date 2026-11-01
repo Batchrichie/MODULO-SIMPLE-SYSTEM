@@ -6,7 +6,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { getInvoiceBalance } from "../utils/invoiceUtils";
-import { recordInvoicePayment, findDefaultPaymentAccount, findPeriodByDate } from "../supabaseClient";
+import { recordInvoicePayment, findDefaultPaymentAccount, findPeriodByDate, loadLedgerState } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
 import type { RecordPaymentFormProps } from "../types";
@@ -71,13 +71,13 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         method: "Not specified",
         reference: reference.trim() || null,
       };
-      const updatedInvoice = {
+      let updatedInvoice = {
         ...inv,
         payments: [...inv.payments, payment],
         status: result.invoice_status,
       };
       const receiptNo = result.payment_id;
-      const receiptData = {
+      let receiptData = {
         ...data,
         invoices: data.invoices.map((invoice) => invoice.id === inv.id ? updatedInvoice : invoice),
       };
@@ -86,6 +86,19 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         ...current,
         invoices: current.invoices.map((invoice) => invoice.id === inv.id ? updatedInvoice : invoice),
       }));
+
+      try {
+        const refreshed = await loadLedgerState();
+        const refreshedInvoice = refreshed?.invoices.find((invoice) => invoice.id === inv.id);
+        const refreshedPayment = refreshedInvoice?.payments.find((savedPayment) => savedPayment.id === result.payment_id);
+        if (refreshed && refreshedInvoice && refreshedPayment) {
+          updatedInvoice = refreshedInvoice;
+          receiptData = refreshed;
+          mutate((current) => ({ ...current, invoices: refreshed.invoices, journal: refreshed.journal }));
+        }
+      } catch (refreshError) {
+        console.error("Failed to refresh invoice payment data:", refreshError);
+      }
 
       document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;
       setPrintContent(

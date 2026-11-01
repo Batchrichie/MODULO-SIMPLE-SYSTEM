@@ -285,11 +285,14 @@ export default function App() {
   }, [authChecked, authSession]);
 
   useEffect(() => {
-    if (!loaded || !authSession || (!adminFlag && !ceoFlag) || effectiveTab !== "dashboard") return;
+    if (!loaded || !authSession || (!adminFlag && !ceoFlag)) return;
 
-    const changedTables = ["journal_entries", "journal_lines", "invoices", "payments", "expenses"];
+    const changedTables = [
+      "journal_entries", "journal_lines", "invoices", "payments", "bills",
+      "bill_payments", "expenses", "payroll_runs", "payroll_lines",
+    ];
     const changeEvents = ["INSERT", "UPDATE", "DELETE"] as const;
-    const channel = supabase.channel("dashboard-data-changes");
+    const channel = supabase.channel("financial-data-changes");
     let refreshTimer: number | undefined;
     let refreshInFlight = false;
     let refreshPending = false;
@@ -350,7 +353,7 @@ export default function App() {
       window.clearTimeout(refreshTimer);
       void supabase.removeChannel(channel);
     };
-  }, [loaded, authSession, adminFlag, ceoFlag, effectiveTab]);
+  }, [loaded, authSession, adminFlag, ceoFlag]);
 
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => fn(prev));

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Plus, Trash2, Check, AlertTriangle } from "lucide-react";
 import {
   INK,
@@ -20,7 +20,7 @@ import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { assertJournalEntry } from "../validation";
-import { postJournalEntry, findPeriodByDate } from "../supabaseClient";
+import { postJournalEntry, findPeriodByDate, loadLedgerState } from "../supabaseClient";
 
 /* ---------- helpers ---------- */
 
@@ -61,6 +61,8 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [description, setDescription] = useState("");
   const [project, setProject] = useState("GEN");
+  const [submitting, setSubmitting] = useState(false);
+  const submissionLock = useRef(false);
   const [lines, setLines] = useState([
     { account: "", debit: "", credit: "" },
     { account: "", debit: "", credit: "" },
@@ -96,6 +98,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
   }
 
   async function post() {
+    if (submissionLock.current) return;
     const err = assertJournalEntry({ date, description, lines });
     if (err) {
       alert(err);
@@ -106,6 +109,8 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
         l.account && (parseFloat(l.debit) > 0 || parseFloat(l.credit) > 0)
     );
     if (!balanced || validLines.length < 2) return;
+    submissionLock.current = true;
+    setSubmitting(true);
     const entryNumber = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const period = date.slice(0, 7);
     const normalizedProject = project === "GEN" ? null : project;
@@ -126,8 +131,9 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       ...d,
       journal: [entry, ...d.journal],
     }));
+    let postedEntryId: string;
     try {
-      const postedEntryId = await postJournalEntry(
+      postedEntryId = await postJournalEntry(
         entry.date,
         entry.description ?? null,
         normalizedProject,
@@ -137,6 +143,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
           credit: Number(line.credit) || 0,
         }))
       );
+      if (!postedEntryId) throw new Error("The journal posting returned no backend entry identity.");
 
       mutate((d: any) => ({
         ...d,
@@ -154,6 +161,19 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       alert(
         `Failed to save journal entry: ${errorMsg}`
       );
+      submissionLock.current = false;
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const refreshed = await loadLedgerState();
+      if (refreshed) mutate((d: any) => ({ ...d, journal: refreshed.journal }));
+    } catch (refreshError) {
+      console.error("Failed to refresh journal after posting:", refreshError);
+    } finally {
+      submissionLock.current = false;
+      setSubmitting(false);
     }
     onDone && onDone();
   }
@@ -445,8 +465,8 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <Button onClick={post} disabled={!balanced}>
-          Post entry
+        <Button onClick={post} disabled={!balanced || submitting}>
+          {submitting ? "Posting..." : "Post entry"}
         </Button>
       </div>
     </div>

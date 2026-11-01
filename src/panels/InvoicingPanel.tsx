@@ -10,7 +10,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
-import { db, supabase, voidInvoiceRpc } from "../supabaseClient";
+import { db, supabase, voidInvoiceRpc, loadLedgerState } from "../supabaseClient";
 import { confirmAsync } from "../components/ui/Notifications";
 import { computeInvoiceTotals, getInvoiceBalance, getInvoicePaidAmount, getInvoiceGrandTotalGHS } from "../utils/invoiceUtils";
 import NewInvoiceForm from "./NewInvoiceForm";
@@ -24,6 +24,7 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
   const [payingInv, setPayingInv] = useState<Invoice | null>(null);
   const [cloneSource, setCloneSource] = useState<Invoice | null>(null);
   const [showVoided, setShowVoided] = useState(false);
+  const [voidingInvoiceId, setVoidingInvoiceId] = useState<string | null>(null);
   const [isCompact, setIsCompact] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   useEffect(() => {
@@ -34,8 +35,13 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
   }, []);
 
   async function handleVoidInvoice(inv: Invoice) {
+    if (voidingInvoiceId) return;
+    setVoidingInvoiceId(inv.id);
     const confirmed = await confirmAsync(`Void invoice ${inv.invoiceNumber}? This will reverse the ledger posting.`);
-    if (!confirmed) return;
+    if (!confirmed) {
+      setVoidingInvoiceId(null);
+      return;
+    }
 
     const invoiceId = inv.id;
 
@@ -47,13 +53,11 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
       ),
     }));
 
+    let reversalEntryId: string;
     try {
       // Call void_invoice RPC — handles reversal JE creation, original entry's reversed flag,
       // invoice status, voided_at/voided_by, and audit trail all in one transaction
-      const reversalEntryId = await voidInvoiceRpc(invoiceId);
-
-      // Success — reversal entry created and invoice marked void
-      // The server has all the correct data; local optimistic update matches
+      reversalEntryId = await voidInvoiceRpc(invoiceId);
     } catch (err: any) {
       console.error("Failed to void invoice:", err);
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
@@ -66,7 +70,27 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
           i.id === inv.id ? inv : i  // Restore original invoice
         ),
       }));
+      setVoidingInvoiceId(null);
       return;
+    }
+
+    try {
+      const refreshed = await loadLedgerState();
+      const refreshedInvoice = refreshed?.invoices.find((invoice) => invoice.id === invoiceId);
+      const reversalEntry = refreshed?.journal.find((entry) => entry.id === reversalEntryId);
+
+      if (refreshed && refreshedInvoice?.status === "Void" && reversalEntry) {
+        mutate((d) => ({ ...d, invoices: refreshed.invoices, journal: refreshed.journal }));
+      }
+
+      if (refreshedInvoice?.status !== "Void" || !reversalEntry) {
+        window.alert("The invoice void was confirmed, but the refreshed data does not yet include its reversal journal entry. Refresh the page before relying on the displayed ledger.");
+      }
+    } catch (refreshError) {
+      console.error("Failed to refresh invoice void data:", refreshError);
+      window.alert("The invoice void was confirmed, but refreshed invoice and journal data could not be loaded. Refresh the page before relying on the displayed ledger.");
+    } finally {
+      setVoidingInvoiceId(null);
     }
   }
 
@@ -168,8 +192,9 @@ export default function InvoicingPanel({ data, mutate, setPrintContent }: Invoic
               variant="ghost"
               icon={Trash2}
               onClick={() => handleVoidInvoice(inv)}
+              disabled={voidingInvoiceId === inv.id}
             >
-              Void
+              {voidingInvoiceId === inv.id ? "Voiding..." : "Void"}
             </Button>
           )}
           {balance > 0.01 && inv.status !== "Void" && (
