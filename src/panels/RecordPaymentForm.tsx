@@ -6,6 +6,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { getInvoiceBalance } from "../utils/invoiceUtils";
+import { mergePendingRows } from "../lib/data";
 import { recordInvoicePayment, findDefaultPaymentAccount, findPeriodByDate, loadLedgerState } from "../supabaseClient";
 import ReceiptDocument from "../documents/ReceiptDocument";
 import { assertPayment } from "../validation";
@@ -71,10 +72,11 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         method: "Not specified",
         reference: reference.trim() || null,
       };
-      let updatedInvoice = {
+      let updatedInvoice: typeof inv & { __pendingRefresh?: boolean } = {
         ...inv,
         payments: [...inv.payments, payment],
         status: result.invoice_status,
+        __pendingRefresh: false,
       };
       const receiptNo = result.payment_id;
       let receiptData = {
@@ -87,17 +89,27 @@ export default function RecordPaymentForm({ data, mutate, inv, onDone, setPrintC
         invoices: current.invoices.map((invoice) => invoice.id === inv.id ? updatedInvoice : invoice),
       }));
 
+      let refreshedPayment = false;
       try {
         const refreshed = await loadLedgerState();
         const refreshedInvoice = refreshed?.invoices.find((invoice) => invoice.id === inv.id);
-        const refreshedPayment = refreshedInvoice?.payments.find((savedPayment) => savedPayment.id === result.payment_id);
-        if (refreshed && refreshedInvoice && refreshedPayment) {
+        const persistedPayment = refreshedInvoice?.payments.find((savedPayment) => savedPayment.id === result.payment_id);
+        const hasJournal = refreshed?.journal.some((entry) => entry.id === result.journal_entry_id);
+        if (refreshed && refreshedInvoice && persistedPayment && hasJournal) {
           updatedInvoice = refreshedInvoice;
           receiptData = refreshed;
-          mutate((current) => ({ ...current, invoices: refreshed.invoices, journal: refreshed.journal }));
+          mutate((current) => ({
+            ...current,
+            invoices: mergePendingRows(refreshed.invoices, current.invoices),
+            journal: mergePendingRows(refreshed.journal, current.journal),
+          }));
+          refreshedPayment = true;
         }
       } catch (refreshError) {
         console.error("Failed to refresh invoice payment data:", refreshError);
+      }
+      if (!refreshedPayment) {
+        window.alert(`Payment ${result.payment_id} was recorded successfully, but refreshed invoice or journal data is not available yet. The confirmed payment remains shown; refresh before relying on other financial views.`);
       }
 
       document.title = `Receipt_${receiptNo}_${(inv.billTo || "Client").replace(/\s+/g, "_")}`;

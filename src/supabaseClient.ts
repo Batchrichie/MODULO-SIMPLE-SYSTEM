@@ -733,7 +733,7 @@ export async function cancelExpense(expenseId: string): Promise<CancelExpenseRes
   return data as CancelExpenseResult;
 }
 
-export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promise<string> {
+export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promise<unknown> {
   const { data: employeeId, error: empErr } = await supabase.rpc('my_employee_id');
   if (empErr) throw empErr;
   if (!employeeId) throw new Error('Could not resolve your employee record — contact an administrator.');
@@ -744,7 +744,7 @@ export async function voidInvoiceRpc(invoiceId: string, reason?: string): Promis
     p_reason: reason ?? null,
   });
   if (error) throw error;
-  return reversalEntryId as string;
+  return reversalEntryId;
 }
 
 /**

@@ -12,6 +12,7 @@ import { inputStyle, labelStyle } from "../components/ui/styles";
 import ProjectSelect from "../components/ui/ProjectSelect";
 import AccountSelect from "../components/ui/AccountSelect";
 import { fmt, projectName } from "../utils/format";
+import { mergePendingRows } from "../lib/data";
 import { findDefaultPaymentAccount, postBill, postBillPayment, findPeriodByDate, loadLedgerState } from "../supabaseClient";
 import type { PanelProps, Bill, BillPayment } from "../types";
 
@@ -51,9 +52,8 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
 
     billSubmissionLock.current = true;
     setPostingBill(true);
-    const billNumber = `BILL-${Date.now()}`;
-    const pendingBillId = `PENDING-${billNumber}`;
-    const bill: Bill = {
+    const pendingBillId = `PENDING-BILL-${Date.now()}`;
+    const bill: Bill & { __pendingRefresh?: boolean } = {
       id: pendingBillId,
       billNumber: "Pending assignment",
       date,
@@ -64,12 +64,14 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       amount: amt,
       status: "Unpaid",
       payments: [],
+      __pendingRefresh: true,
     };
 
     mutate((d) => ({ ...d, bills: [bill, ...d.bills] }));
+    let refreshedPostedBill = false;
     try {
       const posted = await postBill({
-        bill_number: billNumber,
+        bill_number: "",
         date: bill.date,
         due_date: bill.dueDate ?? null,
         vendor: bill.vendor,
@@ -87,18 +89,29 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
       mutate((d) => ({
         ...d,
         bills: d.bills.map((item) => item.id === pendingBillId
-          ? { ...item, id: posted.bill_id, billNumber: posted.bill_number, status: (posted.status as Bill["status"]) || item.status }
+          ? { ...item, id: posted.bill_id, billNumber: posted.bill_number, status: (posted.status as Bill["status"]) || item.status, __pendingRefresh: false }
           : item),
       }));
       try {
         const refreshed = await loadLedgerState();
-        if (refreshed?.bills.some((item) => item.id === posted.bill_id)) {
-          mutate((d) => ({ ...d, bills: refreshed.bills, journal: refreshed.journal }));
+        const hasBill = refreshed?.bills.some((item) => item.id === posted.bill_id);
+        const hasJournal = refreshed?.journal.some((entry) => entry.id === posted.journal_entry_id);
+        if (refreshed && hasBill && hasJournal) {
+          mutate((d) => ({
+            ...d,
+            bills: mergePendingRows(refreshed.bills, d.bills),
+            journal: mergePendingRows(refreshed.journal, d.journal),
+          }));
+          refreshedPostedBill = true;
         }
       } catch (refreshError) {
         console.error("Failed to refresh bill and journal after posting:", refreshError);
       }
-      window.alert(`Bill ${posted.bill_number} posted successfully.`);
+      if (refreshedPostedBill) {
+        window.alert(`Bill ${posted.bill_number} posted successfully.`);
+      } else {
+        window.alert(`Bill ${posted.bill_number} posted successfully, but refreshed bill or journal data is not available yet. The confirmed bill remains shown; refresh before relying on other financial views.`);
+      }
     } catch (err: any) {
       mutate((d) => ({ ...d, bills: d.bills.filter((item) => item.id !== pendingBillId) }));
       const errorMsg = err?.message || err?.toString?.() || "Unknown error occurred";
@@ -139,24 +152,32 @@ export default function BillsPanel({ data, mutate }: PanelProps) {
         throw new Error("The payment posting did not return its confirmed payment and journal identities.");
       }
       const confirmedPayment = { ...payment, id: posted.bill_payment_id };
-      const finalizedBill: Bill = {
+      const finalizedBill: Bill & { __pendingRefresh?: boolean } = {
         ...bill,
         payments: [...bill.payments, confirmedPayment],
         status: posted.bill_status as Bill["status"],
+        __pendingRefresh: false,
       };
       let refreshedBill: Bill | undefined;
+      let refreshedPayment = false;
       try {
         const refreshed = await loadLedgerState();
         refreshedBill = refreshed?.bills.find((item) =>
           item.id === bill.id && item.payments.some((itemPayment) => itemPayment.id === posted.bill_payment_id)
         );
-        if (refreshedBill) {
-          mutate((d) => ({ ...d, bills: refreshed!.bills, journal: refreshed!.journal }));
+        const hasJournal = refreshed?.journal.some((entry) => entry.id === posted.journal_entry_id);
+        if (refreshed && refreshedBill && hasJournal) {
+          mutate((d) => ({
+            ...d,
+            bills: mergePendingRows(refreshed!.bills, d.bills),
+            journal: mergePendingRows(refreshed!.journal, d.journal),
+          }));
+          refreshedPayment = true;
         }
       } catch (refreshError) {
         console.error("Failed to refresh bill payment data:", refreshError);
       }
-      if (!refreshedBill) {
+      if (!refreshedPayment) {
         mutate((d) => ({
           ...d,
           bills: d.bills.map((currentBill) => currentBill.id === bill.id ? finalizedBill : currentBill),

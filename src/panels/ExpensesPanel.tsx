@@ -12,6 +12,7 @@ import { inputStyle, labelStyle } from '../components/ui/styles';
 import ProjectSelect from '../components/ui/ProjectSelect';
 import AccountSelect from '../components/ui/AccountSelect';
 import { fmt, projectName } from '../utils/format';
+import { mergePendingRows } from '../lib/data';
 import { findPeriodByDate } from '../supabaseClient';
 import {
   cancelExpense,
@@ -195,10 +196,26 @@ export default function ExpensesPanel({ data, mutate, canCreate, canPost }: Pane
             postedEntryNumber: result.entry_number,
           }
         : expense));
-      const refreshed = await loadLedgerState();
-      if (refreshed) mutate((current) => ({ ...current, journal: refreshed.journal }));
+        let journalRefreshed = false;
+        try {
+          const refreshed = await loadLedgerState();
+          if (refreshed?.journal.some((entry) => entry.id === result.journal_entry_id)) {
+            mutate((current) => ({
+              ...current,
+              journal: mergePendingRows(refreshed.journal, current.journal),
+            }));
+            journalRefreshed = true;
+          }
+        } catch (refreshError) {
+          console.error('Failed to refresh journal after expense posting:', refreshError);
+        }
       try { await reloadExpenses(); } catch { /* RPC success remains authoritative for the status shown here. */ }
-      setNotice(result.already_posted ? `Expense ${result.expense_id} was already posted; its existing journal entry is confirmed.` : '');
+        const postedNotice = result.already_posted
+          ? `Expense ${result.expense_id} was already posted; its existing journal entry is confirmed.`
+          : `Expense ${result.expense_id} posted successfully.`;
+        setNotice(journalRefreshed
+          ? postedNotice
+          : `${postedNotice} The journal refresh did not confirm the posting yet. Refresh before relying on ledger views.`);
       setShowNewModal(false);
       setActiveExpense(null);
     } catch (postError) {

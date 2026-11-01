@@ -21,6 +21,7 @@ import AccountSelect from "../components/ui/AccountSelect";
 import { fmt } from "../utils/format";
 import { assertJournalEntry } from "../validation";
 import { postJournalEntry, findPeriodByDate, loadLedgerState } from "../supabaseClient";
+import { mergePendingRows } from "../lib/data";
 
 /* ---------- helpers ---------- */
 
@@ -121,6 +122,7 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       description,
       period,
       project: normalizedProject,
+      __pendingRefresh: true,
       lines: validLines.map((l) => ({
         account: l.account,
         debit: parseFloat(l.debit) || 0,
@@ -148,7 +150,9 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       mutate((d: any) => ({
         ...d,
         journal: d.journal.map((item: any) =>
-          item.id === entry.id ? { ...item, id: postedEntryId, entryNumber: postedEntryId } : item
+          item.id === entry.id
+            ? { ...item, id: postedEntryId, entryNumber: postedEntryId, __pendingRefresh: false }
+            : item
         ),
       }));
     } catch (err: any) {
@@ -166,14 +170,21 @@ export default function JournalEntryForm({ data, mutate, onDone }: any) {
       return;
     }
 
+    let refreshedEntry = false;
     try {
       const refreshed = await loadLedgerState();
-      if (refreshed) mutate((d: any) => ({ ...d, journal: refreshed.journal }));
+      if (refreshed?.journal.some((item) => item.id === postedEntryId)) {
+        mutate((d: any) => ({ ...d, journal: mergePendingRows(refreshed.journal, d.journal) }));
+        refreshedEntry = true;
+      }
     } catch (refreshError) {
       console.error("Failed to refresh journal after posting:", refreshError);
     } finally {
       submissionLock.current = false;
       setSubmitting(false);
+    }
+    if (!refreshedEntry) {
+      alert(`Journal entry ${postedEntryId} posted successfully, but the refreshed journal is not available yet. The confirmed entry remains shown; refresh before relying on other ledger views.`);
     }
     onDone && onDone();
   }

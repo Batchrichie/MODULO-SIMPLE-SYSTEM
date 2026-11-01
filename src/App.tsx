@@ -51,6 +51,7 @@ import AgedPayablesPanel from "./panels/AgedPayablesPanel";
 import BankReconciliationPanel from "./panels/BankReconciliationPanel";
 import ReportsPanel from "./panels/ReportsPanel";
 import ExportPanel from "./panels/ExportPanel";
+import { mergePendingRows } from "./lib/data";
 import LoansPanel from "./panels/LoansPanel";
 import PeriodsPanel from "./panels/PeriodsPanel";
 
@@ -316,6 +317,9 @@ export default function App() {
               ...previous,
               ...remote,
               accounts: remote.accounts || [],
+              journal: mergePendingRows(remote.journal || [], previous.journal || []),
+              invoices: mergePendingRows(remote.invoices || [], previous.invoices || []),
+              bills: mergePendingRows(remote.bills || [], previous.bills || []),
               company: remote.company || COMPANY_TEMPLATE,
               companyName: remote.companyName || "",
               ssnitEmployeeRate: previous.ssnitEmployeeRate,

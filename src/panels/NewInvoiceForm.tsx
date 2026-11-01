@@ -11,6 +11,7 @@ import { fmt, projectName } from "../utils/format";
 import { computeInvoiceTotals } from "../utils/invoiceUtils";
 import { assertInvoice } from "../validation";
 import { supabase, findAccountByRole, findPeriodByDate, loadLedgerState } from "../supabaseClient";
+import { mergePendingRows } from "../lib/data";
 import type { NewInvoiceFormProps } from "../types";
 
 export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: NewInvoiceFormProps) {
@@ -126,6 +127,7 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
       totals,
       status: "Sent",
       payments: [],
+      __pendingRefresh: true,
     };
 
     const arAccount = findAccountByRole(data.accounts, "ar");
@@ -183,18 +185,29 @@ export default function NewInvoiceForm({ data, mutate, onDone, cloneSource }: Ne
         ...d,
         invoices: d.invoices.map((item) =>
           item.id === temporaryInvoiceId
-            ? { ...item, id: result.invoice_id, invoiceNumber: result.invoice_number, journalEntryId: result.journal_entry_id }
+            ? { ...item, id: result.invoice_id, invoiceNumber: result.invoice_number, journalEntryId: result.journal_entry_id, __pendingRefresh: false }
             : item
         ),
       }));
 
+      let refreshedInvoice = false;
       try {
         const refreshed = await loadLedgerState();
-        if (refreshed?.invoices.some((invoice) => invoice.id === result.invoice_id)) {
-          mutate((d) => ({ ...d, invoices: refreshed.invoices, journal: refreshed.journal }));
+        const hasInvoice = refreshed?.invoices.some((invoice) => invoice.id === result.invoice_id);
+        const hasJournal = !result.journal_entry_id || refreshed?.journal.some((entry) => entry.id === result.journal_entry_id);
+        if (refreshed && hasInvoice && hasJournal) {
+          mutate((d) => ({
+            ...d,
+            invoices: mergePendingRows(refreshed.invoices, d.invoices),
+            journal: mergePendingRows(refreshed.journal, d.journal),
+          }));
+          refreshedInvoice = true;
         }
       } catch (refreshError) {
         console.error("Failed to refresh invoice and journal after posting:", refreshError);
+      }
+      if (!refreshedInvoice) {
+        alert(`Invoice ${result.invoice_number} posted successfully, but refreshed invoice or journal data is not available yet. The confirmed invoice remains shown; refresh before relying on other financial views.`);
       }
     } catch (err: any) {
       if (!confirmed) {

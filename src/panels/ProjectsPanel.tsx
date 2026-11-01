@@ -7,6 +7,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { inputStyle, labelStyle } from "../components/ui/styles";
 import { fmt } from "../utils/format";
+import { mergePendingRows } from "../lib/data";
 import { db, getProjectPoc, loadLedgerState, supabase } from "../supabaseClient";
 import { loadMilestones, insertMilestones, type MilestoneRow } from "../supabase/fieldOps";
 import type { AppData, Project } from "../types";
@@ -269,9 +270,9 @@ export default function ProjectsPanel({ data, mutate }: { data: AppData; mutate:
           projects: refreshed.projects ?? prev.projects,
           employees: refreshed.employees ?? prev.employees,
           payrollRuns: refreshed.payrollRuns ?? prev.payrollRuns,
-          bills: refreshed.bills ?? prev.bills,
-          journal: refreshed.journal ?? prev.journal,
-          invoices: refreshed.invoices ?? prev.invoices,
+          bills: mergePendingRows(refreshed.bills ?? [], prev.bills),
+          journal: mergePendingRows(refreshed.journal ?? [], prev.journal),
+          invoices: mergePendingRows(refreshed.invoices ?? [], prev.invoices),
           bankReconciliations: refreshed.bankReconciliations ?? prev.bankReconciliations,
         }));
       }

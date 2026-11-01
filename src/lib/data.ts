@@ -1,5 +1,17 @@
 import { supabase } from '../supabaseClient';
 
+export function mergePendingRows<T extends { id: string }>(authoritativeRows: T[], localRows: T[]): T[] {
+  const authoritativeIds = new Set(authoritativeRows.map((row) => row.id));
+  const pendingRows = localRows.filter((row) => {
+    const pendingRefresh = (row as T & { __pendingRefresh?: boolean }).__pendingRefresh;
+    return pendingRefresh === true || row.id.startsWith('TEMP-') || row.id.startsWith('PENDING-');
+  });
+  const pendingById = new Map(pendingRows.map((row) => [row.id, row]));
+  const mergedRows = authoritativeRows.map((row) => pendingById.get(row.id) ?? row);
+  const pendingWithoutBackendRow = pendingRows.filter((row) => !authoritativeIds.has(row.id));
+  return [...pendingWithoutBackendRow, ...mergedRows];
+}
+
 export async function getRecords<T>(
   table: string,
   options: { select?: string; filters?: Record<string, string | string[]>; order?: string } = {},
