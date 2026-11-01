@@ -577,6 +577,7 @@ export default function App() {
                   data={data}
                   mutate={canEdit ? mutate : undefined}
                   readOnly={ceoFlag}
+                  setPrintContent={queuePrint}
                   initialEntryId={openJournalEntryId}
                   onEntryViewed={() => setOpenJournalEntryId(null)}
                 />
