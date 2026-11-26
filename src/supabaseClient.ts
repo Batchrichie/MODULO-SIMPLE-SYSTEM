@@ -699,6 +699,77 @@ export async function listExpenses(): Promise<ExpenseRow[]> {
   return (data ?? []) as ExpenseRow[];
 }
 
+export interface ExpenseReportFilters {
+  startDate?: string;
+  endDate?: string;
+  project?: string;
+  expenseAccount?: string;
+  paymentAccount?: string;
+  vendor?: string;
+  status?: ExpenseRow['status'] | '';
+  sortBy: 'transaction_date' | 'expense_number' | 'vendor_payee' | 'amount' | 'expense_account_code' | 'status';
+  sortDirection: 'asc' | 'desc';
+}
+
+export interface ExpenseRegisterReportRow {
+  expense_id: string;
+  expense_number: string;
+  transaction_date: string;
+  vendor_payee: string;
+  description: string;
+  project: string | null;
+  expense_account_code: string | null;
+  expense_account_name: string | null;
+  payment_account_code: string | null;
+  payment_account_name: string | null;
+  amount: number;
+  posted_amount: number | null;
+  posted_amount_matches: boolean | null;
+  status: ExpenseRow['status'];
+  journal_entry_id: string | null;
+  journal_entry_number: string | null;
+  journal_date: string | null;
+  posted_at: string | null;
+  total_count: number;
+  total_posted_amount: number;
+}
+
+export interface ExpenseReportPage {
+  rows: ExpenseRegisterReportRow[];
+  totalPostedAmount: number;
+  hasMore: boolean;
+}
+
+export async function getExpenseReportPage(
+  filters: ExpenseReportFilters,
+  offset: number,
+  limit: number
+): Promise<ExpenseReportPage> {
+  const { data, error } = await supabase.rpc('rpt_expense_register', {
+    p_start_date: filters.startDate ?? null,
+    p_end_date: filters.endDate ?? null,
+    p_project: filters.project ?? null,
+    p_expense_account: filters.expenseAccount ?? null,
+    p_payment_account: filters.paymentAccount ?? null,
+    p_vendor: filters.vendor?.trim() || null,
+    p_status: filters.status || null,
+    p_sort_by: filters.sortBy,
+    p_sort_dir: filters.sortDirection,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw error;
+
+  const rows = (data ?? []) as ExpenseRegisterReportRow[];
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+
+  return {
+    rows,
+    totalPostedAmount: Number(rows[0]?.total_posted_amount ?? 0),
+    hasMore: offset + rows.length < totalCount,
+  };
+}
+
 export async function createExpenseDraft(params: CreateExpenseDraftInput): Promise<CreateExpenseDraftResult> {
   const { data, error } = await supabase.rpc('create_expense', {
     p_transaction_date: params.date,
@@ -874,6 +945,268 @@ export async function getAccountLedger(accountCode: string, startDate?: string |
     throw new Error(error.message);
   }
   return (data ?? []) as LedgerRow[];
+}
+
+export type ReportSortDirection = 'asc' | 'desc';
+
+export interface ReportAccountActivityRow {
+  row_type: string;
+  line_id: string | null;
+  entry_id: string | null;
+  entry_number: string | null;
+  entry_date: string | null;
+  description: string | null;
+  project: string | null;
+  reversal_role: string | null;
+  linked_entry_id: string | null;
+  linked_entry_number: string | null;
+  debit: number | null;
+  credit: number | null;
+  running_balance: number | null;
+  opening_balance: number;
+  closing_balance: number;
+  total_count: number;
+}
+
+export interface AccountActivityFilters {
+  accountCode: string;
+  startDate?: string;
+  endDate?: string;
+  project?: string;
+  sortBy: 'entry_date' | 'entry_number' | 'debit' | 'credit';
+  sortDirection: ReportSortDirection;
+}
+
+export interface ReportPage<T> {
+  rows: T[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export async function getReportAccountActivity(
+  filters: AccountActivityFilters,
+  offset: number,
+  limit: number
+): Promise<ReportPage<ReportAccountActivityRow>> {
+  const { data, error } = await supabase.rpc('rpt_account_activity', {
+    p_account_code: filters.accountCode,
+    p_start_date: filters.startDate ?? null,
+    p_end_date: filters.endDate ?? null,
+    p_project: filters.project ?? null,
+    p_sort_by: filters.sortBy,
+    p_sort_dir: filters.sortDirection,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as ReportAccountActivityRow[];
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+  const activityCount = rows.filter((row) => row.line_id !== null).length;
+  return { rows, totalCount, hasMore: offset + activityCount < totalCount };
+}
+
+export interface ReportProjectTransactionRow {
+  line_id: string;
+  entry_id: string;
+  entry_number: string;
+  entry_date: string;
+  description: string | null;
+  project: string | null;
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  reporting_group: string | null;
+  debit: number;
+  credit: number;
+  amount: number;
+  reversal_role: string | null;
+  linked_entry_id: string | null;
+  linked_entry_number: string | null;
+  total_count: number;
+}
+
+export interface ProjectTransactionFilters {
+  project: string;
+  startDate?: string;
+  endDate?: string;
+  accountCode?: string;
+  sortBy: 'entry_date' | 'account_code' | 'amount';
+  sortDirection: ReportSortDirection;
+}
+
+export async function getReportProjectTransactions(
+  filters: ProjectTransactionFilters,
+  offset: number,
+  limit: number
+): Promise<ReportPage<ReportProjectTransactionRow>> {
+  const { data, error } = await supabase.rpc('rpt_project_transactions', {
+    p_project: filters.project,
+    p_start_date: filters.startDate ?? null,
+    p_end_date: filters.endDate ?? null,
+    p_account_code: filters.accountCode ?? null,
+    p_sort_by: filters.sortBy,
+    p_sort_dir: filters.sortDirection,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as ReportProjectTransactionRow[];
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+  return { rows, totalCount, hasMore: offset + rows.length < totalCount };
+}
+
+export interface ReportJournalRow {
+  entry_id: string;
+  entry_number: string;
+  entry_date: string;
+  description: string | null;
+  project: string | null;
+  reversal_role: string | null;
+  linked_entry_id: string | null;
+  linked_entry_number: string | null;
+  line_id: string;
+  account_code: string;
+  account_name: string;
+  debit: number;
+  credit: number;
+  is_filter_match: boolean;
+  entry_total_debit: number;
+  entry_total_credit: number;
+  total_count: number;
+}
+
+export interface JournalTransactionFilters {
+  startDate?: string;
+  endDate?: string;
+  accountCode?: string;
+  project?: string;
+  reference?: string;
+  sortBy: 'entry_date' | 'entry_number';
+  sortDirection: ReportSortDirection;
+}
+
+export interface ReportJournalPage extends ReportPage<ReportJournalRow> {
+  entryCount: number;
+}
+
+export async function getReportJournalPage(
+  filters: JournalTransactionFilters,
+  offset: number,
+  limit: number
+): Promise<ReportJournalPage> {
+  const { data, error } = await supabase.rpc('rpt_journal_transactions', {
+    p_start_date: filters.startDate ?? null,
+    p_end_date: filters.endDate ?? null,
+    p_account_code: filters.accountCode ?? null,
+    p_project: filters.project ?? null,
+    p_reference: filters.reference?.trim() || null,
+    p_sort_by: filters.sortBy,
+    p_sort_dir: filters.sortDirection,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as ReportJournalRow[];
+  const entryCount = new Set(rows.map((row) => row.entry_id)).size;
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+  return { rows, entryCount, totalCount, hasMore: offset + entryCount < totalCount };
+}
+
+export interface ReportJournalEntryDetails {
+  id: string;
+  entry_number: string;
+  date: string;
+  description: string | null;
+  project: string | null;
+  reversed: boolean;
+  reversal_of: string | null;
+  lines: Array<{ id: string; account_code: string; debit: number; credit: number }>;
+}
+
+export async function getReportJournalEntry(entryId: string): Promise<ReportJournalEntryDetails | null> {
+  const { data: entry, error: entryError } = await supabase.from('journal_entries')
+    .select('id, entry_number, date, description, project, reversed, reversal_of')
+    .eq('id', entryId)
+    .maybeSingle();
+  if (entryError) throw entryError;
+  if (!entry) return null;
+
+  const { data: lines, error: linesError } = await supabase.from('journal_lines')
+    .select('id, account_code, debit, credit')
+    .eq('entry_id', entryId);
+  if (linesError) throw linesError;
+  return { ...entry, reversed: Boolean(entry.reversed), lines: lines ?? [] };
+}
+
+export interface ReportProfitLossRow {
+  code: string;
+  name: string;
+  type: string;
+  reporting_group: string | null;
+  total_debit: number;
+  total_credit: number;
+  amount: number;
+}
+
+export async function getReportProfitAndLoss(
+  startDate: string,
+  endDate: string,
+  project: string
+): Promise<ReportProfitLossRow[]> {
+  const { data, error } = await supabase.rpc('get_profit_and_loss', {
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_project: project,
+  });
+  if (error) throw error;
+  return (data ?? []) as ReportProfitLossRow[];
+}
+
+export interface ReportAccountSummaryRow {
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  normal_balance: string;
+  reporting_group: string | null;
+  opening_balance: number;
+  period_debit: number;
+  period_credit: number;
+  closing_balance: number;
+  total_count: number;
+  total_period_debit: number;
+  total_period_credit: number;
+}
+
+export interface AccountSummaryFilters {
+  startDate?: string;
+  endDate?: string;
+  accountType?: string;
+  reportingGroup?: string;
+  includeZero: boolean;
+  sortBy: 'account_code' | 'account_name' | 'account_type' | 'reporting_group' | 'period_debit' | 'period_credit' | 'closing_balance';
+  sortDirection: ReportSortDirection;
+}
+
+export async function getReportAccountSummary(
+  filters: AccountSummaryFilters,
+  offset: number,
+  limit: number
+): Promise<ReportPage<ReportAccountSummaryRow>> {
+  const { data, error } = await supabase.rpc('rpt_account_summary', {
+    p_start_date: filters.startDate ?? null,
+    p_end_date: filters.endDate ?? null,
+    p_account_type: filters.accountType ?? null,
+    p_reporting_group: filters.reportingGroup ?? null,
+    p_include_zero: filters.includeZero,
+    p_sort_by: filters.sortBy,
+    p_sort_dir: filters.sortDirection,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as ReportAccountSummaryRow[];
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+  return { rows, totalCount, hasMore: offset + rows.length < totalCount };
 }
 
 export async function getBalanceSheet(): Promise<TrialBalanceRow[]> {
